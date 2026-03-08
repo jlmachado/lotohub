@@ -1,0 +1,576 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 83% 4%;
+    --foreground: 210 20% 98%;
+    --card: 222 83% 4%;
+    --card-foreground: 210 20% 98%;
+    --popover: 222 83% 4%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 45 100% 51%;
+    --primary-foreground: 222 83% 4%;
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 215 28% 17%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 45 100% 51%;
+
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    
+    --sidebar-background: 222 83% 4%;
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-primary: 45 100% 51%;
+    --sidebar-primary-foreground: 222 83% 4%;
+    --sidebar-accent: 215 28% 17%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 215 28% 17%;
+    --sidebar-ring: 45 100% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+  
+  body {
+    min-height:100vh;
+  }
+}
+
+/* Custom styles for Bingo interface */
+.bingo-grid-shadow {
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.bingo-ball-shine {
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4) 0%, transparent 60%);
+}
+
+/* Animation for newly drawn numbers in Bingo grid */
+@keyframes flash-green {
+  0% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-flash-green {
+  animation: flash-green 0.3s ease-out;
+}
+
+/* Home page banners */
+.banner-loterias, .banner-bingo, .cassino-betano, .banner-whatsapp {
+  @apply block rounded-lg overflow-hidden transition-all duration-300 transform hover:scale-[1.02] shadow-lg;
+}
+.banner-loterias img, .banner-bingo img, .cassino-betano img, .banner-whatsapp img {
+  @apply w-full h-auto;
+}
+
+/* Custom premium card style */
+.premium-card {
+  @apply bg-gradient-to-br from-card to-secondary/30 border-secondary hover:border-primary/50 transition-all duration-300;
+}
+
+/* Casino / Sinuca Specific Styles */
+.casino-background {
+  background-color: hsl(228, 24%, 6%);
+  background-image:
+    radial-gradient(at 8% 10%, hsla(234,31%,21%,1) 0px, transparent 50%),
+    radial-gradient(at 89% 13%, hsla(286,21%,20%,1) 0px, transparent 50%),
+    radial-gradient(at 8% 90%, hsla(196,44%,14%,1) 0px, transparent 50%),
+    radial-gradient(at 89% 92%, hsla(28,52%,15%,1) 0px, transparent 50%);
+}
+
+.casino-card {
+  @apply bg-black/30 border border-white/10 rounded-xl backdrop-blur-sm shadow-lg;
+}
+
+.casino-card-glow {
+  @apply border border-primary/20 shadow-lg shadow-primary/10;
+}
+
+.casino-input {
+  @apply bg-black/20 border-white/20 text-white placeholder:text-white/40 focus:ring-primary rounded-lg;
+}
+
+.casino-gold-button {
+  @apply bg-gradient-to-b from-amber-400 to-orange-500 text-black font-bold hover:from-amber-500 hover:to-orange-600 transition-all shadow-md hover:shadow-lg hover:shadow-amber-500/20;
+}
+
+.live-badge {
+    @apply flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-red-600/80 border border-red-500/50 rounded-full;
+}
+
+.live-badge-pulsing .live-pulse {
+    @apply relative flex h-2 w-2 mr-1;
+    --tw-shadow: 0 0 8px 1px rgb(255 255 255 / 0.7);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.live-badge-pulsing .live-pulse span:first-child {
+    @apply animate-ping absolute inline-flex h-full w-full rounded-full bg-white/80 opacity-75;
+}
+.live-badge-pulsing .live-pulse span:last-child {
+    @apply relative inline-flex rounded-full h-2 w-2 bg-white;
+}
+
+.viewer-count {
+  @apply flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-black/30 border border-white/10 rounded-full backdrop-blur-sm;
+}
+
+.player-control-btn {
+  @apply h-8 w-8 rounded-full flex items-center justify-center bg-black/30 text-white/80 hover:bg-black/50 hover:text-white transition-colors backdrop-blur-sm;
+}
+
+.admin-badge {
+  @apply ml-2 text-xs font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded;
+}
+
+.score-value {
+    transition: color 0.3s ease, text-shadow 0.3s ease;
+}
+.score-updated {
+    color: #fff;
+    text-shadow: 0 0 10px hsl(var(--primary)), 0 0 20px hsl(var(--primary));
+}
+.odds-update-flash {
+    animation: flash 0.5s ease-out;
+}
+
+@keyframes flash {
+    0% { background-color: transparent; }
+    50% { background-color: hsla(var(--primary), 0.5); }
+    100% { background-color: transparent; }
+}
+
+.bet-ticker-container {
+    mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+.bet-ticker-content {
+    animation: scroll-x 40s linear infinite;
+}
+
+@keyframes scroll-x {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+
+/* Custom Football Styles - Dark Theme */
+.sidebar-campeonatos {
+    background: hsl(var(--card));
+    padding: 20px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+}
+
+.campeonato-item a {
+    color: hsl(var(--foreground));
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+}
+
+.campeonato-item a:hover {
+    background: hsl(var(--accent));
+}
+
+.campeonato-item.active a {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+.campeonato-item .badge {
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+}
+
+
+/* Badges de status */
+.status-badge {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 30px;
+  display: inline-block;
+  font-weight: 500;
+}
+
+
+/* New Football Card Styles */
+.jogo-card {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    overflow: hidden;
+}
+
+.jogo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    background-color: hsl(var(--muted));
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+.jogo-header .liga {
+    font-weight: 500;
+}
+
+.jogo-header .tempo {
+    font-weight: 600;
+    color: hsl(var(--destructive));
+}
+
+.jogo-info {
+    padding: 1rem;
+}
+
+.jogo-info .times {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.jogo-info .time {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.jogo-info .time .nome {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.jogo-info .time .placar {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: hsl(var(--primary));
+}
+
+.jogo-info .time-casa {
+    flex-direction: row;
+}
+
+.jogo-info .time-fora {
+    flex-direction: row-reverse;
+}
+
+.odds-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    padding: 1rem;
+    background-color: hsl(var(--muted));
+}
+
+@media (min-width: 768px) {
+  .odds-container {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.odd-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.odd-btn:hover {
+    background-color: hsl(var(--accent));
+}
+
+.odd-btn.active {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+}
+
+.odd-btn .odd-label {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+.odd-btn.active .odd-label {
+    color: hsl(var(--primary-foreground));
+    opacity: 0.8;
+}
+
+
+.odd-btn .odd-value {
+    font-weight: 700;
+    font-size: 0.875rem;
+}
+
+#boletim-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 9997;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+#boletim-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.aposta-item {
+    background: hsl(var(--card));
+    border-left: 4px solid;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 15px;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.aposta-item.casa { border-left-color: #4CAF50; }
+.aposta-item.empate { border-left-color: #FFC107; }
+.aposta-item.fora { border-left-color: #F44336; }
+
+
+.aposta-info {
+    margin-bottom: 10px;
+    padding-right: 30px;
+}
+
+.aposta-jogo {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.aposta-mercado {
+    font-size: 14px;
+    color: hsl(var(--muted-foreground));
+}
+
+.aposta-odd {
+    font-size: 18px;
+    font-weight: bold;
+    color: hsl(var(--foreground));
+}
+
+.aposta-actions {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.remover-aposta {
+    background: none;
+    border: none;
+    color: hsl(var(--destructive));
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 5px;
+}
+
+.remover-aposta:hover {
+    filter: brightness(1.2);
+}
+
+.aposta-valor {
+    margin-bottom: 15px;
+}
+
+.aposta-valor input {
+    background: hsl(var(--background));
+    width: 100%;
+    padding: 8px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.aposta-valor input:focus {
+    outline: none;
+    border-color: hsl(var(--ring));
+}
+
+@media (max-width: 576px) {
+    #boletim-panel {
+        width: 100%;
+    }
+}
+
+@media (max-width: 1023px) {
+    .sidebar-campeonatos {
+        display: none;
+    }
+}
+
+/* Featured Live Match Styles */
+.live-player {
+  background-color: #1a1a2e;
+  color: white;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  border: 1px solid #3a3a5e;
+}
+
+.live-player .game-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  color: #aaa;
+  margin-bottom: 0.75rem;
+}
+
+.live-player .game-info .time {
+  font-weight: 600;
+  color: #f87171; /* Light red */
+}
+
+.live-player .scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  font-size: 1.125rem;
+  font-weight: bold;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.live-player .scoreboard .score {
+  font-size: 1.5rem;
+  margin: 0 1rem;
+  color: #60a5fa; /* Light blue */
+}
+
+.live-player .scoreboard .team {
+  text-align: center;
+  flex: 1;
+}
+
+.live-player .market-tabs {
+  margin-top: 1rem;
+}
+
+.live-player .market-tabs [role="tablist"] {
+  background-color: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 4px;
+}
+
+.live-player .market-tabs [role="tab"] {
+  color: #aab;
+  border-radius: 6px;
+}
+
+.live-player .market-tabs [role="tab"][data-state="active"] {
+  background-color: rgba(255,255,255,0.1);
+  color: white;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.live-player .market-tabs [role="tab"]:disabled {
+    color: #667;
+    opacity: 1;
+}
+
+.live-player .odds-container {
+    padding-top: 1rem;
+    padding-bottom: 0.5rem;
+    padding-left: 0;
+    padding-right: 0;
+    background-color: transparent;
+}
+
+
+/* Global Mini Player Styles */
+.gmp-container {
+  @apply fixed z-50 transition-all duration-300 ease-in-out;
+}
+.gmp-top-bar {
+  @apply top-0 left-0 right-0 h-0 bg-black/80 backdrop-blur-sm flex items-center justify-between px-4 overflow-hidden;
+  height: var(--gmp-top-height, 96px);
+  transform: translateY(-100%);
+}
+.gmp-top-bar.active {
+  @apply h-[var(--gmp-top-height)] p-2;
+  transform: translateY(0);
+}
+.gmp-video-wrapper {
+  @apply absolute inset-0;
+}
+.gmp-iframe {
+  @apply w-full h-full border-0;
+}
+.gmp-content {
+  @apply relative z-10 flex items-center gap-3;
+}
+.gmp-title {
+  @apply text-white font-bold text-lg;
+}
+.gmp-controls {
+  @apply relative z-10 flex items-center gap-2;
+}
+.gmp-control-btn {
+  @apply h-8 w-8 rounded-full flex items-center justify-center bg-white/20 text-white hover:bg-white/30;
+}
+
+.gmp-bubble {
+  width: var(--gmp-bubble-size, 62px);
+  height: var(--gmp-bubble-size, 62px);
+  @apply rounded-full bg-primary shadow-lg flex items-center justify-center cursor-pointer overflow-hidden;
+  transform: scale(0);
+}
+.gmp-bubble.active {
+  transform: scale(1);
+}
+.gmp-bubble.dragging {
+  @apply cursor-grabbing transition-none;
+}
+.gmp-bubble-content {
+  @apply text-primary-foreground;
+}
+.gmp-bubble-badge {
+  @apply absolute top-1 right-1 h-3 w-3 rounded-full bg-red-500 border-2 border-primary;
+}
+.gmp-drag-handle {
+    @apply absolute -right-2 top-1/2 -translate-y-1/2 h-8 w-6 flex items-center justify-center text-primary-foreground/50 cursor-grab;
+}
+
+/* Snap positions */
+.gmp-snap-br { @apply bottom-4 right-4; }
+.gmp-snap-bl { @apply bottom-4 left-4; }
+.gmp-snap-tr { @apply top-20 right-4; }
+.gmp-snap-tl { @apply top-20 left-4; }

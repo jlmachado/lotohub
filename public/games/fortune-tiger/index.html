@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fortune Tiger</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="loading-overlay">
+        <div id="loading-content">
+            <div id="loading-logo-placeholder"></div>
+            <div class="spinner"></div>
+            <div id="loading-text">Carregando... 0%</div>
+        </div>
+        <div id="error-overlay" style="display: none;"></div>
+    </div>
+
+    <div id="game-container" class="hidden">
+        <div id="balance-container">
+            <span>Saldo: R$</span><span id="balance">1000.00</span>
+        </div>
+        <div id="reels-container"></div>
+        <div id="controls-container">
+            <button id="spin-button" class="control-button">GIRAR</button>
+            <button id="toggle-sound" class="control-button">Som: ON</button>
+        </div>
+         <div id="win-popup" class="hidden">
+            <span id="win-amount"></span>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>

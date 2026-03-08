@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurar Impressora</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #2c3e50;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        select, button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #btn-save { background-color: #3498db; }
+        #btn-test { background-color: #2ecc71; margin-top: 10px; }
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #2ecc71;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            opacity: 0;
+            transition: opacity 0.5s, top 0.5s;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Configurar Impressora</h1>
+
+    <div class="form-group">
+        <label for="widthMm">Largura do Papel</label>
+        <select id="widthMm">
+            <option value="48">48mm (Padrão Seguro)</option>
+            <option value="58">58mm (Tamanho Real)</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="fontPx">Tamanho da Fonte</label>
+        <select id="fontPx">
+            <option value="10">10px (Padrão)</option>
+            <option value="11">11px</option>
+            <option value="12">12px</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="lineHeight">Altura da Linha</label>
+        <select id="lineHeight">
+            <option value="1.15">1.15 (Padrão)</option>
+            <option value="1.20">1.20</option>
+            <option value="1.25">1.25</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="autoPrint">Impressão Automática</label>
+        <select id="autoPrint">
+            <option value="true">Sim (Requer permissão de pop-up)</option>
+            <option value="false">Não (Requer clique extra)</option>
+        </select>
+    </div>
+    
+    <button id="btn-save" type="button">Salvar Configurações</button>
+    <button id="btn-test" type="button">Teste de Impressão</button>
+</div>
+
+<div id="toast" class="toast">Configurações salvas com sucesso!</div>
+
+<script>
+(function() {
+    const CONFIG_KEY = "PRINT_CONFIG";
+    const DEFAULTS = { widthMm: 48, fontPx: 10, lineHeight: 1.15, autoPrint: true };
+
+    const widthSelect = document.getElementById('widthMm');
+    const fontSelect = document.getElementById('fontPx');
+    const lineHeightSelect = document.getElementById('lineHeight');
+    const autoPrintSelect = document.getElementById('autoPrint');
+    const saveBtn = document.getElementById('btn-save');
+    const testBtn = document.getElementById('btn-test');
+    const toast = document.getElementById('toast');
+
+    function showToast() {
+        toast.style.opacity = 1;
+        toast.style.top = "30px";
+        setTimeout(() => {
+            toast.style.opacity = 0;
+            toast.style.top = "20px";
+        }, 2500);
+    }
+    
+    function loadConfig() {
+        let config = DEFAULTS;
+        try {
+            const storedConfig = localStorage.getItem(CONFIG_KEY);
+            if (storedConfig) {
+                config = { ...DEFAULTS, ...JSON.parse(storedConfig) };
+            }
+        } catch (e) {
+            console.error("Erro ao carregar config:", e);
+        }
+        widthSelect.value = config.widthMm;
+        fontSelect.value = config.fontPx;
+        lineHeightSelect.value = config.lineHeight;
+        autoPrintSelect.value = String(config.autoPrint);
+    }
+
+    function saveConfig() {
+        const config = {
+            widthMm: parseInt(widthSelect.value, 10),
+            fontPx: parseInt(fontSelect.value, 10),
+            lineHeight: parseFloat(lineHeightSelect.value),
+            autoPrint: autoPrintSelect.value === "true",
+        };
+        localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+        showToast();
+    }
+    
+    function handleTestPrint() {
+        const testTicket = {
+            banca: "BANCA TESTE",
+            ticketId: "TESTE-12345",
+            datetime: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium'}),
+            apostas: [
+                { modalidade: "Milhar", numero: "1234", valor: "1,00" },
+                { modalidade: "Grupo", numero: "05", valor: "5,00" },
+                { modalidade: "Dezena", numero: "23", valor: "2,00" },
+            ],
+            total: "R$ 8,00"
+        };
+
+        // Garante que a configuração está salva antes de imprimir
+        saveConfig();
+        
+        localStorage.setItem("PRINT_TICKET_DATA", JSON.stringify(testTicket));
+        
+        const printWindow = window.open('/impressao.html', '_blank');
+        if (!printWindow) {
+            alert("Não foi possível abrir a janela de impressão. Por favor, habilite pop-ups para este site.");
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadConfig);
+    saveBtn.addEventListener('click', saveConfig);
+    testBtn.addEventListener('click', handleTestPrint);
+})();
+</script>
+
+</body>
+</html>

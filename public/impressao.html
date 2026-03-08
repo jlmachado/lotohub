@@ -1,0 +1,120 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impressão de Bilhete</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: white;
+            color: black;
+            -webkit-print-color-adjust: exact;
+        }
+        .ticket {
+            width: 80mm;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 5px;
+        }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .dashed { border-top: 1px dashed #000; margin: 8px 0; }
+        .header { margin-bottom: 10px; }
+        .header h1 { margin: 0; font-size: 22px; text-transform: uppercase; }
+        .header p { margin: 2px 0; font-size: 14px; }
+        .info { font-size: 13px; margin-bottom: 10px; }
+        .info p { margin: 3px 0; }
+        .bets { font-size: 12px; }
+        .bet-item { margin-bottom: 10px; }
+        .bet-item .mod { font-weight: bold; font-size: 13px; text-transform: uppercase; }
+        .bet-item .nums { word-break: break-all; font-weight: bold; margin: 2px 0; }
+        .bet-item .val { text-align: right; }
+        .footer { text-align: right; margin-top: 10px; border-top: 1px dashed #000; padding-top: 5px; }
+        .footer p { margin: 4px 0; font-size: 15px; }
+        .legal { text-align: center; font-size: 10px; margin-top: 15px; font-style: italic; line-height: 1.2; }
+        
+        @media print {
+            @page { margin: 0; size: auto; }
+            body { padding: 0; margin: 0; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="ticket">
+        <p class="center" style="padding: 20px;">Processando bilhete...</p>
+    </div>
+
+    <script>
+        window.onload = function() {
+            const dataStr = localStorage.getItem('PRINT_TICKET_DATA');
+            if (!dataStr) {
+                document.getElementById('app').innerHTML = '<p class="center" style="color: red;">Erro: Dados não encontrados.</p>';
+                return;
+            }
+
+            try {
+                const data = JSON.parse(dataStr);
+                let html = `
+                    <div class="header center">
+                        <h1>${data.banca || 'LOTOHUB'}</h1>
+                        <p class="bold">COMPROVANTE DE APOSTA</p>
+                    </div>
+                    <div class="dashed"></div>
+                    <div class="info">
+                        <p><strong>POULE:</strong> ${data.ticketId}</p>
+                        <p><strong>TERM:</strong> ${data.terminal}</p>
+                        <p><strong>DATA:</strong> ${data.datetime}</p>
+                        <p><strong>JOGO:</strong> ${data.jogo || 'LOTERIA'}</p>
+                    </div>
+                    <div class="dashed"></div>
+                    <div class="bets">
+                `;
+
+                data.apostas.forEach(bet => {
+                    html += `
+                        <div class="bet-item">
+                            <div class="mod">${bet.modalidade}</div>
+                            <div class="nums">${bet.numero}</div>
+                            <div class="val">Valor: R$ ${bet.valor}</div>
+                        </div>
+                    `;
+                });
+
+                html += `
+                    </div>
+                    <div class="footer">
+                        <p class="bold">TOTAL: ${data.total}</p>
+                        ${(data.possivelRetorno && data.possivelRetorno !== '0,00') ? `<p style="font-size: 13px">RETORNO: R$ ${data.possivelRetorno}</p>` : ''}
+                    </div>
+                    <div class="legal">
+                        Bilhete válido somente mediante consulta<br>
+                        da poule no sistema oficial LotoHub.<br>
+                        Jogue com responsabilidade.
+                    </div>
+                `;
+
+                document.getElementById('app').innerHTML = html;
+
+                // Pequeno delay para garantir que o navegador renderizou o texto antes de abrir a janela de impressão
+                setTimeout(() => {
+                    window.print();
+                    // Opcional: Algumas POS precisam de tempo para processar o print() antes de fechar
+                    setTimeout(() => {
+                        // window.close(); 
+                    }, 1000);
+                }, 500);
+
+            } catch (e) {
+                console.error('Erro na impressão:', e);
+                document.getElementById('app').innerHTML = '<p class="center" style="color: red;">Erro ao processar bilhete.</p>';
+            }
+        };
+    </script>
+</body>
+</html>

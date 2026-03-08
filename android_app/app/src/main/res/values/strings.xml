@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">LotoHub App</string>
+    <string name="title_activity_printer_settings">Configurar Impressora</string>
+</resources>

@@ -1,0 +1,67 @@
+:root{
+  --lux-gold1:#ffe08a;
+  --lux-gold2:#ffb300;
+  --lux-border: rgba(255,255,255,0.12);
+  --lux-shadow: 0 22px 55px rgba(0,0,0,0.62);
+  --lux-glow: rgba(255,215,0,0.18);
+}
+
+/* efeito de “apertar” geral sem mexer em funções */
+.lux-press{
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.lux-press:active{
+  transform: scale(0.985);
+}
+
+/* brilho premium (shine) — aplicado via JS sem mudar HTML */
+.lux-shine{
+  position:relative;
+  overflow:hidden;
+}
+.lux-shine::before{
+  content:"";
+  position:absolute;
+  inset:-45% -70%;
+  background: linear-gradient(120deg, transparent 35%, rgba(255,255,255,.40) 50%, transparent 65%);
+  transform: translateX(-70%) rotate(8deg);
+  animation: luxShine 3.4s ease-in-out infinite;
+  pointer-events:none;
+  mix-blend-mode: screen;
+  opacity:.7;
+}
+@keyframes luxShine{
+  0%{ transform: translateX(-70%) rotate(8deg); opacity:.25; }
+  55%{ opacity:.85; }
+  100%{ transform: translateX(70%) rotate(8deg); opacity:.25; }
+}
+
+/* glow ouro nos cards */
+.lux-card{
+  border:1px solid var(--lux-border);
+  box-shadow: var(--lux-shadow);
+}
+.lux-card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  box-shadow: 0 0 46px var(--lux-glow);
+  opacity:.9;
+}
+
+/* botão ouro luxo */
+.lux-gold{
+  background: linear-gradient(180deg, var(--lux-gold1), var(--lux-gold2)) !important;
+  color:#1a1200 !important;
+  border:0 !important;
+  font-weight:900 !important;
+  box-shadow: 0 16px 28px rgba(255,179,0,0.25) !important;
+}
+
+/* respeitar usuários com menos animações */
+@media (prefers-reduced-motion: reduce){
+  .lux-shine::before{ animation:none !important; }
+  .lux-press{ transition:none !important; }
+}

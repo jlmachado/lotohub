@@ -1,0 +1,59 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "logo-principal",
+      "description": "Logo oficial Lotohub",
+      "imageUrl": "https://storage.googleapis.com/app-prototyper-firebase-studio.appspot.com/users/6792ae0bd6cfdaecae60cc6a/projects/67b7600bb9060ae66bfdb993/LOGO%20LOTOHUB.png",
+      "imageHint": "casino logo"
+    },
+    {
+      "id": "banner-1",
+      "description": "Promotional banner 1",
+      "imageUrl": "https://images.unsplash.com/photo-1632227127406-e19b7dfbbf32?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxsb3R0ZXJ5JTIwdGlja2V0c3xlbnwwfHx8fDE3NzA4MTkxMjh8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "lottery tickets"
+    },
+    {
+      "id": "banner-2",
+      "description": "Promotional banner 2",
+      "imageUrl": "https://images.unsplash.com/photo-1744131897960-2744987b3ab9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHx3aW5uaW5nJTIwbnVtYmVyc3xlbnwwfHx8fDE3NzA4MTkxMjd8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "winning numbers"
+    },
+    {
+      "id": "banner-3",
+      "description": "Promotional banner 3",
+      "imageUrl": "https://images.unsplash.com/photo-1566563255308-753861417000?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHxqYWNrcG90JTIwcHJpemV8ZW58MHx8fHwxNzcwODE5MTI3fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "jackpot prize"
+    },
+    {
+      "id": "loterias-cta",
+      "description": "Chamada para ação para a seção de Loterias",
+      "imageUrl": "https://placehold.co/1080x380/1e7e34/ffffff/png?text=Loterias",
+      "imageHint": "lottery clover"
+    },
+    {
+      "id": "sinuca-cta",
+      "description": "Chamada para ação para a seção de Sinuca ao Vivo",
+      "imageUrl": "https://placehold.co/1080x380/c0392b/ffffff/png?text=Sinuca+ao+Vivo",
+      "imageHint": "snooker table"
+    },
+    {
+      "id": "bingo-cta",
+      "description": "Chamada para ação para a seção de Bingo",
+      "imageUrl": "https://placehold.co/1080x380/1a5fb4/ffffff/png?text=Bingo",
+      "imageHint": "bingo balls"
+    },
+    {
+      "id": "cassino-cta",
+      "description": "Chamada para ação para a seção de Cassino",
+      "imageUrl": "https://placehold.co/1080x380/5c2a63/ffffff/png?text=Cassino",
+      "imageHint": "casino action"
+    },
+    {
+      "id": "suporte-cta",
+      "description": "Chamada para ação para a seção de Suporte via WhatsApp",
+      "imageUrl": "https://placehold.co/1080x380/25D366/ffffff/png?text=WhatsApp%20Suporte",
+      "imageHint": "whatsapp chat"
+    }
+  ]
+}

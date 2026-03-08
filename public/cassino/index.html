@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LotoHub Cassino</title>
+    <link rel="stylesheet" href="cassino.css">
+</head>
+<body>
+    <!-- Elemento para transição de página -->
+    <div id="pageFade"></div>
+    
+    <!-- Elemento para as moedas caindo -->
+    <div class="coin-container"></div>
+
+    <!-- Header Fixo -->
+    <header class="glass-header">
+        <button onclick="go('/')" class="back-btn" aria-label="Voltar para a página inicial">&larr;</button>
+        LotoHub Cassino
+    </header>
+
+    <main>
+        <div class="tiger-container">
+            <img src="/cassino/tiger.png" alt="Fortune Tiger" class="tiger-img" 
+                 onerror="this.style.display='none'">
+        </div>
+
+        <div class="cta-card">
+            <h1>Bem-vindo ao Cassino</h1>
+            <p>Experiência visual premium para estudos.</p>
+            <button id="cta-btn" class="cta-button">
+                Entrar no Cassino
+                <span class="shine"></span>
+            </button>
+            <p id="loading-msg"></p>
+        </div>
+    </main>
+
+    <script src="cassino.js"></script>
+</body>
+</html>
