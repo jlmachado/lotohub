@@ -1,20 +1,26 @@
 # LotoHub Premium
 
-Este projeto foi configurado para o repositório oficial no GitHub.
+Este projeto está configurado para o repositório oficial: `https://github.com/jlmachado/lotohub.git`.
 
-## 🚀 Como enviar atualizações
+## 🚀 Como enviar atualizações para o GitHub
 
-Para garantir que o projeto comece limpo no repositório `https://github.com/jlmachado/lotohub.git`, siga estes passos no terminal:
+Para sincronizar este projeto com o seu repositório, execute os seguintes comandos no seu terminal local:
 
-1. **Abra o terminal na pasta do projeto**.
-2. **Dê permissão ao script**:
+1. **Dê permissão ao script**:
    ```bash
    chmod +x push.sh
    ```
-3. **Execute o envio**:
+2. **Execute o envio**:
    ```bash
    ./push.sh
    ```
 
 ---
-*Dica: Utilize o seu "Personal Access Token" (PAT) do GitHub para autenticação no terminal.*
+### 💡 Dicas de Autenticação
+Se o terminal solicitar login, utilize o seu **Personal Access Token (PAT)** do GitHub como senha. Você pode gerar um novo token em *Settings > Developer Settings > Personal Access Tokens* no seu perfil do GitHub.
+
+### 🛠️ Estrutura do Projeto
+- **NextJS + React**: Front-end moderno e performante.
+- **Tailwind CSS**: Estilização ágil e responsiva.
+- **ShadCN UI**: Componentes de interface premium.
+- **Context API**: Gerenciamento de estado global e persistente.
