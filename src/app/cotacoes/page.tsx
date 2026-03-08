@@ -19,7 +19,10 @@ import {
 import { MODALIDADES_PADRAO } from '@/context/AppContext';
 
 export default function CotacoesPage() {
-  const cotacoesJogoDoBicho = MODALIDADES_PADRAO.map(m => ({ modalidade: m.nome, cotacao: `${m.multiplicador}x`}));
+  const cotacoesJogoDoBicho = (MODALIDADES_PADRAO || []).map(m => ({ 
+    modalidade: m.nome, 
+    cotacao: `${m.multiplicador}x`
+  }));
 
   const cotacoesLoteriaUruguai = [
     { modalidade: '3 Dígitos', cotacao: '500x' },

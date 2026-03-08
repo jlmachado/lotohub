@@ -424,6 +424,21 @@ interface AppContextType {
   toggleFullscreen: () => Promise<void>;
 }
 
+export const MODALIDADES_PADRAO = [
+  { nome: 'Grupo', multiplicador: '18' },
+  { nome: 'Milhar', multiplicador: '5000' },
+  { nome: 'Centena', multiplicador: '700' },
+  { nome: 'Milhar e Centena', multiplicador: '5700' },
+  { nome: 'Dezena', multiplicador: '60' },
+  { nome: 'Dupla de Grupo', multiplicador: '160' },
+  { nome: 'Terno de Grupo', multiplicador: '1300' },
+  { nome: 'Passe', multiplicador: '90' },
+  { nome: 'Passe Seco', multiplicador: '160' },
+  { nome: 'Passe Vai Vem', multiplicador: '45' },
+  { nome: 'Duque de Dezena', multiplicador: '300' },
+  { nome: 'Terno de Dezena', multiplicador: '5000' },
+];
+
 const DEFAULT_GENERIC_LOTTERIES: GenericLotteryConfig[] = [
   {
     id: 'loteria-uruguai',
@@ -644,15 +659,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setIsFullscreen(isFS);
     };
     
-    // Motor de restauração automática de fullscreen (ex: após impressão)
     const handleFocus = () => {
       const restoreIntent = sessionStorage.getItem('app:restore_fullscreen:v1');
       if (restoreIntent === 'true' && !document.fullscreenElement) {
-        // Delay para garantir que a janela recuperou o foco do sistema operacional antes da solicitação
         setTimeout(() => {
-          document.documentElement.requestFullscreen().catch(() => {
-            // Falha silenciosa se o navegador bloquear (política de gesto do usuário)
-          });
+          document.documentElement.requestFullscreen().catch(() => {});
         }, 300);
       }
       sessionStorage.removeItem('app:restore_fullscreen:v1');
@@ -882,7 +893,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   }, []);
 
-  // --- List Filtering (Para Usuários Finais) ---
+  // --- List Filtering ---
   const filteredJDBLoterias = useMemo(() => jdbLoterias.filter(l => l.bancaId === 'global' || l.bancaId === currentBancaId), [jdbLoterias, currentBancaId]);
   const filteredBanners = useMemo(() => banners.filter(b => b.bancaId === 'global' || b.bancaId === currentBancaId), [banners, currentBancaId]);
   const filteredPopups = useMemo(() => popups.filter(p => p.bancaId === 'global' || p.bancaId === currentBancaId), [popups, currentBancaId]);
