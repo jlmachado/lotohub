@@ -1,4 +1,3 @@
-'use server';
 import FootballApiService from './football-api';
 import type { FootballApiConfig, FootballChampionship, FootballTeam, FootballMatch } from '@/context/AppContext';
 

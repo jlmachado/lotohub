@@ -1,5 +1,3 @@
-'use server';
-
 import ApiFootballService from './api-football';
 import type { 
   FootballMatch, 

@@ -1,5 +1,3 @@
-'use server';
-
 /**
  * @fileOverview Cliente HTTP de baixo nível para a API-FOOTBALL (v3).
  * Trata autenticação, endpoints e erros de comunicação.
