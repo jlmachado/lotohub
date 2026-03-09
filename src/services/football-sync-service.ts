@@ -4,6 +4,8 @@
 
 import { theSportsDB, ApiMatch, ApiStanding, ApiLeague } from './thesportsdb-service';
 
+export type LeagueCategory = 'NACIONAL' | 'ESTADUAL' | 'FEMININO' | 'OUTROS';
+
 export interface NormalizedMatch {
   id: string;
   idLeague: string;
@@ -35,13 +37,13 @@ export interface NormalizedStanding {
   leagueId: string;
 }
 
-export interface NormalizedLeague {
-  id: string;
-  name: string;
-  country: string;
-  badge: string;
+export interface NormalizedLeague extends ApiLeague {
+  id: string; // idLeague
+  name: string; // strLeague
+  category: LeagueCategory;
   importar: boolean;
   lastSync?: string;
+  error?: string;
 }
 
 /**
@@ -59,6 +61,30 @@ export const getSPDate = () => {
 const normalizeText = (text: string) => {
   if (!text) return "";
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
+
+/**
+ * Categoriza uma liga baseada em regras de nome e gênero
+ */
+export const categorizeLeague = (league: ApiLeague): LeagueCategory => {
+  const name = normalizeText(league.strLeague);
+  const alt = normalizeText(league.strLeagueAlternate || "");
+  const fullName = `${name} ${alt}`;
+
+  if (league.strGender === 'Female' || fullName.includes('women') || fullName.includes('feminino')) {
+    return 'FEMININO';
+  }
+
+  const nationalKeywords = ['serie a', 'serie b', 'serie c', 'serie d', 'copa do brasil', 'supercopa'];
+  if (nationalKeywords.some(k => fullName.includes(k))) {
+    return 'NACIONAL';
+  }
+
+  if (fullName.includes('campeonato') && !fullName.includes('brasileiro')) {
+    return 'ESTADUAL';
+  }
+
+  return 'OUTROS';
 };
 
 const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
@@ -82,35 +108,23 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
   try {
     const leagues = await theSportsDB.getLeaguesByCountry('Brazil', 'Soccer');
     
-    const keywords = [
-      'serie a', 'serie b', 'serie c', 'serie d', 
-      'copa do brasil', 'paulista', 'carioca', 'mineiro', 'gaucho',
-      'baiano', 'paranaense', 'pernambucano', 'cearense'
-    ];
-    
-    let mapped = (leagues || []).map(l => {
-      const name = normalizeText(l.strLeague || '');
-      const alt = normalizeText(l.strLeagueAlternate || '');
+    const mapped: NormalizedLeague[] = (leagues || []).map(l => {
+      const category = categorizeLeague(l);
       
-      const shouldImport = keywords.some(k => 
-        name.includes(k) || alt.includes(k)
-      );
+      // Auto-ativar principais por padrão
+      const isPriority = category === 'NACIONAL' || 
+                        normalizeText(l.strLeague).includes('paulista') || 
+                        normalizeText(l.strLeague).includes('carioca');
 
       return {
+        ...l,
         id: l.idLeague,
         name: l.strLeague,
-        country: l.strCountry || 'Brazil',
-        badge: l.strBadge || '',
-        importar: shouldImport
+        category,
+        importar: isPriority
       };
     });
 
-    if (mapped.length > 0 && !mapped.some(m => m.importar)) {
-      for (let i = 0; i < Math.min(5, mapped.length); i++) {
-        mapped[i].importar = true;
-      }
-    }
-    
     return mapped;
   } catch (e) {
     console.error("[Football Sync] Erro ligas:", e);
@@ -129,6 +143,7 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
   const todayStr = getSPDate();
 
+  // 1. Tentar buscar jogos do dia globalmente para economizar chamadas
   try {
     const dailyEvents = await theSportsDB.getMatchesByDate(todayStr);
     if (dailyEvents && Array.isArray(dailyEvents)) {
@@ -141,6 +156,7 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
     console.warn("[Football Sync] Aviso eventsday:", e);
   }
 
+  // 2. Buscar específicos por liga (Next e Past)
   for (const id of leagueIds) {
     try {
       const [nextApi, pastApi] = await Promise.all([
@@ -153,6 +169,7 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
       
+      // Complementar today se não veio no eventsday
       const todayFromNext = normalizedNext.filter(m => m.date === todayStr);
       const todayFromPast = normalizedPast.filter(m => m.date === todayStr);
       allToday = [...allToday, ...todayFromNext, ...todayFromPast];

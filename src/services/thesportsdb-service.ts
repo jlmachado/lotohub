@@ -5,11 +5,27 @@
 
 export interface ApiLeague {
   idLeague: string;
-  strLeague: string;
+  idAPIfootball?: string;
+  idAPIfootballv3?: string;
   strSport: string;
-  strLeagueAlternate?: string;
-  strCountry?: string;
-  strBadge?: string;
+  strLeague: string;
+  strLeagueAlternate: string;
+  intDivision: string;
+  idCup: string;
+  strCurrentSeason: string;
+  intFormedYear: string;
+  dateFirstEvent: string;
+  strGender: string;
+  strCountry: string;
+  strWebsite: string;
+  strDescriptionEN: string;
+  strBadge: string;
+  strLogo: string;
+  strPoster: string;
+  strTrophy: string;
+  strNaming: string;
+  strComplete: string;
+  strLocked: string;
 }
 
 export interface ApiMatch {
@@ -77,7 +93,8 @@ class TheSportsDBService {
 
   async getLeaguesByCountry(country: string = 'Brazil', sport: string = 'Soccer'): Promise<ApiLeague[]> {
     const data = await this.request(`search_all_leagues.php?c=${encodeURIComponent(country)}&s=${encodeURIComponent(sport)}`);
-    return data?.countrys || [];
+    // A API V1 retorna as ligas na chave 'countrys' (com s)
+    return data?.countrys || data?.countries || [];
   }
 
   async getNextMatches(leagueId: string): Promise<ApiMatch[]> {
