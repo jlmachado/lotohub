@@ -1,6 +1,6 @@
 /**
- * @fileOverview Serviço oficial e exclusivo de integração com a API TheSportsDB (v1).
- * Fonte única de dados para o módulo de futebol utilizando a chave Free 123 via proxy interno.
+ * @fileOverview Serviço de integração com a API TheSportsDB (v1).
+ * Consome o proxy interno para garantir estabilidade e tratamento de erros real.
  */
 
 export interface ApiLeague {
@@ -10,16 +10,6 @@ export interface ApiLeague {
   strLeagueAlternate?: string;
   strCountry?: string;
   strBadge?: string;
-}
-
-export interface ApiTeam {
-  idTeam: string;
-  strTeam: string;
-  strTeamShort?: string;
-  strTeamBadge?: string;
-  strStadium?: string;
-  strLocation?: string;
-  idLeague: string;
 }
 
 export interface ApiMatch {
@@ -58,61 +48,58 @@ export interface ApiStanding {
 class TheSportsDBService {
   /**
    * Faz requisição para a API TheSportsDB através da rota de proxy interna.
-   * Isso resolve erros de "Failed to fetch" no browser.
+   * Lança erros reais para diagnóstico.
    */
   private async request(endpoint: string) {
     try {
       const response = await fetch(`/api/thesportsdb?endpoint=${encodeURIComponent(endpoint)}`);
+      const result = await response.json();
       
-      if (!response.ok) {
-        if (response.status === 404) return { error: true, code: 404 };
-        throw new Error(`Proxy error: ${response.status}`);
+      if (!result.ok) {
+        const errorMsg = result.message || 'Erro desconhecido no proxy';
+        console.error(`[TheSportsDB Service] Erro no endpoint ${endpoint}:`, result);
+        throw new Error(errorMsg);
       }
       
-      return await response.json();
-    } catch (error) {
-      console.error(`[TheSportsDB Proxy Request] Falha no endpoint ${endpoint}:`, error);
-      return { error: true, message: String(error) };
+      return result.data;
+    } catch (error: any) {
+      console.error(`[TheSportsDB Service] Falha na comunicação:`, error.message);
+      throw error;
     }
   }
 
   async getLeaguesByCountry(country: string = 'Brazil', sport: string = 'Soccer'): Promise<ApiLeague[]> {
     const data = await this.request(`search_all_leagues.php?c=${encodeURIComponent(country)}&s=${encodeURIComponent(sport)}`);
-    if (data?.error) return [];
     return data?.countrys || [];
   }
 
-  async getTeamsInLeague(leagueName: string): Promise<ApiTeam[]> {
+  async getTeamsInLeague(leagueName: string): Promise<any[]> {
     const data = await this.request(`search_all_teams.php?l=${encodeURIComponent(leagueName)}`);
-    if (data?.error) return [];
     return data?.teams || [];
   }
 
   async getNextMatches(leagueId: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventsnextleague.php?id=${leagueId}`);
-    if (data?.error) return [];
     return data?.events || [];
   }
 
   async getPastMatches(leagueId: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventspastleague.php?id=${leagueId}`);
-    if (data?.error) return [];
     return data?.events || [];
   }
 
   async getMatchesByDate(date: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventsday.php?d=${date}&s=Soccer`);
-    if (data?.error) return [];
     return data?.events || [];
   }
 
   async getStandings(leagueId: string, season: string): Promise<ApiStanding[]> {
     const data = await this.request(`lookuptable.php?l=${leagueId}&s=${season}`);
     
+    // Fallback para temporada anterior se a atual estiver vazia
     if (!data?.table) {
       const lastYear = String(parseInt(season) - 1);
       const fallbackData = await this.request(`lookuptable.php?l=${leagueId}&s=${lastYear}`);
-      if (fallbackData?.error) return [];
       return fallbackData?.table || [];
     }
     

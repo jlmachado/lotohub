@@ -1,42 +1,79 @@
 import { NextResponse } from 'next/server';
 
 /**
- * @fileOverview Proxy de API para TheSportsDB.
- * Executa as chamadas no servidor para evitar erros de CORS e "Failed to fetch" no cliente.
- * Utiliza a chave 123 (V1 Free) conforme configurado.
+ * @fileOverview Proxy de API robusto para TheSportsDB.
+ * Executa chamadas no servidor para evitar CORS e falhas de fetch no browser.
  */
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const endpoint = searchParams.get('endpoint');
 
   if (!endpoint) {
-    return NextResponse.json({ error: 'Endpoint is required' }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'Endpoint is required' }, { status: 400 });
   }
 
-  // Base URL fixa com a chave 123
+  // Base URL fixa com a chave 123 (V1 Free)
   const baseUrl = 'https://www.thesportsdb.com/api/v1/json/123';
-  
-  // O endpoint já vem com os parâmetros (ex: search_all_leagues.php?c=Brazil)
   const url = `${baseUrl}/${endpoint}`;
+
+  console.log(`[TheSportsDB Proxy] Chamando: ${url}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos de timeout
 
   try {
     const response = await fetch(url, {
       method: 'GET',
-      next: { revalidate: 300 }, // Cache de 5 minutos no servidor
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'LotoHub-App/1.0'
+      },
+      cache: 'no-store',
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
+
+    const status = response.status;
+    const bodyText = await response.text();
+
     if (!response.ok) {
-      if (response.status === 404) {
-        return NextResponse.json({ error: 'Not Found' }, { status: 404 });
-      }
-      return NextResponse.json({ error: `TheSportsDB error: ${response.status}` }, { status: response.status });
+      console.error(`[TheSportsDB Proxy] Erro Upstream: ${status} - ${bodyText}`);
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'HTTP_ERROR', 
+        status, 
+        message: `API retornou erro ${status}`,
+        body: bodyText
+      }, { status: 502 });
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error('[TheSportsDB Proxy Error]:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    try {
+      const data = JSON.parse(bodyText);
+      return NextResponse.json({ ok: true, endpoint, data });
+    } catch (e) {
+      console.error(`[TheSportsDB Proxy] JSON Inválido:`, bodyText);
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'INVALID_JSON', 
+        message: 'API não retornou um JSON válido',
+        body: bodyText 
+      }, { status: 502 });
+    }
+
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      console.error(`[TheSportsDB Proxy] Timeout na requisição: ${url}`);
+      return NextResponse.json({ ok: false, error: 'TIMEOUT', message: 'A API demorou muito para responder' }, { status: 504 });
+    }
+
+    console.error(`[TheSportsDB Proxy] Falha Crítica:`, error);
+    return NextResponse.json({ ok: false, error: 'FETCH_FAILED', message: error.message }, { status: 500 });
   }
 }

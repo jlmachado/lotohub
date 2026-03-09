@@ -78,26 +78,42 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
     const leagues = await theSportsDB.getLeaguesByCountry('Brazil', 'Soccer');
     
     // Lista expandida de ativação padrão para campeonatos brasileiros
-    const defaults = [
+    const keywords = [
       'Serie A', 'Série A', 
       'Serie B', 'Série B',
       'Serie C', 'Série C',
-      'Serie D', 'Série D',
       'Copa do Brasil', 
-      'Paulista', 'Carioca', 'Mineiro', 'Gaúcho', 
-      'Baiano', 'Paranaense', 'Pernambucano', 'Cearense'
+      'Paulista', 'Carioca', 'Mineiro', 'Gaúcho'
     ];
     
-    return (leagues || []).map(l => ({
-      id: l.idLeague,
-      name: l.strLeague,
-      country: l.strCountry || 'Brazil',
-      badge: l.strBadge || '',
-      importar: defaults.some(d => l.strLeague.toLowerCase().includes(d.toLowerCase()))
-    }));
+    let mapped = (leagues || []).map(l => {
+      const name = l.strLeague || '';
+      const alt = l.strLeagueAlternate || '';
+      const shouldImport = keywords.some(k => 
+        name.toLowerCase().includes(k.toLowerCase()) || 
+        alt.toLowerCase().includes(k.toLowerCase())
+      );
+
+      return {
+        id: l.idLeague,
+        name: l.strLeague,
+        country: l.strCountry || 'Brazil',
+        badge: l.strBadge || '',
+        importar: shouldImport
+      };
+    });
+
+    // Fallback: Se nenhuma liga foi ativada pelas keywords, ativa as 5 primeiras nacionais
+    if (mapped.length > 0 && !mapped.some(m => m.importar)) {
+      for (let i = 0; i < Math.min(5, mapped.length); i++) {
+        mapped[i].importar = true;
+      }
+    }
+    
+    return mapped;
   } catch (e) {
-    console.error("[Football Sync] Erro ao buscar ligas:", e);
-    return [];
+    console.error("[Football Sync] Erro ao buscar ligas brasileiras:", e);
+    throw e;
   }
 }
 
@@ -122,7 +138,7 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
         .map(normalizeMatch);
     }
   } catch (e) {
-    console.error("[Football Sync] Erro ao buscar eventos do dia:", e);
+    console.warn("[Football Sync] Aviso ao buscar eventos do dia (eventsday):", e);
   }
 
   // 2. Busca detalhada por liga (Next e Past)
@@ -139,7 +155,7 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
       // Filtrar jogos futuros
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
       
-      // Filtrar jogos de hoje (buscando tanto em next quanto em past, pois status muda)
+      // Filtrar jogos de hoje
       const todayFromNext = normalizedNext.filter(m => m.date === todayStr);
       const todayFromPast = normalizedPast.filter(m => m.date === todayStr);
       allToday = [...allToday, ...todayFromNext, ...todayFromPast];
@@ -151,7 +167,7 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
     }
   }
 
-  // Remover duplicatas por ID de evento (importante pois buscamos em múltiplos endpoints)
+  // Remover duplicatas por ID de evento
   const removeDuplicates = (arr: NormalizedMatch[]) => {
     const seen = new Set();
     return arr.filter(item => {
@@ -170,7 +186,6 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
 export async function syncFootballStandings(leagueIds: string[]): Promise<NormalizedStanding[]> {
   let allStandings: NormalizedStanding[] = [];
-  
   const currentYear = getSPDate().split('-')[0];
 
   for (const id of leagueIds) {
@@ -193,7 +208,7 @@ export async function syncFootballStandings(leagueIds: string[]): Promise<Normal
         allStandings = [...allStandings, ...normalized];
       }
     } catch (e) {
-      console.error(`[Football Sync] Erro classificação liga ${id}:`, e);
+      console.warn(`[Football Sync] Aviso classificação liga ${id}:`, e);
     }
   }
 
