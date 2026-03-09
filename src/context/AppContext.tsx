@@ -154,7 +154,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (typeof window === 'undefined') return;
     
     const storedFootball = localStorage.getItem(FOOTBALL_STORAGE_KEY);
-    if (storedFootball) setFootballData(JSON.parse(storedFootball));
+    if (storedFootball) {
+      try {
+        setFootballData(JSON.parse(storedFootball));
+      } catch (e) {
+        console.warn("[AppProvider] Falha ao ler cache de futebol.");
+      }
+    }
 
     const refreshSession = () => {
       const currentUser = getCurrentUser();
@@ -183,7 +189,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const syncFootballAll = useCallback(async (manual = false) => {
     if (syncInProgress.current) return;
     
-    // Verificação de conexão antes de tentar o fetch
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
       if (manual) toast({ variant: 'destructive', title: 'Sem Internet', description: 'Verifique sua conexão para sincronizar.' });
       return;
@@ -236,26 +241,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (manual) {
         toast({ 
           title: hasNewData ? 'Sincronização Concluída' : 'Sem Dados Novos', 
-          description: hasNewData ? 'Os dados foram atualizados.' : 'Não há novas partidas publicadas no momento.' 
+          description: hasNewData ? 'Os dados foram atualizados.' : 'A API não retornou dados novos para as ligas ativas.' 
         });
       }
     } catch (e: any) {
       console.error("[Football Sync] Erro Crítico:", e.message);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
       if (manual) {
-        toast({ variant: 'destructive', title: 'Falha na Sincronização', description: e.message || 'Erro desconhecido ao falar com o proxy.' });
+        toast({ variant: 'destructive', title: 'Falha na Sincronização', description: e.message });
       }
     } finally {
       syncInProgress.current = false;
     }
-  }, [footballData.leagues, footballData.lastSuccessfulSync, toast]);
+  }, [footballData.leagues, toast]);
 
   // --- Scheduler Automático ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const runAutoSync = () => {
-      // Evitar rodar se já estiver em progresso ou offline
       if (syncInProgress.current || !window.navigator.onLine) return;
 
       const spHourStr = new Intl.DateTimeFormat('en-US', {
@@ -274,8 +278,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    const bootTimer = setTimeout(runAutoSync, 3000); // 3s delay para garantir estabilidade do servidor Next
-    const interval = setInterval(runAutoSync, 60000 * 5); // Verifica a cada 5 min
+    const bootTimer = setTimeout(runAutoSync, 3000); 
+    const interval = setInterval(runAutoSync, 60000 * 5); 
 
     const handleFocus = () => { if (document.visibilityState === 'visible') runAutoSync(); };
     

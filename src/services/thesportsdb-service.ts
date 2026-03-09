@@ -48,13 +48,11 @@ export interface ApiStanding {
 class TheSportsDBService {
   /**
    * Faz requisição para a API TheSportsDB através da rota de proxy interna.
-   * Utiliza URL absoluta para evitar falhas de 'Failed to fetch' em contextos específicos do browser.
    */
   private async request(endpoint: string) {
     if (typeof window === 'undefined') return null;
 
     try {
-      // Garantir que estamos usando a origem correta para evitar erros de rede relativos
       const baseUrl = window.location.origin;
       const proxyUrl = `${baseUrl}/api/thesportsdb?endpoint=${encodeURIComponent(endpoint)}`;
       
@@ -68,20 +66,17 @@ class TheSportsDBService {
         }
       });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Erro no Proxy: ${response.status}`);
-      }
-
       const result = await response.json();
       
-      if (!result.ok) {
-        throw new Error(result.message || 'Erro desconhecido retornado pelo Proxy');
+      if (!response.ok || !result.ok) {
+        const errorMsg = result.message || `Erro no Proxy: ${response.status}`;
+        console.error(`[TheSportsDB Service] Falha no endpoint ${endpoint}:`, result);
+        throw new Error(errorMsg);
       }
       
       return result.data;
     } catch (error: any) {
-      console.error(`[TheSportsDB Service] Erro na requisição (${endpoint}):`, error.message);
+      console.error(`[TheSportsDB Service] Erro crítico na requisição (${endpoint}):`, error.message);
       throw error;
     }
   }
@@ -89,11 +84,6 @@ class TheSportsDBService {
   async getLeaguesByCountry(country: string = 'Brazil', sport: string = 'Soccer'): Promise<ApiLeague[]> {
     const data = await this.request(`search_all_leagues.php?c=${encodeURIComponent(country)}&s=${encodeURIComponent(sport)}`);
     return data?.countrys || [];
-  }
-
-  async getTeamsInLeague(leagueName: string): Promise<any[]> {
-    const data = await this.request(`search_all_teams.php?l=${encodeURIComponent(leagueName)}`);
-    return data?.teams || [];
   }
 
   async getNextMatches(leagueId: string): Promise<ApiMatch[]> {
@@ -114,7 +104,6 @@ class TheSportsDBService {
   async getStandings(leagueId: string, season: string): Promise<ApiStanding[]> {
     const data = await this.request(`lookuptable.php?l=${leagueId}&s=${season}`);
     
-    // Fallback para temporada anterior se a atual estiver vazia
     if (!data?.table) {
       const lastYear = String(parseInt(season) - 1);
       const fallbackData = await this.request(`lookuptable.php?l=${leagueId}&s=${lastYear}`);

@@ -60,6 +60,7 @@ export const getSPDate = () => {
  * Remove acentos e normaliza texto para comparação segura
  */
 const normalizeText = (text: string) => {
+  if (!text) return "";
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
@@ -89,8 +90,9 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
       'serie a', 'série a', 
       'serie b', 'série b',
       'serie c', 'série c',
+      'serie d', 'série d',
       'copa do brasil', 
-      'paulista', 'carioca', 'mineiro', 'gaúcho', 'gaucho',
+      'paulista', 'carioca', 'mineiro', 'gaucho', 'gaúcho',
       'baiano', 'paranaense', 'pernambucano', 'cearense'
     ];
     
