@@ -1,5 +1,5 @@
 /**
- * @fileOverview Contexto global com bootstrap automático e sincronização resiliente para Futebol (TheSportsDB V1 123).
+ * @fileOverview Contexto global com bootstrap automático e sincronização resiliente para Futebol (TheSportsDB V1).
  */
 
 'use client';
@@ -48,11 +48,8 @@ interface AppContextType {
   footballData: FootballSyncData;
   updateFootballLeagues: (leagues: NormalizedLeague[]) => void;
   syncFootballAll: (manual?: boolean) => Promise<void>;
-  syncFootballMatches: () => Promise<void>;
-  syncFootballStandings: () => Promise<void>;
   
   cambistaMovements: any[];
-  registerCambistaMovement: (movement: any) => void;
   userCommissions: any[];
   promoterCredits: any[];
   
@@ -107,7 +104,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const FOOTBALL_STORAGE_KEY = 'app:football:v8';
+const FOOTBALL_STORAGE_KEY = 'app:football:v9';
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
@@ -133,9 +130,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const [apostas, setApostas] = useState<any[]>([]);
-  const [cambistaMovements, setCambistaMovements] = useState<any[]>([]);
-  const [userCommissions, setUserCommissions] = useState<any[]>([]);
-  const [promoterCredits, setPromoterCredits] = useState<any[]>([]);
   const [news, setNews] = useState<NewsMessage[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
@@ -149,7 +143,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [celebrationTrigger, setCelebrationTrigger] = useState(false);
 
-  // --- Recuperação de Estado ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
@@ -158,7 +151,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       try {
         setFootballData(JSON.parse(storedFootball));
       } catch (e) {
-        console.warn("[AppProvider] Falha ao ler cache de futebol.");
+        console.warn("[AppProvider] Falha cache futebol.");
       }
     }
 
@@ -176,7 +169,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => window.removeEventListener('auth-change', refreshSession);
   }, []);
 
-  // --- Persistência de Futebol ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
     localStorage.setItem(FOOTBALL_STORAGE_KEY, JSON.stringify(footballData));
@@ -188,43 +180,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const syncFootballAll = useCallback(async (manual = false) => {
     if (syncInProgress.current) return;
-    
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
-      if (manual) toast({ variant: 'destructive', title: 'Sem Internet', description: 'Verifique sua conexão para sincronizar.' });
+      if (manual) toast({ variant: 'destructive', title: 'Sem Internet' });
       return;
     }
 
     syncInProgress.current = true;
-    console.log(`[Football Sync] Iniciando sincronização (Manual: ${manual})`);
-    
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing', lastSync: new Date().toISOString() }));
     
     try {
       let currentLeagues = footballData.leagues;
-      
-      // Bootstrap automático de ligas se estiver vazio
       if (currentLeagues.length === 0) {
         currentLeagues = await fetchBrazilianLeagues();
       }
 
-      const activeLeagueIds = currentLeagues.filter(l => l.importar).map(l => l.id);
+      const activeIds = currentLeagues.filter(l => l.importar).map(l => l.id);
       
-      if (activeLeagueIds.length === 0) {
+      if (activeIds.length === 0) {
         setFootballData(prev => ({ ...prev, leagues: currentLeagues, syncStatus: 'idle' }));
         syncInProgress.current = false;
         return;
       }
 
       const [matches, standings] = await Promise.all([
-        syncMatchesAction(activeLeagueIds),
-        syncStandingsAction(activeLeagueIds)
+        syncMatchesAction(activeIds),
+        syncStandingsAction(activeIds)
       ]);
 
-      const hasNewData = 
-        matches.today.length > 0 || 
-        matches.next.length > 0 || 
-        matches.past.length > 0 || 
-        standings.length > 0;
+      const hasNewData = matches.today.length > 0 || matches.next.length > 0 || matches.past.length > 0 || standings.length > 0;
 
       setFootballData(prev => ({
         leagues: currentLeagues,
@@ -239,50 +222,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }));
 
       if (manual) {
-        toast({ 
-          title: hasNewData ? 'Sincronização Concluída' : 'Sem Dados Novos', 
-          description: hasNewData ? 'Os dados foram atualizados.' : 'A API não retornou dados novos para as ligas ativas.' 
-        });
+        toast({ title: hasNewData ? 'Sincronizado' : 'Sem Novidades' });
       }
     } catch (e: any) {
-      console.error("[Football Sync] Erro Crítico:", e.message);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
-      if (manual) {
-        toast({ variant: 'destructive', title: 'Falha na Sincronização', description: e.message });
-      }
+      if (manual) toast({ variant: 'destructive', title: 'Erro Sync', description: e.message });
     } finally {
       syncInProgress.current = false;
     }
   }, [footballData.leagues, toast]);
 
-  // --- Scheduler Automático ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const runAutoSync = () => {
       if (syncInProgress.current || !window.navigator.onLine) return;
-
-      const spHourStr = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Sao_Paulo',
-        hour: 'numeric',
-        hour12: false
-      }).format(new Date());
-      
-      const hour = parseInt(spHourStr, 10);
-      const intervalMinutes = (hour >= 8 && hour <= 23) ? 15 : 60;
+      const spHour = parseInt(new Intl.DateTimeFormat('en-US', {timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false}).format(new Date()), 10);
+      const interval = (spHour >= 8 && spHour <= 23) ? 15 : 60;
       const last = footballData.lastSync ? new Date(footballData.lastSync) : new Date(0);
-      const diffMin = (new Date().getTime() - last.getTime()) / (1000 * 60);
+      const diff = (Date.now() - last.getTime()) / (1000 * 60);
 
-      if (diffMin >= intervalMinutes || (footballData.leagues.length === 0 && footballData.syncStatus === 'idle')) {
+      if (diff >= interval || (footballData.leagues.length === 0 && footballData.syncStatus === 'idle')) {
         syncFootballAll();
       }
     };
 
     const bootTimer = setTimeout(runAutoSync, 3000); 
     const interval = setInterval(runAutoSync, 60000 * 5); 
-
     const handleFocus = () => { if (document.visibilityState === 'visible') runAutoSync(); };
-    
     window.addEventListener('visibilitychange', handleFocus);
     window.addEventListener('online', runAutoSync);
 
@@ -298,10 +265,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     user, balance, bonus, terminal, logout: () => { logout(); setUser(null); router.push('/'); },
     apostas, depositos: [], saques: [],
     footballData, updateFootballLeagues, syncFootballAll,
-    syncFootballMatches: () => syncFootballAll(true),
-    syncFootballStandings: () => syncFootballAll(true),
-    cambistaMovements, registerCambistaMovement: () => {},
-    userCommissions, promoterCredits,
+    cambistaMovements: [], registerCambistaMovement: () => {},
+    userCommissions: [], promoterCredits: [],
     news, addNews: (n) => setNews([...news, n]), updateNews: (n) => setNews(news.map(x => x.id === n.id ? n : x)), deleteNews: (id) => setNews(news.filter(x => x.id !== id)),
     banners, addBanner: (b) => setBanners([...banners, b]), updateBanner: (b) => setBanners(banners.map(x => x.id === b.id ? b : x)), deleteBanner: (id) => setBanners(banners.filter(x => x.id !== id)),
     popups, addPopup: (p) => setPopups([...popups, p]), updatePopup: (p) => setPopups(popups.map(x => x.id === p.id ? p : x)), deletePopup: (id) => setPopups(popups.filter(x => x.id !== id)),

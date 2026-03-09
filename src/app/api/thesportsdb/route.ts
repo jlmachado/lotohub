@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 /**
- * @fileOverview Proxy de API robusto para TheSportsDB.
+ * @fileOverview Proxy de API robusto para TheSportsDB V1 (Chave 123).
  * Executa chamadas no servidor para evitar CORS e falhas de fetch no browser.
  */
 
@@ -25,17 +25,17 @@ export async function GET(request: Request) {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
   const url = `${baseUrl}/${cleanEndpoint}`;
 
-  console.log(`[TheSportsDB Proxy] Chamando Upstream: ${url}`);
+  console.log(`[TheSportsDB Proxy] Upstream Call: ${url}`);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos de timeout
+  const timeoutId = setTimeout(() => controller.abort(), 15000); 
 
   try {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'LotoHub-App/1.2'
+        'User-Agent': 'LotoHub-Premium/2.0'
       },
       cache: 'no-store',
       signal: controller.signal
@@ -45,13 +45,12 @@ export async function GET(request: Request) {
 
     const status = response.status;
     
-    // Tratar 404 como sucesso vazio para não quebrar o motor de sync
     if (status === 404) {
       return NextResponse.json({ 
         ok: true, 
         endpoint, 
         data: null, 
-        message: 'Recurso não encontrado na API externa (404).' 
+        message: 'Recurso não encontrado (404).' 
       });
     }
 
@@ -62,8 +61,8 @@ export async function GET(request: Request) {
         ok: false, 
         error: 'UPSTREAM_ERROR', 
         status, 
-        message: `A API externa retornou erro ${status}`,
-        body: bodyText.substring(0, 200)
+        message: `API retornou erro ${status}`,
+        body: bodyText.substring(0, 300)
       }, { status: 502 });
     }
 
@@ -74,8 +73,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ 
         ok: false, 
         error: 'INVALID_JSON', 
-        message: 'A API externa não retornou um JSON válido.',
-        body: bodyText.substring(0, 200)
+        message: 'Resposta da API não é um JSON válido.',
+        body: bodyText.substring(0, 300)
       }, { status: 502 });
     }
 
@@ -86,14 +85,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ 
         ok: false, 
         error: 'TIMEOUT', 
-        message: 'A API externa demorou muito para responder (Timeout de 15s).' 
+        message: 'API demorou muito para responder (Timeout 15s).' 
       }, { status: 504 });
     }
 
     return NextResponse.json({ 
       ok: false, 
       error: 'FETCH_FAILED', 
-      message: error.message || 'Falha de conexão com o servidor da API.' 
+      message: error.message || 'Falha de conexão com o servidor.' 
     }, { status: 500 });
   }
 }

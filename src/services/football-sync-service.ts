@@ -1,5 +1,5 @@
 /**
- * @fileOverview Motor de sincronização e normalização EXCLUSIVO para TheSportsDB com suporte a SP Timezone.
+ * @fileOverview Motor de sincronização e normalização EXCLUSIVO para TheSportsDB V1.
  */
 
 import { theSportsDB, ApiMatch, ApiStanding, ApiLeague } from './thesportsdb-service';
@@ -56,9 +56,6 @@ export const getSPDate = () => {
   }).format(new Date());
 };
 
-/**
- * Remove acentos e normaliza texto para comparação segura
- */
 const normalizeText = (text: string) => {
   if (!text) return "";
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -85,14 +82,9 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
   try {
     const leagues = await theSportsDB.getLeaguesByCountry('Brazil', 'Soccer');
     
-    // Lista expandida de ativação padrão para campeonatos brasileiros
     const keywords = [
-      'serie a', 'série a', 
-      'serie b', 'série b',
-      'serie c', 'série c',
-      'serie d', 'série d',
-      'copa do brasil', 
-      'paulista', 'carioca', 'mineiro', 'gaucho', 'gaúcho',
+      'serie a', 'serie b', 'serie c', 'serie d', 
+      'copa do brasil', 'paulista', 'carioca', 'mineiro', 'gaucho',
       'baiano', 'paranaense', 'pernambucano', 'cearense'
     ];
     
@@ -113,9 +105,7 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
       };
     });
 
-    // Fallback: Se nenhuma liga foi ativada pelas keywords, ativa as 5 primeiras para não ficar vazio
     if (mapped.length > 0 && !mapped.some(m => m.importar)) {
-      console.log("[Football Sync] Nenhuma liga casou com as keywords. Ativando fallback.");
       for (let i = 0; i < Math.min(5, mapped.length); i++) {
         mapped[i].importar = true;
       }
@@ -123,7 +113,7 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
     
     return mapped;
   } catch (e) {
-    console.error("[Football Sync] Erro ao buscar ligas brasileiras:", e);
+    console.error("[Football Sync] Erro ligas:", e);
     throw e;
   }
 }
@@ -139,20 +129,18 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
   const todayStr = getSPDate();
 
-  // 1. Reforço de jogos de hoje via endpoint global por data
   try {
     const dailyEvents = await theSportsDB.getMatchesByDate(todayStr);
     if (dailyEvents && Array.isArray(dailyEvents)) {
-      const activeLeaguesSet = new Set(leagueIds);
+      const activeSet = new Set(leagueIds);
       allToday = dailyEvents
-        .filter(m => activeLeaguesSet.has(m.idLeague))
+        .filter(m => activeSet.has(m.idLeague))
         .map(normalizeMatch);
     }
   } catch (e) {
-    console.warn("[Football Sync] Aviso ao buscar eventos do dia (eventsday):", e);
+    console.warn("[Football Sync] Aviso eventsday:", e);
   }
 
-  // 2. Busca detalhada por liga (Next e Past)
   for (const id of leagueIds) {
     try {
       const [nextApi, pastApi] = await Promise.all([
@@ -163,22 +151,18 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
       const normalizedNext = (nextApi || []).map(normalizeMatch);
       const normalizedPast = (pastApi || []).map(normalizeMatch);
 
-      // Filtrar jogos futuros
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
       
-      // Filtrar jogos de hoje
       const todayFromNext = normalizedNext.filter(m => m.date === todayStr);
       const todayFromPast = normalizedPast.filter(m => m.date === todayStr);
       allToday = [...allToday, ...todayFromNext, ...todayFromPast];
       
-      // Filtrar resultados passados
       allPast = [...allPast, ...normalizedPast.filter(m => m.date < todayStr)];
     } catch (e) {
-      console.error(`[Football Sync] Erro na liga ${id}:`, e);
+      console.error(`[Football Sync] Erro liga ${id}:`, e);
     }
   }
 
-  // Remover duplicatas por ID de evento
   const removeDuplicates = (arr: NormalizedMatch[]) => {
     const seen = new Set();
     return arr.filter(item => {
@@ -219,7 +203,7 @@ export async function syncFootballStandings(leagueIds: string[]): Promise<Normal
         allStandings = [...allStandings, ...normalized];
       }
     } catch (e) {
-      console.warn(`[Football Sync] Aviso classificação liga ${id}:`, e);
+      console.warn(`[Football Sync] Tabela liga ${id}:`, e);
     }
   }
 

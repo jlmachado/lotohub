@@ -47,7 +47,7 @@ export interface ApiStanding {
 
 class TheSportsDBService {
   /**
-   * Faz requisição para a API TheSportsDB através da rota de proxy interna.
+   * Faz requisição para a API através da rota de proxy interna.
    */
   private async request(endpoint: string) {
     if (typeof window === 'undefined') return null;
@@ -56,27 +56,21 @@ class TheSportsDBService {
       const baseUrl = window.location.origin;
       const proxyUrl = `${baseUrl}/api/thesportsdb?endpoint=${encodeURIComponent(endpoint)}`;
       
-      console.log(`[TheSportsDB Service] Solicitando via Proxy: ${endpoint}`);
-
       const response = await fetch(proxyUrl, {
         method: 'GET',
         cache: 'no-store',
-        headers: {
-          'Accept': 'application/json'
-        }
+        headers: { 'Accept': 'application/json' }
       });
       
       const result = await response.json();
       
       if (!response.ok || !result.ok) {
-        const errorMsg = result.message || `Erro no Proxy: ${response.status}`;
-        console.error(`[TheSportsDB Service] Falha no endpoint ${endpoint}:`, result);
-        throw new Error(errorMsg);
+        throw new Error(result.message || `Erro no servidor: ${response.status}`);
       }
       
       return result.data;
     } catch (error: any) {
-      console.error(`[TheSportsDB Service] Erro crítico na requisição (${endpoint}):`, error.message);
+      console.error(`[TheSportsDB Service] Erro (${endpoint}):`, error.message);
       throw error;
     }
   }
@@ -103,14 +97,12 @@ class TheSportsDBService {
 
   async getStandings(leagueId: string, season: string): Promise<ApiStanding[]> {
     const data = await this.request(`lookuptable.php?l=${leagueId}&s=${season}`);
-    
-    if (!data?.table) {
-      const lastYear = String(parseInt(season) - 1);
-      const fallbackData = await this.request(`lookuptable.php?l=${leagueId}&s=${lastYear}`);
-      return fallbackData?.table || [];
-    }
-    
     return data?.table || [];
+  }
+
+  async getSeasons(leagueId: string): Promise<any[]> {
+    const data = await this.request(`search_all_seasons.php?id=${leagueId}`);
+    return data?.seasons || [];
   }
 }
 
