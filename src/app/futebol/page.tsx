@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Header } from '@/components/header';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { useAppContext } from '@/context/AppContext';
 import Image from 'next/image';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LotteryBetSlip } from '@/components/LotteryBetSlip';
 import { TicketDialog } from '@/components/ticket-dialog';
 import { Badge } from '@/components/ui/badge';
-import { Search, Trophy, Calendar, Zap } from 'lucide-react';
+import { Search, Trophy, Calendar, Zap, Globe } from 'lucide-react';
 
 interface BetSlipItem {
     id: string;
