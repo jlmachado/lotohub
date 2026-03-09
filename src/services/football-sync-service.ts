@@ -112,6 +112,20 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
   const todayStr = getSPDate();
 
+  // 1. Reforço de jogos de hoje via endpoint global por data
+  try {
+    const dailyEvents = await theSportsDB.getMatchesByDate(todayStr);
+    if (dailyEvents && Array.isArray(dailyEvents)) {
+      const activeLeaguesSet = new Set(leagueIds);
+      allToday = dailyEvents
+        .filter(m => activeLeaguesSet.has(m.idLeague))
+        .map(normalizeMatch);
+    }
+  } catch (e) {
+    console.error("[Football Sync] Erro ao buscar eventos do dia:", e);
+  }
+
+  // 2. Busca detalhada por liga (Next e Past)
   for (const id of leagueIds) {
     try {
       const [nextApi, pastApi] = await Promise.all([
@@ -137,20 +151,26 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
     }
   }
 
-  // Remover duplicatas de hoje
-  const uniqueToday = Array.from(new Map(allToday.map(m => [m.id, m])).values());
+  // Remover duplicatas por ID de evento (importante pois buscamos em múltiplos endpoints)
+  const removeDuplicates = (arr: NormalizedMatch[]) => {
+    const seen = new Set();
+    return arr.filter(item => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  };
 
   return {
-    today: uniqueToday,
-    next: allNext.sort((a, b) => a.date.localeCompare(b.date)),
-    past: allPast.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 50)
+    today: removeDuplicates(allToday),
+    next: removeDuplicates(allNext).sort((a, b) => a.date.localeCompare(b.date)),
+    past: removeDuplicates(allPast).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 50)
   };
 }
 
 export async function syncFootballStandings(leagueIds: string[]): Promise<NormalizedStanding[]> {
   let allStandings: NormalizedStanding[] = [];
   
-  // Temporada dinâmica baseada no ano de São Paulo
   const currentYear = getSPDate().split('-')[0];
 
   for (const id of leagueIds) {

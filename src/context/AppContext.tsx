@@ -207,6 +207,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         syncStandingsAction(activeLeagueIds)
       ]);
 
+      // Verificar se realmente recebemos dados novos
+      const hasData = matches.today.length > 0 || matches.next.length > 0 || standings.length > 0;
+
       setFootballData(prev => ({
         leagues: currentLeagues,
         todayMatches: matches.today.length > 0 ? matches.today : prev.todayMatches,
@@ -214,12 +217,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         pastMatches: matches.past.length > 0 ? matches.past : prev.pastMatches,
         standings: standings.length > 0 ? standings : prev.standings,
         lastSync: new Date().toISOString(),
-        lastSuccessfulSync: new Date().toISOString(),
+        lastSuccessfulSync: hasData ? new Date().toISOString() : prev.lastSuccessfulSync,
         nextScheduledSync: null,
-        syncStatus: 'idle'
+        syncStatus: hasData ? 'idle' : 'partial'
       }));
 
-      if (manual) toast({ title: 'Sincronização Concluída', description: 'Dados da TheSportsDB atualizados.' });
+      if (manual) {
+        toast({ 
+          title: hasData ? 'Sincronização Concluída' : 'Sync Concluído (Sem dados novos)', 
+          description: hasData ? 'Dados da TheSportsDB atualizados.' : 'Aguardando atualizações da API.' 
+        });
+      }
     } catch (e) {
       console.error("[Football Sync] Erro:", e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
@@ -231,13 +239,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- Automatismos: Timer e Focus ---
   useEffect(() => {
     const runAutoSync = () => {
-      const now = new Date();
-      const hour = now.getHours();
+      // Obter hora atual de São Paulo
+      const spTime = new Date(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        hour: 'numeric',
+        hour12: false
+      }).format(new Date()));
+      
+      const hour = spTime.getHours();
       
       // 15 min em horário comercial (SP), 60 min fora
-      const intervalMinutes = (hour >= 8) ? 15 : 60;
-      const last = footballData.lastSuccessfulSync ? new Date(footballData.lastSuccessfulSync) : new Date(0);
-      const diffMin = (now.getTime() - last.getTime()) / (1000 * 60);
+      const intervalMinutes = (hour >= 8 && hour <= 23) ? 15 : 60;
+      const last = footballData.lastSync ? new Date(footballData.lastSync) : new Date(0);
+      const diffMin = (new Date().getTime() - last.getTime()) / (1000 * 60);
 
       if (diffMin >= intervalMinutes || footballData.leagues.length === 0) {
         syncFootballAll();
@@ -246,12 +260,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // Bootstrap imediato e intervalo
     const bootTimer = setTimeout(runAutoSync, 2000);
-    const interval = setInterval(runAutoSync, 60000 * 5); // Checar a cada 5 min se precisa rodar o timer de 15/60
+    const interval = setInterval(runAutoSync, 60000 * 5); // Checar a cada 5 min
 
     // Sincronizar ao focar na página novamente
     const handleFocus = () => {
       if (document.visibilityState === 'visible') runAutoSync();
     };
+    
     window.addEventListener('visibilitychange', handleFocus);
     window.addEventListener('online', runAutoSync);
 
@@ -259,9 +274,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       clearTimeout(bootTimer); 
       clearInterval(interval);
       window.removeEventListener('visibilitychange', handleFocus);
-      window.removeEventListener('online', handleFocus);
+      window.removeEventListener('online', runAutoSync);
     };
-  }, [syncFootballAll, footballData.lastSuccessfulSync, footballData.leagues.length]);
+  }, [syncFootballAll, footballData.lastSync, footballData.leagues.length]);
 
   const value: AppContextType = {
     user, balance, bonus, terminal, logout: () => { logout(); setUser(null); router.push('/'); },

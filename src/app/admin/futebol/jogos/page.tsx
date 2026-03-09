@@ -1,155 +1,115 @@
+/**
+ * @fileOverview Visualização de Jogos Sincronizados (TheSportsDB).
+ * Substitui o legado de importação manual por uma auditoria do que está ativo.
+ */
+
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { ChevronLeft, Edit, Trash2, CheckCircle } from 'lucide-react';
-import { useAppContext, FootballMatch } from '@/context/AppContext';
-import Image from 'next/image';
-import { Checkbox } from '@/components/ui/checkbox';
-import { useToast } from '@/hooks/use-toast';
+import { ChevronLeft, Calendar, RefreshCw } from 'lucide-react';
+import { useAppContext } from '@/context/AppContext';
 
 export default function AdminFutebolJogosPage() {
-    const { footballMatches, footballTeams, footballChampionships, deleteFootballMatch, importFootballMatches } = useAppContext();
-    const [selectedMatches, setSelectedMatches] = useState<string[]>([]);
-    const { toast } = useToast();
+  const { footballData, syncFootballAll } = useAppContext();
 
-    const enrichedMatches = useMemo(() => {
-        return footballMatches.map(match => {
-            const championship = footballChampionships.find(c => c.apiId === match.championshipApiId);
-            const homeTeam = footballTeams.find(t => t.id === match.homeTeamId);
-            const awayTeam = footballTeams.find(t => t.id === match.awayTeamId);
-            return {
-                ...match,
-                championshipName: championship?.name || 'Desconhecido',
-                homeTeamName: homeTeam?.name || 'Desconhecido',
-                awayTeamName: awayTeam?.name || 'Desconhecido',
-                homeTeamLogo: homeTeam?.logo,
-                awayTeamLogo: awayTeam?.logo,
-            }
-        }).sort((a,b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
-    }, [footballMatches, footballTeams, footballChampionships]);
+  const isSyncing = footballData.syncStatus === 'syncing';
 
-    const handleSelectAll = (checked: boolean | string) => {
-        if (checked) {
-            setSelectedMatches(enrichedMatches.map(m => m.id));
-        } else {
-            setSelectedMatches([]);
-        }
-    };
+  // Consolidar jogos de hoje e futuros para exibição administrativa
+  const allMatches = useMemo(() => {
+    return [...footballData.todayMatches, ...footballData.nextMatches]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [footballData.todayMatches, footballData.nextMatches]);
 
-    const handleSelectMatch = (matchId: string, checked: boolean) => {
-        if (checked) {
-            setSelectedMatches(prev => [...prev, matchId]);
-        } else {
-            setSelectedMatches(prev => prev.filter(id => id !== matchId));
-        }
-    };
-
-  const handleImport = () => {
-    importFootballMatches(selectedMatches);
-    setSelectedMatches([]);
-  };
-
-
-  const getStatusVariant = (status: FootballMatch['status']) => {
-    switch (status) {
-      case 'scheduled': return 'secondary';
-      case 'finished': return 'outline';
-      case 'cancelled': return 'destructive';
-      default: return 'secondary';
-    }
+  const getStatusBadge = (status: string) => {
+    if (status === 'Match Finished') return <Badge variant="outline" className="text-[8px]">FINALIZADO</Badge>;
+    if (status === 'Match Postponed') return <Badge variant="destructive" className="text-[8px]">ADIADO</Badge>;
+    return <Badge className="bg-green-600 text-white text-[8px]">AGENDADO</Badge>;
   };
 
   return (
-    <main className="p-4 md:p-8">
-      <div className="flex items-center gap-4 mb-6">
-          <Link href="/admin/futebol"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
-          <h1 className="text-3xl font-bold">Gerenciar Jogos Importados</h1>
+    <main className="p-4 md:p-8 space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/admin/futebol">
+            <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Jogos Sincronizados</h1>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Auditoria de eventos ativos no sistema</p>
+          </div>
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={() => syncFootballAll(true)} 
+          disabled={isSyncing}
+          className="gap-2 font-bold border-white/10"
+        >
+          {isSyncing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Atualizar Dados
+        </Button>
       </div>
 
-      <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                  <CardTitle>Jogos Sincronizados com a API</CardTitle>
-                  <CardDescription>Visualize, gerencie ou remova os jogos importados.</CardDescription>
-              </div>
-              <Button onClick={handleImport} disabled={selectedMatches.length === 0}>
-                   <CheckCircle className="mr-2 h-4 w-4" />
-                   Importar Selecionados ({selectedMatches.length})
-              </Button>
-          </CardHeader>
-          <CardContent>
-              <Table>
-                  <TableHeader>
-                      <TableRow>
-                          <TableHead className="w-[40px]">
-                              <Checkbox
-                                  onCheckedChange={handleSelectAll}
-                                  checked={selectedMatches.length > 0 && selectedMatches.length === enrichedMatches.length}
-                                  aria-label="Selecionar todos"
-                              />
-                          </TableHead>
-                          <TableHead>Jogo</TableHead>
-                          <TableHead>Campeonato</TableHead>
-                          <TableHead>Data e Hora</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Ações</TableHead>
-                      </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                      {enrichedMatches.map((match) => (
-                          <TableRow key={match.id} data-state={selectedMatches.includes(match.id) ? "selected" : ""}>
-                              <TableCell>
-                                  <Checkbox
-                                      onCheckedChange={(checked) => handleSelectMatch(match.id, !!checked)}
-                                      checked={selectedMatches.includes(match.id)}
-                                      aria-label={`Selecionar jogo ${match.id}`}
-                                  />
-                              </TableCell>
-                              <TableCell className="font-medium flex items-center gap-3">
-                                  <div className="flex items-center gap-2">
-                                      {match.homeTeamLogo && <Image src={match.homeTeamLogo} alt={match.homeTeamName} width={24} height={24} />}
-                                      <span>{match.homeTeamName}</span>
-                                  </div>
-                                  <span className="text-muted-foreground">vs</span>
-                                   <div className="flex items-center gap-2">
-                                      {match.awayTeamLogo && <Image src={match.awayTeamLogo} alt={match.awayTeamName} width={24} height={24} />}
-                                      <span>{match.awayTeamName}</span>
-                                  </div>
-                              </TableCell>
-                              <TableCell>{match.championshipName}</TableCell>
-                              <TableCell>{new Date(match.dateTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</TableCell>
-                              <TableCell>
-                                  <div className="flex flex-col gap-1 items-start">
-                                      <Badge variant={getStatusVariant(match.status)}>
-                                          {match.status}
-                                      </Badge>
-                                      {match.isImported ? (
-                                          <Badge variant="default" className="bg-green-600/80">Importado</Badge>
-                                      ) : (
-                                          <Badge variant="destructive">Não Importado</Badge>
-                                      )}
-                                  </div>
-                              </TableCell>
-                              <TableCell className="text-right space-x-2">
-                                  <Button variant="outline" size="sm" disabled>
-                                      <Edit className="mr-2 h-4 w-4" />
-                                      Gerenciar
-                                  </Button>
-                                   <Button variant="destructive" size="sm" onClick={() => deleteFootballMatch(match.id)}>
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Excluir
-                                   </Button>
-                              </TableCell>
-                          </TableRow>
-                      ))}
-                  </TableBody>
-              </Table>
-          </CardContent>
+      <Card className="border-white/5 bg-card/50 overflow-hidden shadow-2xl">
+        <CardHeader className="bg-white/5 border-b border-white/5">
+          <CardTitle className="text-sm font-black uppercase flex items-center gap-2">
+            <Calendar size={16} className="text-primary" /> Log de Partidas Ativas
+          </CardTitle>
+          <CardDescription className="text-[10px] uppercase font-bold">
+            Total de {allMatches.length} partidas carregadas para as ligas monitoradas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-slate-950/50">
+              <TableRow className="border-white/5 h-10">
+                <TableHead className="text-[9px] uppercase font-black px-4">Data/Hora</TableHead>
+                <TableHead className="text-[9px] uppercase font-black">Confronto</TableHead>
+                <TableHead className="text-[9px] uppercase font-black">Campeonato</TableHead>
+                <TableHead className="text-[9px] uppercase font-black text-center">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allMatches.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-24 text-muted-foreground italic">
+                    Nenhum jogo carregado no momento. Verifique as configurações de ligas.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                allMatches.map((match) => (
+                  <TableRow key={match.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                    <TableCell className="px-4">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-bold text-white">{match.date.split('-').reverse().slice(0,2).join('/')}</span>
+                        <span className="text-[9px] text-muted-foreground">{match.time?.substring(0,5) || '--:--'}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3 text-xs font-bold text-slate-300">
+                        <span className="truncate max-w-[100px] text-right">{match.homeTeam}</span>
+                        <span className="text-primary italic">vs</span>
+                        <span className="truncate max-w-[100px]">{match.awayTeam}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-[8px] bg-slate-800 border-0 h-4 uppercase font-black">
+                        {match.league}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {getStatusBadge(match.status)}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
       </Card>
     </main>
   );
