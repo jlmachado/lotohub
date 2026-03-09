@@ -124,13 +124,17 @@ class ApiFutebolProvider extends ApiProviderBase {
  */
 class ApiFootballDataProvider extends ApiProviderBase {
   private baseUrl = 'https://api.football-data.org/v4';
+  
+  // Ligas suportadas conforme solicitado, incluindo BSA (Brasileirão)
+  private readonly SUPPORTED_CODES = [
+    'BSA', 'PL', 'PD', 'SA', 'BL1', 'FL1', 'CL', 'WC', 'DED', 'ELC', 'PPL', 'EC'
+  ];
 
   async validarConexao() {
     if (this.mode === 'test') return true;
     if (!this.apiKey) return false;
     
     try {
-      // Premier League (PL) está disponível em todos os planos, ótimo para teste
       const res = await fetch(`${this.baseUrl}/competitions/PL`, {
         headers: { 'X-Auth-Token': this.apiKey },
         next: { revalidate: 0 }
@@ -155,12 +159,14 @@ class ApiFootballDataProvider extends ApiProviderBase {
       }
       
       const data = await res.json();
-      // Filtra apenas ligas que o plano permite (normalmente TIER_ONE para Free)
-      return (data.competitions || []).map((c: any) => ({
-        id: c.code, // Usamos o CODE como ID interno (ex: PL, BSA, CL)
-        name: c.name,
-        logo: c.emblem
-      }));
+      // Filtra apenas as ligas suportadas para reduzir ruído e garantir compatibilidade
+      return (data.competitions || [])
+        .filter((c: any) => this.SUPPORTED_CODES.includes(c.code))
+        .map((c: any) => ({
+          id: c.code,
+          name: c.name,
+          logo: c.emblem
+        }));
     } catch (e) {
       console.error("Erro ao processar campeonatos:", e);
       return [];
@@ -174,8 +180,10 @@ class ApiFootballDataProvider extends ApiProviderBase {
       const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
       const dateTo = nextWeek.toISOString().split('T')[0];
 
-      // Busca partidas globais dentro do intervalo de 7 dias
-      const res = await fetch(`${this.baseUrl}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
+      // Explicitamente solicita as ligas suportadas (incluindo BSA) via parâmetro de query
+      // Isso garante que a API inclua essas partidas na resposta
+      const codes = this.SUPPORTED_CODES.join(',');
+      const res = await fetch(`${this.baseUrl}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}&competitions=${codes}`, {
         headers: { 'X-Auth-Token': this.apiKey }
       });
 
