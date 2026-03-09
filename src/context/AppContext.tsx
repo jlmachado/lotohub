@@ -36,6 +36,7 @@ export interface FootballChampionship {
   importar: boolean;
   country?: string;
   type?: string;
+  currentSeason?: number;
   coverage?: any;
 }
 
@@ -103,7 +104,7 @@ interface AppContextType {
   // Outros estados...
   news: NewsMessage[]; banners: Banner[]; popups: Popup[]; jdbLoterias: JDBLoteria[]; postedResults: PostedResult[];
   genericLotteryConfigs: any[]; updateGenericLottery: (c: any) => void; casinoSettings: any; updateCasinoSettings: (s: any) => void;
-  bingoSettings: BingoSettings; updateBingoSettings: (s: any) => void; bingoDraws: BingoDraw[]; bingoTickets: BingoTicket[];
+  bingoSettings: BingoSettings; updateBingoSettings: (settings: any) => void; bingoDraws: BingoDraw[]; bingoTickets: BingoTicket[];
   snookerLiveConfig: SnookerLiveConfig; updateSnookerLiveConfig: (c: any) => void; snookerChannels: SnookerChannel[]; snookerBets: SnookerBet[];
   snookerFinancialHistory: SnookerFinancialSummary[]; snookerPresence: any; snookerChatMessages: any[]; snookerScoreboards: any;
   celebrationTrigger: boolean; clearCelebration: () => void; isFullscreen: boolean; toggleFullscreen: () => void;
@@ -163,9 +164,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const refreshSession = () => {
       const u = getCurrentUser();
       setUser(u);
-      setBalance(u?.saldo || 0);
-      setBonus(u?.bonus || 0);
-      setTerminal(u?.terminal || '');
+      if (u) {
+        setBalance(u.saldo || 0);
+        setBonus(u.bonus || 0);
+        setTerminal(u.terminal || '');
+      }
     };
     refreshSession();
     window.addEventListener('auth-change', refreshSession);

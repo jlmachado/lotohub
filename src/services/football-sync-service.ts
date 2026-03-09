@@ -8,7 +8,7 @@ import type {
 
 /**
  * @fileOverview Orquestrador de sincronização da API-FOOTBALL.
- * Gerencia o fluxo de importação respeitando o coverage das ligas.
+ * Gerencia o fluxo de importação respeitando o limite do plano free e temporadas atuais.
  */
 
 export interface SyncResult {
@@ -33,12 +33,12 @@ export async function syncFromApiFootball(
     syncLeagues?: boolean;
     syncTeams?: boolean;
     syncFixtures?: boolean;
-    leagueIds?: string[]; // IDs para sync focado
+    leagueIds?: string[];
   } = {}
 ): Promise<SyncResult & { data: any }> {
   const api = new ApiFootballService({ 
     apiKey: config.apiKey, 
-    baseUrl: 'https://v3.football.api-sports.io' 
+    baseUrl: config.baseUrl || 'https://v3.football.api-sports.io' 
   });
 
   const results: SyncResult & { data: any } = {
@@ -49,14 +49,14 @@ export async function syncFromApiFootball(
   };
 
   try {
-    // 1. Sincronizar Ligas (Base de tudo)
+    // 1. Sincronizar Ligas (Identificando Temporada Atual)
     let activeLeagues = currentData.championships;
     if (options.syncLeagues) {
       const apiLeagues = await api.getLeagues({ current: 'true' });
       
       results.data.championships = apiLeagues.map((l: any) => {
-        // Preservar a flag 'importar' já existente no sistema
         const existingChamp = currentData.championships.find((c: any) => c.apiId === String(l.league.id));
+        const currentSeason = l.seasons.find((s: any) => s.current === true) || l.seasons[l.seasons.length - 1];
         
         return {
           id: `champ-${l.league.id}`,
@@ -67,7 +67,8 @@ export async function syncFromApiFootball(
           importar: existingChamp ? existingChamp.importar : false,
           country: l.country.name,
           type: l.league.type,
-          coverage: l.seasons[0]?.coverage || {}
+          currentSeason: currentSeason?.year || new Date().getFullYear(),
+          coverage: currentSeason?.coverage || {}
         };
       });
       
@@ -75,36 +76,23 @@ export async function syncFromApiFootball(
       activeLeagues = results.data.championships;
     }
 
-    // 2. Filtrar ligas para sync de times/jogos
+    // 2. Filtrar ligas selecionadas para sync de detalhes
     const leaguesToSync = activeLeagues.filter(l => 
       options.leagueIds ? options.leagueIds.includes(l.apiId) : l.importar
     );
 
     if (leaguesToSync.length === 0 && (options.syncTeams || options.syncFixtures)) {
-      return { ...results, message: 'Nenhuma liga ativa selecionada para sincronização de dados. Ative o "Importar" nas ligas desejadas.' };
+      return { ...results, message: 'Selecione ligas para importar e clique em sincronizar.' };
     }
 
-    // 3. Sync de Times e Jogos (Limitado às ligas ativas para economizar API)
-    // Lógica de Temporada: Tentar 2025, se falhar por plano free, usar 2024
-    const currentYear = new Date().getFullYear();
-    const fallbackYear = 2024;
-
+    // 3. Sync de Dados Operacionais (Times e Jogos)
     for (const league of leaguesToSync) {
-      // Sync Teams
+      const season = league.currentSeason || new Date().getFullYear();
+
+      // Sincronizar Times
       if (options.syncTeams) {
         try {
-          let apiTeams;
-          try {
-            apiTeams = await api.getTeams(Number(league.apiId), currentYear);
-          } catch (e: any) {
-            if (e.message.includes('Free plans') || e.message.includes('2024')) {
-              console.warn(`[SYNC] Plano Free detectado. Fazendo fallback para temporada ${fallbackYear} na liga ${league.name}`);
-              apiTeams = await api.getTeams(Number(league.apiId), fallbackYear);
-            } else {
-              throw e;
-            }
-          }
-
+          const apiTeams = await api.getTeams(Number(league.apiId), Number(season));
           const mappedTeams = apiTeams.map((t: any) => ({
             id: String(t.team.id),
             bancaId: config.bancaId,
@@ -114,34 +102,20 @@ export async function syncFromApiFootball(
           }));
           results.data.teams = [...results.data.teams, ...mappedTeams];
           results.counts.teams += mappedTeams.length;
-        } catch (e) {
-          console.error(`Erro ao sincronizar times da liga ${league.apiId}:`, e);
+        } catch (e: any) {
+          console.error(`[SYNC] Erro times liga ${league.apiId}:`, e.message);
         }
       }
 
-      // Sync Fixtures (Jogos)
+      // Sincronizar Jogos (Apenas Futuros/Recentes da Temporada Atual)
       if (options.syncFixtures) {
         try {
-          let apiFixtures;
-          try {
-            // Tenta temporada atual
-            apiFixtures = await api.getFixtures({ 
-              league: league.apiId, 
-              season: String(currentYear),
-              next: '50'
-            });
-          } catch (e: any) {
-            // Se for erro de plano free, tenta o ano anterior
-            if (e.message.includes('Free plans') || e.message.includes('2024')) {
-              apiFixtures = await api.getFixtures({ 
-                league: league.apiId, 
-                season: String(fallbackYear),
-                next: '50'
-              });
-            } else {
-              throw e;
-            }
-          }
+          // Buscamos os próximos 50 jogos da liga na temporada atual
+          const apiFixtures = await api.getFixtures({ 
+            league: league.apiId, 
+            season: String(season),
+            next: '50' 
+          });
 
           const mappedMatches = apiFixtures.map((f: any) => ({
             id: String(f.fixture.id),
@@ -152,26 +126,26 @@ export async function syncFromApiFootball(
             dateTime: f.fixture.date,
             status: normalizeStatus(f.fixture.status.short),
             isImported: true,
-            odds: { home: 1.95, draw: 3.20, away: 3.40 }, // Valores padrão se não houver odds
+            odds: { home: 1.95, draw: 3.20, away: 3.40 },
             venue: f.fixture.venue?.name || 'Estádio Indisponível',
             round: f.league.round
           }));
 
           results.data.matches = [...results.data.matches, ...mappedMatches];
           results.counts.fixtures += mappedMatches.length;
-        } catch (e) {
-          console.error(`Erro ao sincronizar jogos da liga ${league.apiId}:`, e);
+        } catch (e: any) {
+          console.error(`[SYNC] Erro jogos liga ${league.apiId}:`, e.message);
         }
       }
     }
 
-    results.message = `Sucesso: ${results.counts.leagues} ligas processadas. Importados: ${results.counts.teams} times e ${results.counts.fixtures} jogos.`;
+    results.message = `Sincronização concluída. ${results.counts.fixtures} jogos atuais processados.`;
     return results;
 
   } catch (error: any) {
     return {
       success: false,
-      message: error.message || 'Erro desconhecido na sincronização',
+      message: error.message || 'Erro na sincronização',
       counts: results.counts,
       data: results.data
     };
@@ -184,18 +158,9 @@ function normalizeStatus(apiStatus: string): FootballMatch['status'] {
     '1H': 'live',
     'HT': 'live',
     '2H': 'live',
-    'ET': 'live',
-    'BT': 'live',
-    'P': 'live',
-    'SUSP': 'live',
-    'INT': 'live',
     'FT': 'finished',
-    'AET': 'finished',
-    'PEN': 'finished',
     'CANC': 'cancelled',
-    'ABD': 'cancelled',
-    'AWD': 'cancelled',
-    'WO': 'cancelled'
+    'ABD': 'cancelled'
   };
   return map[apiStatus] || 'scheduled';
 }

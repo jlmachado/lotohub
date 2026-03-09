@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { LotteryBetSlip } from '@/components/LotteryBetSlip';
 import { TicketDialog } from '@/components/ticket-dialog';
 import { Badge } from '@/components/ui/badge';
-import { Search, Trophy, Globe } from 'lucide-react';
+import { Search, Trophy, Globe, Calendar } from 'lucide-react';
 
 interface BetSlipItem {
     id: string;
@@ -41,14 +41,19 @@ export default function FutebolPage() {
 
     const matchesByChampionship = useMemo(() => {
         const grouped: Record<string, any> = {};
-        // Filtrar apenas jogos que foram marcados como importados/sincronizados
-        const importedMatches = footballMatches.filter(match => match.isImported);
+        const now = new Date().getTime();
+        
+        // Filtrar jogos: Do dia atual em diante (ou recentes de até 12h atrás)
+        const activeMatches = (footballMatches || []).filter(match => {
+            const matchTime = new Date(match.dateTime).getTime();
+            // Mostra jogos que ainda não começaram ou que começaram há menos de 12 horas
+            return matchTime > (now - 12 * 60 * 60 * 1000);
+        });
 
-        importedMatches.forEach(match => {
+        activeMatches.forEach(match => {
             const championship = footballChampionships.find(c => c.apiId === match.championshipApiId);
-            if (!championship) return;
+            if (!championship || !championship.importar) return;
 
-            // Filtro de pesquisa
             const homeTeam = footballTeams.find(t => t.id === match.homeTeamId);
             const awayTeam = footballTeams.find(t => t.id === match.awayTeamId);
             
@@ -77,7 +82,7 @@ export default function FutebolPage() {
             });
         });
         
-        return Object.values(grouped).map(group => {
+        return Object.values(grouped).map((group: any) => {
             group.matches.sort((a:any,b:any) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
             return group;
         });
@@ -135,7 +140,10 @@ export default function FutebolPage() {
             <Header />
             <main className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white">Futebol Ao Vivo</h2>
+                  <div>
+                    <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white">Futebol Ao Vivo</h2>
+                    <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest mt-1">Temporada Atual • {new Date().getFullYear()}</p>
+                  </div>
                   <div className="relative w-full md:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
@@ -153,7 +161,7 @@ export default function FutebolPage() {
                         <Card className="bg-slate-900/50 border-white/5 rounded-2xl overflow-hidden">
                           <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">
                             <Trophy size={16} className="text-primary" />
-                            <span className="font-black uppercase italic text-xs tracking-widest text-white">Campeonatos</span>
+                            <span className="font-black uppercase italic text-xs tracking-widest text-white">Ligas Ativas</span>
                           </div>
                           <div className="p-2 space-y-1">
                             <button 
@@ -183,10 +191,10 @@ export default function FutebolPage() {
                     <div className="lg:col-span-9 space-y-8">
                         {matchesByChampionship.length === 0 ? (
                           <div className="flex flex-col items-center justify-center py-32 text-center space-y-4 bg-slate-900/20 rounded-3xl border border-dashed border-white/5">
-                            <Globe size={48} className="text-slate-700" />
+                            <Calendar size={48} className="text-slate-700" />
                             <div className="space-y-1">
-                              <p className="text-white font-bold text-lg">Nenhum jogo sincronizado</p>
-                              <p className="text-slate-500 text-sm max-w-xs">Ative as ligas na área administrativa e realize a sincronização para ver os jogos aqui.</p>
+                              <p className="text-white font-bold text-lg">Sem jogos no momento</p>
+                              <p className="text-slate-500 text-sm max-w-xs">Não encontramos partidas agendadas para as ligas ativas no período atual.</p>
                             </div>
                           </div>
                         ) : (
