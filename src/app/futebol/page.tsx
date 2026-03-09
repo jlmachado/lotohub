@@ -1,297 +1,146 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Header } from '@/components/header';
-import { Card } from '@/components/ui/card';
 import { useAppContext } from '@/context/AppContext';
-import Image from 'next/image';
-import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
-import { LotteryBetSlip } from '@/components/LotteryBetSlip';
-import { TicketDialog } from '@/components/ticket-dialog';
+import { FootballWidget, FootballWidgetContainer } from '@/components/football/widgets/FootballWidgetContainer';
 import { Badge } from '@/components/ui/badge';
-import { Search, Trophy, Globe, Calendar } from 'lucide-react';
-import { FootballMatch } from '@/context/AppContext';
-
-interface BetSlipItem {
-    id: string;
-    match: any;
-    pick: 'home' | 'draw' | 'away';
-    pickLabel: string;
-    odd: number;
-    value: number;
-}
+import { Trophy, Calendar, LayoutGrid, Info, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card } from '@/components/ui/card';
 
 export default function FutebolPage() {
-    const { 
-      footballMatches, 
-      footballTeams, 
-      footballChampionships, 
-      user
-    } = useAppContext();
-    const { toast } = useToast();
-    
-    const [searchTerm, setSearchTerm] = useState('');
-    const [betSlip, setBetSlip] = useState<BetSlipItem[]>([]);
-    const [activeChampionship, setActiveChampionship] = useState<string | 'all'>('all');
-    
-    // Ticket Dialog States
-    const [isTicketDialogOpen, setIsTicketDialogOpen] = useState(false);
-    const [generatedTicketId, setGeneratedTicketId] = useState<string | null>(null);
-    const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
+  const { footballApiConfig } = useAppContext();
+  const [searchTerm, setSearchTerm] = useState('');
 
-    const matchesByChampionship = useMemo(() => {
-        const grouped: Record<string, any> = {};
-        const now = new Date().getTime();
+  return (
+    <div className="min-h-screen bg-[#0a0f1e]">
+      <Header />
+      <main className="p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6">
         
-        // Filtrar jogos: Do dia atual em diante (ou recentes de até 12h atrás)
-        const activeMatches = (footballMatches || []).filter(match => {
-            const matchTime = new Date(match.dateTime).getTime();
-            // Mostra jogos que ainda não começaram ou que começaram há menos de 12 horas
-            return matchTime > (now - 12 * 60 * 60 * 1000);
-        });
-
-        activeMatches.forEach(match => {
-            const championship = footballChampionships.find(c => c.apiId === match.championshipApiId);
-            if (!championship || !championship.importar) return;
-
-            const homeTeam = footballTeams.find(t => t.id === match.homeTeamId);
-            const awayTeam = footballTeams.find(t => t.id === match.awayTeamId);
-            
-            if (searchTerm && 
-                !homeTeam?.name.toLowerCase().includes(searchTerm.toLowerCase()) && 
-                !awayTeam?.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-                !championship.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-              return;
-            }
-
-            if (!grouped[championship.id]) {
-                grouped[championship.id] = {
-                    championshipId: championship.id,
-                    championshipName: championship.name,
-                    championshipLogo: championship.logo,
-                    matches: []
-                };
-            }
-            
-            grouped[championship.id].matches.push({
-                ...match,
-                homeTeamName: homeTeam?.name || 'Time A',
-                awayTeamName: awayTeam?.name || 'Time B',
-                homeTeamLogo: homeTeam?.logo || '/img/placeholder-team.png',
-                awayTeamLogo: awayTeam?.logo || '/img/placeholder-team.png',
-            });
-        });
-        
-        return Object.values(grouped).map((group: any) => {
-            group.matches.sort((a:any,b:any) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
-            return group;
-        });
-    }, [footballMatches, footballTeams, footballChampionships, searchTerm]);
-
-    const handleAddBet = (match: any, pick: 'home' | 'draw' | 'away') => {
-        if (!user) {
-          toast({ variant: 'destructive', title: 'Acesso Negado', description: 'Faça login para apostar.' });
-          return;
-        }
-
-        const pickLabel = pick === 'home' ? match.homeTeamName : pick === 'draw' ? 'Empate' : match.awayTeamName;
-        const oddValue = match.odds[pick] || 1.95;
-
-        const newBet: BetSlipItem = {
-            id: `${match.id}-${pick}`,
-            match,
-            pick,
-            pickLabel,
-            odd: oddValue,
-            value: 10,
-        };
-
-        setBetSlip(prev => {
-            const existingIndex = prev.findIndex(item => item.match.id === match.id);
-            if (existingIndex > -1) {
-                if (prev[existingIndex].id === newBet.id) return prev.filter(item => item.id !== newBet.id);
-                const updatedSlip = [...prev];
-                updatedSlip[existingIndex] = { ...newBet, value: prev[existingIndex].value };
-                return updatedSlip;
-            }
-            return [...prev, newBet];
-        });
-    };
-
-    const { totalValue, totalReturn } = useMemo(() => {
-        return betSlip.reduce(
-            (acc, item) => {
-                acc.totalValue += item.value;
-                acc.totalReturn += item.value * item.odd;
-                return acc;
-            },
-            { totalValue: 0, totalReturn: 0 }
-        );
-    }, [betSlip]);
-
-    const handleFinalize = () => {
-      setGeneratedTicketId(`FB-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
-      setTicketGenerationTime(new Date().toLocaleString('pt-BR'));
-      setIsTicketDialogOpen(true);
-    };
-
-    return (
-        <div className="min-h-screen bg-[#0a0f1e]">
-            <Header />
-            <main className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white">Futebol Ao Vivo</h2>
-                    <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest mt-1">Temporada Atual • {new Date().getFullYear()}</p>
-                  </div>
-                  <div className="relative w-full md:w-80">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="Buscar time ou campeonato..." 
-                      value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)}
-                      className="bg-slate-900 border-white/10 h-11 pl-10 text-white rounded-xl"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pb-24">
-                    {/* Sidebar Ligas */}
-                    <div className="hidden lg:block lg:col-span-3 space-y-4">
-                        <Card className="bg-slate-900/50 border-white/5 rounded-2xl overflow-hidden">
-                          <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">
-                            <Trophy size={16} className="text-primary" />
-                            <span className="font-black uppercase italic text-xs tracking-widest text-white">Ligas Ativas</span>
-                          </div>
-                          <div className="p-2 space-y-1">
-                            <button 
-                              onClick={() => setActiveChampionship('all')}
-                              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all font-bold text-sm ${activeChampionship === 'all' ? 'bg-primary text-black' : 'text-slate-400 hover:bg-white/5'}`}
-                            >
-                              <Globe size={16} /> Todos os Jogos
-                            </button>
-                            {matchesByChampionship.map(group => (
-                              <button 
-                                key={group.championshipId}
-                                onClick={() => setActiveChampionship(group.championshipId)}
-                                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all font-bold text-sm ${activeChampionship === group.championshipId ? 'bg-primary text-black' : 'text-slate-400 hover:bg-white/5'}`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <Image src={group.championshipLogo} alt="" width={20} height={20} />
-                                  <span className="truncate max-w-[140px]">{group.championshipName}</span>
-                                </div>
-                                <Badge variant="outline" className="bg-white/10 border-0 h-5 text-[10px]">{group.matches.length}</Badge>
-                              </button>
-                            ))}
-                          </div>
-                        </Card>
-                    </div>
-
-                    {/* Lista de Jogos */}
-                    <div className="lg:col-span-9 space-y-8">
-                        {matchesByChampionship.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center py-32 text-center space-y-4 bg-slate-900/20 rounded-3xl border border-dashed border-white/5">
-                            <Calendar size={48} className="text-slate-700" />
-                            <div className="space-y-1">
-                              <p className="text-white font-bold text-lg">Sem jogos no momento</p>
-                              <p className="text-slate-500 text-sm max-w-xs">Não encontramos partidas agendadas para as ligas ativas no período atual.</p>
-                            </div>
-                          </div>
-                        ) : (
-                          matchesByChampionship
-                            .filter(g => activeChampionship === 'all' || g.championshipId === activeChampionship)
-                            .map(group => (
-                              <div key={group.championshipId} className="space-y-4">
-                                  <div className="flex items-center gap-3 px-2">
-                                    <div className="p-2 bg-primary/10 rounded-lg">
-                                      <Image src={group.championshipLogo} alt="" width={24} height={24} />
-                                    </div>
-                                    <h3 className="text-xl font-black uppercase italic text-white tracking-tight">{group.championshipName}</h3>
-                                  </div>
-
-                                  <div className="grid gap-4">
-                                    {group.matches.map((match: any) => (
-                                      <Card key={match.id} className="bg-slate-900 border-white/5 rounded-2xl overflow-hidden hover:border-primary/30 transition-colors">
-                                        <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                          <div className="flex-1 flex items-center justify-between md:justify-start gap-8">
-                                            {/* Time Casa */}
-                                            <div className="flex flex-col items-center gap-2 w-24 text-center">
-                                              <div className="w-12 h-12 relative bg-white/5 rounded-full p-2">
-                                                <Image src={match.homeTeamLogo} alt="" fill className="object-contain p-2" />
-                                              </div>
-                                              <span className="text-xs font-bold text-white line-clamp-2">{match.homeTeamName}</span>
-                                            </div>
-
-                                            <div className="flex flex-col items-center gap-1">
-                                              {match.status === 'live' ? (
-                                                <Badge className="bg-red-600 animate-pulse text-[9px] h-5">AO VIVO</Badge>
-                                              ) : (
-                                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                                                  {new Date(match.dateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                                </span>
-                                              )}
-                                              <span className="text-2xl font-black italic text-primary">VS</span>
-                                              <span className="text-[9px] font-bold text-muted-foreground uppercase">{match.round}</span>
-                                            </div>
-
-                                            {/* Time Fora */}
-                                            <div className="flex flex-col items-center gap-2 w-24 text-center">
-                                              <div className="w-12 h-12 relative bg-white/5 rounded-full p-2">
-                                                <Image src={match.awayTeamLogo} alt="" fill className="object-contain p-2" />
-                                              </div>
-                                              <span className="text-xs font-bold text-white line-clamp-2">{match.awayTeamName}</span>
-                                            </div>
-                                          </div>
-
-                                          {/* Odds */}
-                                          <div className="grid grid-cols-3 gap-2 w-full md:w-auto">
-                                            {[
-                                              { label: 'Casa', key: 'home' },
-                                              { label: 'Empate', key: 'draw' },
-                                              { label: 'Fora', key: 'away' }
-                                            ].map(opt => (
-                                              <button 
-                                                key={opt.key}
-                                                onClick={() => handleAddBet(match, opt.key as any)}
-                                                className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all h-16 w-full md:w-24 ${betSlip.find(b => b.id === `${match.id}-${opt.key}`) ? 'bg-primary border-primary text-black' : 'bg-white/5 border-white/5 text-white hover:bg-white/10'}`}
-                                              >
-                                                <span className="text-[9px] uppercase font-black opacity-70">{opt.label}</span>
-                                                <span className="text-sm font-black italic">{(match.odds[opt.key as keyof typeof match.odds] || 1.95).toFixed(2)}</span>
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      </Card>
-                                    ))}
-                                  </div>
-                              </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-
-                <LotteryBetSlip 
-                    items={betSlip}
-                    totalValue={totalValue}
-                    totalPossibleReturn={totalReturn}
-                    onRemoveItem={(id) => setBetSlip(betSlip.filter(b => b.id !== id))}
-                    onFinalize={handleFinalize}
-                    lotteryName="Futebol"
-                />
-            </main>
-
-            <TicketDialog 
-                isOpen={isTicketDialogOpen} 
-                onOpenChange={setIsTicketDialogOpen} 
-                onNewBet={() => { setBetSlip([]); setIsTicketDialogOpen(false); }} 
-                ticketId={generatedTicketId} 
-                generationTime={ticketGenerationTime} 
-                lotteryName="Futebol" 
-                ticketItems={betSlip} 
-                totalValue={totalValue} 
-                possibleReturn={totalReturn} 
+        {/* Cabeçalho de Navegação */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white">Central Futebol</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <Badge className="bg-red-600 animate-pulse text-[10px] h-5">AO VIVO</Badge>
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest italic">Integração Oficial API-FOOTBALL</span>
+            </div>
+          </div>
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Pesquisar..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="bg-slate-900 border-white/10 h-11 pl-10 text-white rounded-xl focus:border-primary/50"
             />
+          </div>
         </div>
-    );
+
+        {/* Layout de Widgets 3 Colunas */}
+        <FootballWidgetContainer>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* COLUNA 1: LIGAS (Sidebar Esquerda) */}
+            <div className="lg:col-span-3 space-y-4">
+              <div className="bg-slate-900/50 border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="p-4 bg-white/5 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Trophy size={16} className="text-primary" />
+                    <span className="font-black uppercase italic text-xs tracking-widest text-white">Competições</span>
+                  </div>
+                </div>
+                <div className="p-2 h-[600px] overflow-y-auto custom-scrollbar">
+                  <FootballWidget 
+                    type="leagues" 
+                    targetLeague="wg-football-games"
+                    targetStandings="wg-football-standings"
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* COLUNA 2: JOGOS (Centro) */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-slate-900/50 border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="p-4 bg-white/5 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} className="text-primary" />
+                    <span className="font-black uppercase italic text-xs tracking-widest text-white">Próximos Confrontos</span>
+                  </div>
+                </div>
+                <div className="p-2 h-[600px] overflow-y-auto custom-scrollbar">
+                  <FootballWidget 
+                    id="wg-football-games"
+                    type="fixtures" 
+                    targetGame="wg-football-details"
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* COLUNA 3: DETALHES & CLASSIFICAÇÃO (Direita) */}
+            <div className="lg:col-span-4 space-y-6">
+              
+              {/* Card de Detalhes da Partida / Time */}
+              <div className="bg-slate-900/50 border border-white/5 rounded-2xl overflow-hidden shadow-2xl min-h-[300px]">
+                <div className="p-4 bg-white/5 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <LayoutGrid size={16} className="text-primary" />
+                    <span className="font-black uppercase italic text-xs tracking-widest text-white">Detalhes do Evento</span>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <div id="wg-football-details" className="w-full min-h-[250px] flex flex-col items-center justify-center text-center">
+                    <FootballWidget type="fixture" className="w-full" />
+                    <div className="mt-8 space-y-2 text-muted-foreground animate-pulse">
+                      <Info className="mx-auto h-8 w-8 opacity-20" />
+                      <p className="text-[10px] font-bold uppercase tracking-tighter">Selecione uma partida para ver detalhes, estatísticas e eventos em tempo real.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card de Classificação */}
+              <div className="bg-slate-900/50 border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="p-4 bg-white/5 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Trophy size={16} className="text-primary" />
+                    <span className="font-black uppercase italic text-xs tracking-widest text-white">Tabela de Classificação</span>
+                  </div>
+                </div>
+                <div className="p-2 max-h-[400px] overflow-y-auto custom-scrollbar">
+                  <div id="wg-football-standings">
+                    <FootballWidget type="standings" targetTeam="wg-football-details" className="w-full" />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </FootballWidgetContainer>
+
+        {/* Banner Informativo Inferior */}
+        <Card className="bg-primary/10 border-primary/20 p-6 rounded-3xl">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
+            <div>
+              <h4 className="text-xl font-black uppercase italic tracking-tighter text-primary">Operação em Tempo Real</h4>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest max-w-lg">
+                Os dados são atualizados automaticamente a cada {footballApiConfig.widgetConfig.refresh} segundos. 
+                Utilize os filtros laterais para navegar entre ligas do mundo todo.
+              </p>
+            </div>
+            <Badge variant="outline" className="border-primary/30 text-primary text-[10px] px-4 py-2 font-black uppercase tracking-[2px]">
+              CERTIFIED INTEGRATION
+            </Badge>
+          </div>
+        </Card>
+
+      </main>
+    </div>
+  );
 }

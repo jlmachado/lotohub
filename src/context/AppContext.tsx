@@ -3,11 +3,10 @@
 import { useToast } from '@/hooks/use-toast';
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect } from 'react';
 import { loadBichoLoterias, saveBichoLoterias } from '@/utils/bichoLoteriasStorage';
-import { generatePoule as generatePouleUtil } from '@/utils/generatePoule';
 import { User, getUsers, saveUsers } from '@/utils/usersStorage';
-import { getSession, getCurrentUser, logout } from '@/utils/auth';
+import { getCurrentUser, logout } from '@/utils/auth';
 import { useRouter } from 'next/navigation';
-import { resolveCurrentBanca, getActiveContext } from '@/utils/bancaContext';
+import { getActiveContext } from '@/utils/bancaContext';
 import { syncFromApiFootball } from '@/services/football-sync-service';
 import ApiFootballService from '@/services/api-football';
 
@@ -48,6 +47,21 @@ export interface FootballTeam {
   country?: string;
 }
 
+export interface FootballWidgetConfig {
+  lang: string;
+  theme: 'dark' | 'light';
+  refresh: number;
+  showLogos: boolean;
+  showErrors: boolean;
+  standings: boolean;
+  squad: boolean;
+  statistics: boolean;
+  playerStatistics: boolean;
+  injuries: boolean;
+  defaultTab: string;
+  gameTab: string;
+}
+
 export interface FootballApiConfig {
   bancaId: string;
   provider: 'api-football' | 'api-futebol' | 'football-data';
@@ -57,25 +71,26 @@ export interface FootballApiConfig {
   lastSync?: string;
   status?: 'connected' | 'error' | 'disconnected';
   lastError?: string;
+  widgetConfig: FootballWidgetConfig;
 }
 
 export interface Aposta { id: string; bancaId: string; userId?: string; loteria: string; concurso: string; data: string; createdAt: string; valor: string; numeros: string; status: 'premiado' | 'perdeu' | 'aguardando' | 'won' | 'lost' | 'cash_out'; detalhes: any; usadoSaldo?: number; usadoBonus?: number; isDescarga?: boolean; }
 export interface PostedResult { bancaId: string; loteria: string; jogoDoBichoLoteria?: string; horario: string; data: string; resultados: any; }
 export interface JDBLoteria { id: string; bancaId: string; nome: string; modalidades: any[]; dias: any; }
 export interface NewsMessage { id: string; bancaId: string; text: string; order: number; active: boolean; }
-export interface Banner { id: string; bancaId: string; title: string; imageUrl: string; position: number; active: boolean; linkUrl?: string; content?: string; }
-export interface Popup { id: string; bancaId: string; title: string; active: boolean; priority: number; imageUrl?: string; linkUrl?: string; description?: string; buttonText?: string; }
+export interface Banner { id: string; bancaId: string; title: string; imageUrl: string; position: number; active: boolean; linkUrl?: string; content?: string; startAt?: string; endAt?: string; thumbUrl?: string; imageMeta?: any; }
+export interface Popup { id: string; bancaId: string; title: string; active: boolean; priority: number; imageUrl?: string; linkUrl?: string; description?: string; buttonText?: string; startAt?: string; endAt?: string; thumbUrl?: string; imageMeta?: any; }
 export interface UserCommission { id: string; userId: string; apostaId: string; modulo: string; valorAposta: number; porcentagem: number; valorComissao: number; createdAt: string; }
 export interface CambistaMovement { id: string; userId: string; terminal: string; tipo: string; valor: number; createdAt: string; modulo?: string; observacao?: string; }
 export interface PromoterCreditLog { id: string; userId: string; terminal: string; valor: number; motivo: string; createdAt: string; }
 export interface BingoWinner { userId: string; userName: string; terminalId: string; category: string; winAmount: number; winningNumbers: number[]; wonAt: string; type: string; }
-export interface BingoDraw { id: string; bancaId: string; drawNumber: number; status: string; scheduledAt: string; ticketPrice: number; prizeRules: any; drawnNumbers: number[]; totalTickets: number; totalRevenue: number; housePercent: number; payoutTotal: number; updatedAt: string; winnersFound: any; }
-export interface BingoTicket { id: string; bancaId: string; drawId: string; userId: string; userName: string; terminalId: string; quantity: number; amountPaid: number; createdAt: string; status: string; ticketNumbers: number[][]; isBot?: boolean; }
+export interface BingoDraw { id: string; bancaId: string; drawNumber: number; status: string; scheduledAt: string; ticketPrice: number; prizeRules: any; drawnNumbers: number[]; totalTickets: number; totalRevenue: number; housePercent: number; payoutTotal: number; updatedAt: string; finishedAt?: string; startedAt?: string; winnersFound: any; }
+export interface BingoTicket { id: string; bancaId: string; drawId: string; userId: string; userName: string; terminalId: string; quantity: number; amountPaid: number; createdAt: string; status: string; ticketNumbers: number[][]; isBot?: boolean; result?: { winAmount: number }; }
 export interface BingoSettings { bancaId: string; enabled: boolean; ticketPriceDefault: number; housePercentDefault: number; prizeDefaults: any; scheduleMode: string; autoSchedule: any; maxTicketsPerUserDefault: number; preDrawHoldSeconds: number; rtpEnabled: boolean; rtpPercent: number; }
 export interface SnookerLiveConfig { bancaId: string; enabled: boolean; defaultChannelId: string; showLiveBadge: boolean; betsEnabled: boolean; minBet: number; maxBet: number; cashOutMargin: number; chatEnabled: boolean; reactionsEnabled: boolean; profanityFilterEnabled: boolean; topHeight: number; bubbleSize: number; autoShow: boolean; defaultState: string; showOnHome: boolean; showOnSinuca: boolean; title: string; youtubeUrl: string; youtubeEmbedId: string; }
 export interface SnookerChannel { id: string; bancaId: string; title: string; description: string; youtubeUrl: string; embedId: string; status: string; scheduledAt: string; startedAt?: string; finishedAt?: string; playerA: any; playerB: any; odds: any; scoreA: number; scoreB: number; bestOf: number; houseMargin: number; viewerCount: number; priority: number; enabled: boolean; createdAt: string; updatedAt: string; }
 export interface SnookerBet { id: string; userId: string; userName: string; channelId: string; pick: string; amount: number; oddsA: number; oddsB: number; oddsD: number; status: string; createdAt: string; }
-export interface SnookerFinancialSummary { id: string; channelId: string; channelTitle: string; totalPot: number; totalPayout: number; houseProfit: number; settledAt: string; }
+export interface SnookerFinancialSummary { id: string; channelId: string; channelTitle: string; totalPot: number; totalPayout: number; houseProfit: number; settledAt: string; roundNumber?: number; }
 export interface SnookerScoreboard { id: string; matchTitle: string; playerA: any; playerB: any; scoreA: number; scoreB: number; frame: number; statusText: string; round: any; }
 
 interface AppContextType {
@@ -101,14 +116,49 @@ interface AppContextType {
   updateChampionship: (id: string, data: Partial<FootballChampionship>) => void;
   deleteMatch: (id: string) => void;
 
-  // Outros estados...
-  news: NewsMessage[]; banners: Banner[]; popups: Popup[]; jdbLoterias: JDBLoteria[]; postedResults: PostedResult[];
-  genericLotteryConfigs: any[]; updateGenericLottery: (c: any) => void; casinoSettings: any; updateCasinoSettings: (s: any) => void;
-  bingoSettings: BingoSettings; updateBingoSettings: (settings: any) => void; bingoDraws: BingoDraw[]; bingoTickets: BingoTicket[];
-  snookerLiveConfig: SnookerLiveConfig; updateSnookerLiveConfig: (c: any) => void; snookerChannels: SnookerChannel[]; snookerBets: SnookerBet[];
-  snookerFinancialHistory: SnookerFinancialSummary[]; snookerPresence: any; snookerChatMessages: any[]; snookerScoreboards: any;
-  celebrationTrigger: boolean; clearCelebration: () => void; isFullscreen: boolean; toggleFullscreen: () => void;
-  cambistaMovements: CambistaMovement[]; registerCambistaMovement: (m: any) => void; promoterCredits: PromoterCreditLog[];
+  // Global UI
+  celebrationTrigger: boolean;
+  clearCelebration: () => void;
+  isFullscreen: boolean;
+  toggleFullscreen: () => void;
+
+  // Modulos
+  news: NewsMessage[];
+  banners: Banner[];
+  popups: Popup[];
+  jdbLoterias: JDBLoteria[];
+  postedResults: PostedResult[];
+  genericLotteryConfigs: any[];
+  casinoSettings: any;
+  bingoSettings: BingoSettings;
+  bingoDraws: BingoDraw[];
+  bingoTickets: BingoTicket[];
+  snookerLiveConfig: SnookerLiveConfig;
+  snookerChannels: SnookerChannel[];
+  snookerBets: SnookerBet[];
+  snookerFinancialHistory: SnookerFinancialSummary[];
+  snookerPresence: any;
+  snookerChatMessages: any[];
+  snookerScoreboards: any;
+  cambistaMovements: CambistaMovement[];
+  promoterCredits: PromoterCreditLog[];
+
+  // Actions
+  addBanner: (b: any) => void; updateBanner: (b: any) => void; deleteBanner: (id: string) => void;
+  addPopup: (p: any) => void; updatePopup: (p: any) => void; deletePopup: (id: string) => void;
+  addNews: (n: any) => void; updateNews: (n: any) => void; deleteNews: (id: string) => void;
+  addJDBLoteria: (l: any) => void; updateJDBLoteria: (l: any) => void; deleteJDBLoteria: (id: string) => void;
+  processarResultados: (r: any) => void; updateGenericLottery: (c: any) => void; updateCasinoSettings: (s: any) => void;
+  updateBingoSettings: (s: any) => void; createBingoDraw: (d: any) => void; buyBingoTickets: (dId: string, q: number) => boolean;
+  startBingoDraw: (id: string) => void; finishBingoDraw: (id: string) => void; cancelBingoDraw: (id: string, r: string) => void;
+  refundBingoTicket: (id: string) => void; payBingoPayout: (id: string) => void;
+  updateSnookerLiveConfig: (c: any) => void; addSnookerChannel: (c: any) => void; updateSnookerChannel: (c: any) => void;
+  deleteSnookerChannel: (id: string) => void; joinChannel: (cId: string, uId: string) => void; leaveChannel: (cId: string, uId: string) => void;
+  sendSnookerChatMessage: (cId: string, t: string) => void; deleteSnookerChatMessage: (id: string) => void;
+  sendSnookerReaction: (cId: string, r: string) => void; placeSnookerBet: (b: any) => boolean;
+  cashOutSnookerBet: (id: string) => void; updateSnookerScoreboard: (id: string, s: any) => void;
+  settleSnookerRound: (id: string, w: string) => void; registerCambistaMovement: (m: any) => void;
+  addPromoterCredit: (t: string, v: number, r: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -128,7 +178,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Football States
   const [footballApiConfig, setFootballApiConfig] = useState<FootballApiConfig>({
-    bancaId: 'global', provider: 'api-football', apiKey: '67eaf48f57d4476967f7d6557e381a7a', baseUrl: 'https://v3.football.api-sports.io', mode: 'live'
+    bancaId: 'global',
+    provider: 'api-football',
+    apiKey: '67eaf48f57d4476967f7d6557e381a7a',
+    baseUrl: 'https://v3.football.api-sports.io',
+    mode: 'live',
+    widgetConfig: {
+      lang: 'pt',
+      theme: 'dark',
+      refresh: 30,
+      showLogos: true,
+      showErrors: true,
+      standings: true,
+      squad: true,
+      statistics: true,
+      playerStatistics: true,
+      injuries: true,
+      defaultTab: 'games',
+      gameTab: 'statistics'
+    }
   });
   const [footballMatches, setFootballMatches] = useState<FootballMatch[]>([]);
   const [footballChampionships, setFootballChampionships] = useState<FootballChampionship[]>([]);
@@ -184,6 +252,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const updateFootballApiConfig = useCallback((upd: Partial<FootballApiConfig>) => {
     setFootballApiConfig(prev => {
       const next = { ...prev, ...upd };
+      // Deep merge for widgetConfig if provided
+      if (upd.widgetConfig) {
+        next.widgetConfig = { ...prev.widgetConfig, ...upd.widgetConfig };
+      }
       save(getSaveKey('app:football_api_config:v1'), next);
       return next;
     });
@@ -270,6 +342,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [popups, setPopups] = useState<Popup[]>([]);
   const [news, setNews] = useState<NewsMessage[]>([]);
   const [jdbLoterias, setJdbLoterias] = useState<JDBLoteria[]>([]);
+  const [celebrationTrigger, setCelebrationTrigger] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const contextValue = {
     user, balance, bonus, terminal, activeBancaId: currentBancaId, isGlobalMode,
@@ -279,13 +353,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     footballApiConfig, updateFootballApiConfig, testFootballConnection, syncFootballData,
     footballMatches, footballChampionships, footballTeams, updateChampionship, deleteMatch,
 
+    celebrationTrigger, clearCelebration: () => setCelebrationTrigger(false),
+    isFullscreen, toggleFullscreen: () => setIsFullscreen(!isFullscreen),
+
     news, banners, popups, jdbLoterias, postedResults: [],
     genericLotteryConfigs: [], updateGenericLottery: () => {}, casinoSettings: {}, updateCasinoSettings: () => {},
     bingoSettings: {} as any, updateBingoSettings: () => {}, bingoDraws: [], bingoTickets: [],
     snookerLiveConfig: {} as any, updateSnookerLiveConfig: () => {}, snookerChannels: [], snookerBets: [],
     snookerFinancialHistory: [], snookerPresence: {}, snookerChatMessages: [], snookerScoreboards: {},
-    celebrationTrigger: false, clearCelebration: () => {}, isFullscreen: false, toggleFullscreen: () => {},
-    cambistaMovements: [], registerCambistaMovement: () => {}, promoterCredits: []
+    cambistaMovements: [], registerCambistaMovement: () => {}, promoterCredits: [],
+    
+    addBanner: () => {}, updateBanner: () => {}, deleteBanner: () => {},
+    addPopup: () => {}, updatePopup: () => {}, deletePopup: () => {},
+    addNews: () => {}, updateNews: () => {}, deleteNews: () => {},
+    addJDBLoteria: () => {}, updateJDBLoteria: () => {}, deleteJDBLoteria: () => {},
+    processarResultados: () => {},
   };
 
   return <AppContext.Provider value={contextValue as any}>{children}</AppContext.Provider>;
