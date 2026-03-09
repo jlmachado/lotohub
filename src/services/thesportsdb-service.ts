@@ -67,44 +67,52 @@ class TheSportsDBService {
       return await response.json();
     } catch (error) {
       console.error(`[TheSportsDB] Falha no endpoint ${endpoint}:`, error);
-      throw error;
+      return { error: true, message: String(error) };
     }
   }
 
   // Busca todas as ligas filtradas por país e esporte
   async getLeaguesByCountry(country: string = 'Brazil', sport: string = 'Soccer'): Promise<ApiLeague[]> {
     const data = await this.request(`search_all_leagues.php?c=${country}&s=${sport}`);
-    return data.countrys || [];
+    return data?.countrys || [];
   }
 
   // Busca times de uma liga específica pelo nome
   async getTeamsInLeague(leagueName: string): Promise<ApiTeam[]> {
     const data = await this.request(`search_all_teams.php?l=${encodeURIComponent(leagueName)}`);
-    return data.teams || [];
+    return data?.teams || [];
   }
 
   // Busca os próximos 15 jogos de uma liga
   async getNextMatches(leagueId: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventsnextleague.php?id=${leagueId}`);
-    return data.events || [];
+    return data?.events || [];
   }
 
   // Busca os últimos 15 resultados de uma liga
   async getPastMatches(leagueId: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventspastleague.php?id=${leagueId}`);
-    return data.events || [];
+    return data?.events || [];
   }
 
   // Busca jogos de um dia específico
   async getMatchesByDate(date: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventsday.php?d=${date}&s=Soccer`);
-    return data.events || [];
+    return data?.events || [];
   }
 
   // Busca a tabela de classificação (standings)
-  async getStandings(leagueId: string, season: string = '2024'): Promise<ApiStanding[]> {
+  async getStandings(leagueId: string, season: string = String(new Date().getFullYear())): Promise<ApiStanding[]> {
     const data = await this.request(`lookuptable.php?l=${leagueId}&s=${season}`);
-    return data.table || [];
+    
+    // Se não encontrar para o ano atual, tenta o ano anterior (transição de temporada)
+    if (!data?.table) {
+      const lastYear = String(parseInt(season) - 1);
+      const fallbackData = await this.request(`lookuptable.php?l=${leagueId}&s=${lastYear}`);
+      return fallbackData?.table || [];
+    }
+    
+    return data?.table || [];
   }
 }
 

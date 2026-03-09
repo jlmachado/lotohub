@@ -5,7 +5,7 @@
 'use client';
 
 import { useToast } from '@/hooks/use-toast';
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import { getCurrentUser, logout } from '@/utils/auth';
 import { useRouter } from 'next/navigation';
 import { 
@@ -14,7 +14,8 @@ import {
   NormalizedLeague,
   fetchBrazilianLeagues,
   syncFootballMatches as syncMatchesAction,
-  syncFootballStandings as syncStandingsAction
+  syncFootballStandings as syncStandingsAction,
+  getSPDate
 } from '@/services/football-sync-service';
 
 export interface FootballSyncData {
@@ -24,7 +25,9 @@ export interface FootballSyncData {
   standings: NormalizedStanding[];
   leagues: NormalizedLeague[];
   lastSync: string | null;
-  syncStatus: 'idle' | 'syncing' | 'error';
+  lastSuccessfulSync: string | null;
+  nextScheduledSync: string | null;
+  syncStatus: 'idle' | 'syncing' | 'error' | 'partial';
 }
 
 // Interfaces básicas para outros módulos
@@ -46,7 +49,7 @@ interface AppContextType {
   // Football
   footballData: FootballSyncData;
   updateFootballLeagues: (leagues: NormalizedLeague[]) => void;
-  syncFootballAll: () => Promise<void>;
+  syncFootballAll: (manual?: boolean) => Promise<void>;
   
   // Caixa e Comissões
   cambistaMovements: any[];
@@ -129,6 +132,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const router = useRouter();
+  const syncInProgress = useRef(false);
 
   const [user, setUser] = useState<any>(null);
   const [balance, setBalance] = useState(0);
@@ -142,10 +146,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     standings: [],
     leagues: [],
     lastSync: null,
+    lastSuccessfulSync: null,
+    nextScheduledSync: null,
     syncStatus: 'idle'
   });
 
-  // Outros estados operacionais (LocalStorage)
+  // Outros estados operacionais
   const [apostas, setApostas] = useState<any[]>([]);
   const [cambistaMovements, setCambistaMovements] = useState<any[]>([]);
   const [userCommissions, setUserCommissions] = useState<any[]>([]);
@@ -173,14 +179,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [celebrationTrigger, setCelebrationTrigger] = useState(false);
 
+  // --- PERSISTÊNCIA INICIAL & AUTO-INIT ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
     // Carregar dados salvos do futebol
-    const storedFootball = localStorage.getItem('app:football:v4');
+    const storedFootball = localStorage.getItem('app:football:v5');
     if (storedFootball) setFootballData(JSON.parse(storedFootball));
 
-    // Inicializa sessões e outros estados...
+    // Inicializa sessões
     const refreshSession = () => {
       const currentUser = getCurrentUser();
       setUser(currentUser);
@@ -198,18 +205,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Persistência de Futebol
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    localStorage.setItem('app:football:v4', JSON.stringify(footballData));
+    localStorage.setItem('app:football:v5', JSON.stringify(footballData));
   }, [footballData]);
 
+  // --- SINCRONIZAÇÃO DE FUTEBOL ---
   const updateFootballLeagues = (leagues: NormalizedLeague[]) => {
     setFootballData(prev => ({ ...prev, leagues }));
   };
 
-  const syncFootballAll = async () => {
-    setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
+  const syncFootballAll = useCallback(async (manual = false) => {
+    if (syncInProgress.current) return;
+    syncInProgress.current = true;
+
+    setFootballData(prev => ({ ...prev, syncStatus: 'syncing', lastSync: new Date().toISOString() }));
+    
     try {
       let currentLeagues = footballData.leagues;
+      
+      // Auto-boot das ligas se estiver vazio
       if (currentLeagues.length === 0) {
+        console.log("[FOOTBALL] Iniciando busca automática de ligas brasileiras...");
         currentLeagues = await fetchBrazilianLeagues();
       }
 
@@ -217,7 +232,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       
       if (activeLeagueIds.length === 0) {
         setFootballData(prev => ({ ...prev, leagues: currentLeagues, syncStatus: 'idle' }));
-        toast({ variant: 'destructive', title: 'Nenhuma liga selecionada', description: 'Ative pelo menos uma liga brasileira para sincronizar.' });
+        if (manual) toast({ variant: 'destructive', title: 'Nenhuma liga ativa', description: 'Ative ligas no admin para sincronizar jogos.' });
+        syncInProgress.current = false;
         return;
       }
 
@@ -226,22 +242,78 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         syncStandingsAction(activeLeagueIds)
       ]);
 
-      setFootballData({
-        leagues: currentLeagues,
-        todayMatches: matches.today,
-        nextMatches: matches.next,
-        pastMatches: matches.past,
-        standings,
-        lastSync: new Date().toISOString(),
-        syncStatus: 'idle'
+      setFootballData(prev => {
+        // Lógica de MERGE para não perder dados se a API vier vazia
+        const today = matches.today.length > 0 ? matches.today : prev.todayMatches;
+        const next = matches.next.length > 0 ? matches.next : prev.nextMatches;
+        const past = matches.past.length > 0 ? matches.past : prev.pastMatches;
+        const st = standings.length > 0 ? standings : prev.standings;
+
+        return {
+          leagues: currentLeagues,
+          todayMatches: today,
+          nextMatches: next,
+          pastMatches: past,
+          standings: st,
+          lastSync: new Date().toISOString(),
+          lastSuccessfulSync: new Date().toISOString(),
+          nextScheduledSync: null, // Será preenchido pelo effect de loop
+          syncStatus: 'idle'
+        };
       });
 
-      toast({ title: 'Sync Concluído', description: `Dados de ${activeLeagueIds.length} ligas brasileiras atualizados.` });
+      if (manual) toast({ title: 'Sync Concluído', description: 'Dados de futebol atualizados com sucesso.' });
+      console.log(`[FOOTBALL] Sincronização concluída com sucesso em ${new Date().toLocaleTimeString()}`);
     } catch (e) {
+      console.error("[FOOTBALL] Falha na sincronização automática:", e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
-      toast({ variant: 'destructive', title: 'Erro no Sync', description: 'Falha ao conectar com TheSportsDB.' });
+    } finally {
+      syncInProgress.current = false;
     }
-  };
+  }, [footballData.leagues, toast]);
+
+  // --- LOOP DE AUTO-SYNC ---
+  useEffect(() => {
+    const runAutoSync = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      
+      // Sincroniza a cada 15 min entre 08h e 23h59 (horário de pico)
+      // Senão a cada 60 min
+      const intervalMinutes = (hour >= 8) ? 15 : 60;
+      
+      const last = footballData.lastSuccessfulSync ? new Date(footballData.lastSuccessfulSync) : new Date(0);
+      const diffMs = now.getTime() - last.getTime();
+      const diffMin = diffMs / (1000 * 60);
+
+      // Programar próxima exibição no Admin
+      const nextSyncDate = new Date(now.getTime() + (intervalMinutes * 60000));
+      setFootballData(prev => ({ ...prev, nextScheduledSync: nextSyncDate.toISOString() }));
+
+      if (diffMin >= intervalMinutes || footballData.leagues.length === 0) {
+        syncFootballAll();
+      }
+    };
+
+    // Executa no boot
+    const bootTimer = setTimeout(runAutoSync, 3000);
+
+    // Loop
+    const interval = setInterval(runAutoSync, 60000 * 5); // Verifica a cada 5 min se precisa rodar o sync principal
+
+    // Dispara quando volta para a aba
+    const handleFocus = () => {
+      console.log("[FOOTBALL] Aba focada, verificando necessidade de sync...");
+      runAutoSync();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearTimeout(bootTimer);
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [syncFootballAll, footballData.lastSuccessfulSync, footballData.leagues.length]);
 
   const registerCambistaMovement = (movement: any) => {
     const newMovements = [{ ...movement, id: `mov-${Date.now()}`, createdAt: new Date().toISOString() }, ...cambistaMovements];

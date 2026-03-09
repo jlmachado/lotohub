@@ -7,11 +7,11 @@
 
 import { useAppContext } from '@/context/AppContext';
 import { Header } from '@/components/header';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Trophy, Clock, Flag, LayoutGrid } from 'lucide-react';
+import { Calendar, Trophy, Clock, Flag, LayoutGrid, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
 import { useMemo } from 'react';
 
@@ -20,6 +20,7 @@ export default function FutebolDashboardPage() {
 
   // Agrupar jogos por liga para exibição hub
   const groupByLeague = (matches: any[]) => {
+    if (!matches) return {};
     return matches.reduce((acc: any, match) => {
       if (!acc[match.league]) acc[match.league] = [];
       acc[match.league].push(match);
@@ -40,9 +41,14 @@ export default function FutebolDashboardPage() {
             <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">Hub Futebol Brasil</h1>
             <p className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Todos os campeonatos nacionais em um só lugar</p>
           </div>
-          <Badge variant="outline" className="h-8 border-white/10 text-[10px] uppercase font-black bg-slate-900/50">
-            Último Sync: {footballData.lastSync ? new Date(footballData.lastSync).toLocaleTimeString('pt-BR') : 'Pendente'}
-          </Badge>
+          <div className="flex flex-col items-end gap-1">
+            <Badge variant="outline" className="h-8 border-white/10 text-[10px] uppercase font-black bg-slate-900/50">
+              Último Sync: {footballData.lastSuccessfulSync ? new Date(footballData.lastSuccessfulSync).toLocaleTimeString('pt-BR') : 'Pendente'}
+            </Badge>
+            {footballData.syncStatus === 'syncing' && (
+              <span className="text-[9px] text-primary font-bold animate-pulse uppercase">Sincronizando dados...</span>
+            )}
+          </div>
         </div>
 
         <Tabs defaultValue="hoje" className="w-full">
@@ -67,10 +73,10 @@ export default function FutebolDashboardPage() {
 
           <TabsContent value="classificacao">
             <div className="space-y-12">
-              {Object.keys(footballData.standings.reduce((acc:any, s) => { acc[s.leagueId] = true; return acc; }, {})).length === 0 ? (
-                <div className="text-center py-24">
+              {(!footballData.standings || footballData.standings.length === 0) ? (
+                <div className="text-center py-24 border-2 border-dashed border-white/5 rounded-3xl">
                   <Trophy className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p className="text-muted-foreground italic font-medium">Nenhuma classificação disponível. Sincronize no Admin.</p>
+                  <p className="text-muted-foreground italic font-medium">Nenhuma classificação disponível no momento.</p>
                 </div>
               ) : (
                 Object.entries(
@@ -105,8 +111,12 @@ export default function FutebolDashboardPage() {
                               <TableCell className="text-center font-bold text-slate-400">{team.position}</TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-3">
-                                  <div className="relative w-6 h-6">
-                                    <Image src={team.teamBadge} alt="" fill className="object-contain" />
+                                  <div className="relative w-6 h-6 bg-white/10 rounded-full p-1">
+                                    {team.teamBadge ? (
+                                      <Image src={team.teamBadge} alt="" fill className="object-contain" />
+                                    ) : (
+                                      <Trophy size={12} className="text-muted-foreground m-auto" />
+                                    )}
                                   </div>
                                   <span className="font-bold text-white text-xs md:text-sm">{team.teamName}</span>
                                 </div>
@@ -139,7 +149,7 @@ function GroupedMatchList({ groups, emptyMsg, isPast = false }: { groups: any, e
   if (leagueNames.length === 0) {
     return (
       <div className="text-center py-32 border-2 border-dashed border-white/5 rounded-3xl">
-        <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-20" />
+        <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-20" />
         <p className="text-muted-foreground font-bold">{emptyMsg}</p>
       </div>
     );
@@ -164,8 +174,11 @@ function GroupedMatchList({ groups, emptyMsg, isPast = false }: { groups: any, e
 }
 
 function MatchCard({ match, isPast }: { match: any, isPast: boolean }) {
+  const homeBadge = `https://www.thesportsdb.com/images/media/team/badge/small/${match.idHomeTeam}.png`;
+  const awayBadge = `https://www.thesportsdb.com/images/media/team/badge/small/${match.idAwayTeam}.png`;
+
   return (
-    <Card className="bg-card border-white/5 hover:border-primary/30 transition-all group shadow-xl">
+    <Card className="bg-card border-white/5 hover:border-primary/30 transition-all group shadow-xl overflow-hidden">
       <CardHeader className="p-3 bg-white/5 border-b border-white/5">
         <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-muted-foreground">
           <span className="text-primary flex items-center gap-1">
@@ -177,8 +190,8 @@ function MatchCard({ match, isPast }: { match: any, isPast: boolean }) {
       <CardContent className="p-6">
         <div className="flex items-center justify-between gap-2">
           <div className="flex flex-col items-center flex-1 text-center space-y-2">
-            <div className="relative w-12 h-12">
-              <Image src={`https://www.thesportsdb.com/images/media/team/badge/small/${match.idHomeTeam}.png`} alt="" fill className="object-contain" />
+            <div className="relative w-12 h-12 bg-white/5 rounded-full p-2">
+              <Image src={homeBadge} alt="" fill className="object-contain p-1" />
             </div>
             <span className="font-bold text-[11px] leading-tight text-white uppercase">{match.homeTeam}</span>
           </div>
@@ -193,8 +206,8 @@ function MatchCard({ match, isPast }: { match: any, isPast: boolean }) {
           </div>
 
           <div className="flex flex-col items-center flex-1 text-center space-y-2">
-            <div className="relative w-12 h-12">
-              <Image src={`https://www.thesportsdb.com/images/media/team/badge/small/${match.idAwayTeam}.png`} alt="" fill className="object-contain" />
+            <div className="relative w-12 h-12 bg-white/5 rounded-full p-2">
+              <Image src={awayBadge} alt="" fill className="object-contain p-1" />
             </div>
             <span className="font-bold text-[11px] leading-tight text-white uppercase">{match.awayTeam}</span>
           </div>

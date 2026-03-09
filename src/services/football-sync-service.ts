@@ -44,6 +44,18 @@ export interface NormalizedLeague {
   lastSync?: string;
 }
 
+/**
+ * Retorna a data atual formatada como YYYY-MM-DD no fuso de São Paulo
+ */
+export const getSPDate = () => {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+};
+
 const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
   id: m.idEvent,
   idLeague: m.idLeague,
@@ -63,12 +75,14 @@ const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
 
 export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
   const leagues = await theSportsDB.getLeaguesByCountry('Brazil', 'Soccer');
-  return leagues.map(l => ({
+  const defaults = ['Série A', 'Série B', 'Copa do Brasil'];
+  
+  return (leagues || []).map(l => ({
     id: l.idLeague,
     name: l.strLeague,
     country: l.strCountry || 'Brazil',
     badge: l.strBadge || '',
-    importar: l.strLeague.includes('Serie A') // Pré-ativa Série A por padrão
+    importar: defaults.some(d => l.strLeague.includes(d))
   }));
 }
 
@@ -81,7 +95,7 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
   let allNext: NormalizedMatch[] = [];
   let allPast: NormalizedMatch[] = [];
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getSPDate();
 
   for (const id of leagueIds) {
     try {
@@ -93,19 +107,20 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
       const normalizedNext = (nextApi || []).map(normalizeMatch);
       const normalizedPast = (pastApi || []).map(normalizeMatch);
 
-      // Agrega e separa por período
+      // Agrega e separa por período baseado no fuso SP
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
-      allToday = [...allToday, 
-        ...normalizedNext.filter(m => m.date === todayStr), 
-        ...normalizedPast.filter(m => m.date === todayStr)
-      ];
+      
+      const todayFromNext = normalizedNext.filter(m => m.date === todayStr);
+      const todayFromPast = normalizedPast.filter(m => m.date === todayStr);
+      allToday = [...allToday, ...todayFromNext, ...todayFromPast];
+      
       allPast = [...allPast, ...normalizedPast.filter(m => m.date < todayStr)];
     } catch (e) {
-      console.error(`Erro ao sincronizar jogos da liga ${id}:`, e);
+      console.error(`[SYNC] Erro na liga ${id}:`, e);
     }
   }
 
-  // Remove duplicatas de hoje (pode acontecer entre endpoints)
+  // Remove duplicatas de hoje (pode acontecer entre endpoints de next/past)
   const uniqueToday = Array.from(new Map(allToday.map(m => [m.id, m])).values());
 
   return {
@@ -117,11 +132,12 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
 export async function syncFootballStandings(leagueIds: string[]): Promise<NormalizedStanding[]> {
   let allStandings: NormalizedStanding[] = [];
+  const currentYear = String(new Date().getFullYear());
 
   for (const id of leagueIds) {
     try {
-      const table = await theSportsDB.getStandings(id);
-      if (table && Array.isArray(table)) {
+      const table = await theSportsDB.getStandings(id, currentYear);
+      if (table && Array.isArray(table) && table.length > 0) {
         const normalized = table.map(s => ({
           position: parseInt(s.intRank),
           teamId: s.idTeam,
@@ -138,7 +154,7 @@ export async function syncFootballStandings(leagueIds: string[]): Promise<Normal
         allStandings = [...allStandings, ...normalized];
       }
     } catch (e) {
-      console.error(`Erro ao sincronizar classificação da liga ${id}:`, e);
+      console.error(`[SYNC] Erro classificação liga ${id}:`, e);
     }
   }
 
