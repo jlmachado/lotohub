@@ -56,6 +56,13 @@ export const getSPDate = () => {
   }).format(new Date());
 };
 
+/**
+ * Remove acentos e normaliza texto para comparação segura
+ */
+const normalizeText = (text: string) => {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
+
 const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
   id: m.idEvent,
   idLeague: m.idLeague,
@@ -79,19 +86,20 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
     
     // Lista expandida de ativação padrão para campeonatos brasileiros
     const keywords = [
-      'Serie A', 'Série A', 
-      'Serie B', 'Série B',
-      'Serie C', 'Série C',
-      'Copa do Brasil', 
-      'Paulista', 'Carioca', 'Mineiro', 'Gaúcho'
+      'serie a', 'série a', 
+      'serie b', 'série b',
+      'serie c', 'série c',
+      'copa do brasil', 
+      'paulista', 'carioca', 'mineiro', 'gaúcho', 'gaucho',
+      'baiano', 'paranaense', 'pernambucano', 'cearense'
     ];
     
     let mapped = (leagues || []).map(l => {
-      const name = l.strLeague || '';
-      const alt = l.strLeagueAlternate || '';
+      const name = normalizeText(l.strLeague || '');
+      const alt = normalizeText(l.strLeagueAlternate || '');
+      
       const shouldImport = keywords.some(k => 
-        name.toLowerCase().includes(k.toLowerCase()) || 
-        alt.toLowerCase().includes(k.toLowerCase())
+        name.includes(k) || alt.includes(k)
       );
 
       return {
@@ -103,8 +111,9 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
       };
     });
 
-    // Fallback: Se nenhuma liga foi ativada pelas keywords, ativa as 5 primeiras nacionais
+    // Fallback: Se nenhuma liga foi ativada pelas keywords, ativa as 5 primeiras para não ficar vazio
     if (mapped.length > 0 && !mapped.some(m => m.importar)) {
+      console.log("[Football Sync] Nenhuma liga casou com as keywords. Ativando fallback.");
       for (let i = 0; i < Math.min(5, mapped.length); i++) {
         mapped[i].importar = true;
       }

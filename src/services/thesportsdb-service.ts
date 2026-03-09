@@ -48,16 +48,20 @@ export interface ApiStanding {
 class TheSportsDBService {
   /**
    * Faz requisição para a API TheSportsDB através da rota de proxy interna.
-   * Lança erros reais para diagnóstico.
+   * Lança erros reais para diagnóstico no frontend.
    */
   private async request(endpoint: string) {
     try {
-      const response = await fetch(`/api/thesportsdb?endpoint=${encodeURIComponent(endpoint)}`);
+      const response = await fetch(`/api/thesportsdb?endpoint=${encodeURIComponent(endpoint)}`, {
+        cache: 'no-store'
+      });
+      
       const result = await response.json();
       
       if (!result.ok) {
         const errorMsg = result.message || 'Erro desconhecido no proxy';
-        console.error(`[TheSportsDB Service] Erro no endpoint ${endpoint}:`, result);
+        const logMsg = `[TheSportsDB Service] Erro no endpoint ${endpoint}: ${errorMsg}`;
+        console.error(logMsg, result);
         throw new Error(errorMsg);
       }
       

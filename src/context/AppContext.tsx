@@ -1,5 +1,5 @@
 /**
- * @fileOverview Contexto global com bootstrap automático e sincronização resiliente para Futebol.
+ * @fileOverview Contexto global com bootstrap automático e sincronização resiliente para Futebol (TheSportsDB V1 123).
  */
 
 'use client';
@@ -107,7 +107,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const FOOTBALL_STORAGE_KEY = 'app:football:v8'; // Invalida cache v7
+const FOOTBALL_STORAGE_KEY = 'app:football:v8'; // Invalida versões antigas (v7) para novo bootstrap
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
@@ -208,7 +208,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         syncStandingsAction(activeLeagueIds)
       ]);
 
-      // Verifica se houve dados reais retornados (incluindo passados)
+      // Verifica se houve dados reais retornados (incluindo passados ou tabelas)
       const hasNewData = 
         matches.today.length > 0 || 
         matches.next.length > 0 || 
@@ -230,7 +230,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (manual) {
         toast({ 
           title: hasNewData ? 'Sincronização Concluída' : 'Sync Finalizado (Sem dados novos)', 
-          description: hasNewData ? 'Dados atualizados com a TheSportsDB.' : 'Aguardando novas informações da API.' 
+          description: hasNewData ? 'Os dados foram atualizados com sucesso.' : 'A API ainda não publicou novos dados para as ligas ativas.' 
         });
       }
     } catch (e: any) {
@@ -242,7 +242,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       syncInProgress.current = false;
     }
-  }, [footballData.leagues, toast]);
+  }, [footballData.leagues, footballData.lastSuccessfulSync, toast]);
 
   // --- Scheduler Automático ---
   useEffect(() => {
