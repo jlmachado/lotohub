@@ -1,182 +1,107 @@
+/**
+ * @fileOverview Área Administrativa do Futebol (TheSportsDB).
+ */
+
 'use client';
 
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Label } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
   Settings, 
   RefreshCw, 
+  Trophy, 
+  Activity, 
+  Search, 
   CheckCircle2, 
-  AlertCircle, 
-  Zap,
-  Activity,
-  Trash2,
-  Calendar,
-  LayoutGrid,
-  ShieldCheck,
-  Eye,
-  Trophy,
-  Search,
-  CheckSquare,
-  Square
+  AlertCircle,
+  Database,
+  Globe
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FootballWidget, FootballWidgetContainer } from '@/components/football/widgets/FootballWidgetContainer';
-import Image from 'next/image';
+import { fetchAllAvailableLeagues } from '@/services/football-sync-service';
 
 export default function AdminFutebolConfigPage() {
-  const { 
-    footballApiConfig, 
-    updateFootballApiConfig, 
-    testFootballConnection, 
-    syncFootballData,
-    footballMatches,
-    footballTeams,
-    footballChampionships,
-    updateChampionship,
-    deleteMatch
-  } = useAppContext();
-
-  const [isTesting, setIsTesting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { footballData, syncFootballAll, updateFootballLeagues } = useAppContext();
   const [leagueSearch, setLeagueSearch] = useState('');
+  const [isSearchingLeagues, setIsSearchingLeagues] = useState(false);
 
-  const handleTest = async () => {
-    setIsTesting(true);
-    await testFootballConnection();
-    setIsTesting(false);
-  };
-
-  const handleSyncLeagues = async () => {
-    setIsSyncing(true);
-    await syncFootballData({ syncLeagues: true, syncTeams: false, syncFixtures: false });
-    setIsSyncing(false);
-  };
-
-  const handleSyncAll = async () => {
-    const hasActiveLeagues = footballChampionships.some(c => c.importar);
-    if (!hasActiveLeagues) {
-      alert("Selecione pelo menos uma liga na aba 'Ligas & Cobertura' antes de sincronizar jogos e times.");
-      return;
+  const handleSearchLeagues = async () => {
+    setIsSearchingLeagues(true);
+    try {
+      const leagues = await fetchAllAvailableLeagues();
+      updateFootballLeagues(leagues);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSearchingLeagues(false);
     }
-    setIsSyncing(true);
-    await syncFootballData({ syncLeagues: false, syncTeams: true, syncFixtures: true });
-    setIsSyncing(false);
   };
 
-  const handleWidgetUpdate = (field: string, value: any) => {
-    updateFootballApiConfig({
-      widgetConfig: {
-        ...footballApiConfig.widgetConfig,
-        [field]: value
-      }
-    });
-  };
-
-  const filteredChampionships = useMemo(() => {
-    if (!leagueSearch) return footballChampionships;
-    const term = leagueSearch.toLowerCase();
-    return footballChampionships.filter(c => 
-      c.name.toLowerCase().includes(term) || 
-      (c.country || '').toLowerCase().includes(term)
+  const toggleLeagueImport = (id: string) => {
+    const updated = footballData.leagues.map(l => 
+      l.id === id ? { ...l, importar: !l.importar } : l
     );
-  }, [footballChampionships, leagueSearch]);
+    updateFootballLeagues(updated);
+  };
 
-  const activeLeaguesCount = useMemo(() => 
-    footballChampionships.filter(c => c.importar).length, 
-  [footballChampionships]);
+  const filteredLeagues = useMemo(() => {
+    const term = leagueSearch.toLowerCase();
+    return footballData.leagues.filter(l => 
+      l.name.toLowerCase().includes(term) || 
+      l.country.toLowerCase().includes(term)
+    ).slice(0, 100);
+  }, [footballData.leagues, leagueSearch]);
+
+  const activeCount = footballData.leagues.filter(l => l.importar).length;
 
   return (
     <main className="p-4 md:p-8 space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Configuração Futebol</h1>
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central Futebol</h1>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-              Provider: {footballApiConfig.provider.toUpperCase()}
-            </Badge>
-            {footballApiConfig.status === 'connected' ? (
-              <Badge className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" /> Conectado</Badge>
-            ) : (
-              <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" /> {footballApiConfig.status || 'Desconectado'}</Badge>
-            )}
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Provedor: TheSportsDB</Badge>
+            <Badge className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" /> Conectado (API Free)</Badge>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handleTest} 
-            disabled={isTesting}
-            className="font-bold border-white/10"
-          >
-            {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4 text-primary" />}
-            Testar Conexão
-          </Button>
-          <Button 
-            onClick={handleSyncAll} 
-            disabled={isSyncing || footballApiConfig.status !== 'connected' || activeLeaguesCount === 0}
-            className="font-black uppercase lux-shine"
-          >
-            {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Sincronizar Jogos ({activeLeaguesCount} ligas)
-          </Button>
-        </div>
+        <Button 
+          onClick={syncFootballAll} 
+          disabled={footballData.syncStatus === 'syncing' || activeCount === 0}
+          className="lux-shine font-black uppercase"
+        >
+          {footballData.syncStatus === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
+          Sincronizar Tudo ({activeCount} Ligas)
+        </Button>
       </div>
 
-      <Tabs defaultValue="api" className="w-full">
+      <Tabs defaultValue="monitor" className="w-full">
         <TabsList className="bg-slate-950 border-white/10 h-12 p-1 gap-1">
-          <TabsTrigger value="api" className="gap-2"><Settings size={14} /> Credenciais</TabsTrigger>
-          <TabsTrigger value="leagues" className="gap-2"><Trophy size={14} /> Ligas & Cobertura</TabsTrigger>
-          <TabsTrigger value="widgets" className="gap-2"><LayoutGrid size={14} /> Configuração Widgets</TabsTrigger>
-          <TabsTrigger value="preview" className="gap-2"><Eye size={14} /> Pré-visualização</TabsTrigger>
-          <TabsTrigger value="data" className="gap-2"><Activity size={14} /> Dados Persistidos</TabsTrigger>
+          <TabsTrigger value="monitor" className="gap-2"><Activity size={14} /> Monitoramento</TabsTrigger>
+          <TabsTrigger value="leagues" className="gap-2"><Globe size={14} /> Ligas & Coverage</TabsTrigger>
+          <TabsTrigger value="config" className="gap-2"><Settings size={14} /> Configuração</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="api" className="pt-6">
-          <Card className="max-w-2xl border-white/5 bg-card/50">
-            <CardHeader>
-              <CardTitle>Configuração de Acesso</CardTitle>
-              <CardDescription>Configure sua chave de API e ambiente.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label>API Key (x-apisports-key)</Label>
-                <Input 
-                  type="password" 
-                  value={footballApiConfig.apiKey} 
-                  onChange={e => updateFootballApiConfig({ apiKey: e.target.value })}
-                  className="bg-black/20 font-mono"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Ambiente</Label>
-                  <Select value={footballApiConfig.mode} onValueChange={(v: any) => updateFootballApiConfig({ mode: v })}>
-                    <SelectTrigger className="bg-black/20"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="live">Produção</SelectItem>
-                      <SelectItem value="test">Testes (Mock)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Última Sincronização</Label>
-                  <p className="h-10 flex items-center px-3 bg-slate-950/50 rounded-md border border-white/5 text-xs text-muted-foreground">
-                    {footballApiConfig.lastSync ? new Date(footballApiConfig.lastSync).toLocaleString('pt-BR') : 'Pendente'}
-                  </p>
-                </div>
-              </div>
+        <TabsContent value="monitor" className="pt-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <StatCard title="Ligas Ativas" value={activeCount} icon={Globe} />
+            <StatCard title="Jogos Carregados" value={footballData.todayMatches.length + footballData.nextMatches.length} icon={RefreshCw} />
+            <StatCard title="Times Sincronizados" value={footballData.standings.length} icon={Trophy} />
+            <StatCard title="Status do Sync" value={footballData.syncStatus.toUpperCase()} icon={Activity} />
+          </div>
+          
+          <Card className="mt-6 border-white/5 bg-card/50">
+            <CardHeader><CardTitle>Logs de Sincronização</CardTitle></CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Última atualização global: {footballData.lastSync ? new Date(footballData.lastSync).toLocaleString('pt-BR') : 'Nunca'}
+              </p>
             </CardContent>
-            <CardFooter className="justify-end border-t border-white/5 pt-6">
-              <Button onClick={() => updateFootballApiConfig({})} className="lux-shine">Salvar Alterações</Button>
-            </CardFooter>
           </Card>
         </TabsContent>
 
@@ -184,22 +109,22 @@ export default function AdminFutebolConfigPage() {
           <Card className="border-white/5 bg-card/50">
             <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <CardTitle>Seleção de Campeonatos</CardTitle>
-                <CardDescription>Busque as ligas da API e selecione quais deseja importar para o sistema.</CardDescription>
+                <CardTitle>Gestão de Ligas</CardTitle>
+                <CardDescription>Pesquise e selecione os campeonatos que deseja monitorar.</CardDescription>
               </div>
-              <Button onClick={handleSyncLeagues} disabled={isSyncing || footballApiConfig.status !== 'connected'} variant="outline">
-                {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Carregar Ligas da API
+              <Button onClick={handleSearchLeagues} disabled={isSearchingLeagues} variant="outline">
+                {isSearchingLeagues ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Recarregar Ligas da API
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
+                <input 
                   placeholder="Pesquisar liga ou país..." 
+                  className="w-full bg-black/20 border border-white/10 rounded-lg pl-10 h-10 text-sm focus:outline-none focus:border-primary"
                   value={leagueSearch}
                   onChange={e => setLeagueSearch(e.target.value)}
-                  className="pl-10 bg-black/20"
                 />
               </div>
 
@@ -207,46 +132,27 @@ export default function AdminFutebolConfigPage() {
                 <Table>
                   <TableHeader className="bg-slate-950">
                     <TableRow className="border-white/5">
-                      <TableHead className="w-[50px]"></TableHead>
                       <TableHead className="text-[10px] uppercase font-black">Liga</TableHead>
                       <TableHead className="text-[10px] uppercase font-black">País</TableHead>
-                      <TableHead className="text-[10px] uppercase font-black text-center">Temporada</TableHead>
-                      <TableHead className="text-[10px] uppercase font-black text-right">Ação</TableHead>
+                      <TableHead className="text-[10px] uppercase font-black text-right">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredChampionships.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center py-12 text-muted-foreground italic">
-                          {footballChampionships.length === 0 ? "Clique em 'Carregar Ligas da API' para começar." : "Nenhuma liga encontrada para sua pesquisa."}
-                        </TableCell>
-                      </TableRow>
+                    {filteredLeagues.length === 0 ? (
+                      <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">Nenhuma liga encontrada.</TableCell></TableRow>
                     ) : (
-                      filteredChampionships.map((champ) => (
-                        <TableRow key={champ.apiId} className="border-white/5 hover:bg-white/5 transition-colors">
-                          <TableCell className="py-2">
-                            <div className="relative w-8 h-8">
-                              <Image src={champ.logo} alt="" fill className="object-contain" />
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-bold text-white">{champ.name}</span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-xs uppercase text-muted-foreground">{champ.country}</span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="outline" className="text-[10px]">{champ.currentSeason}</Badge>
-                          </TableCell>
+                      filteredLeagues.map(l => (
+                        <TableRow key={l.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                          <TableCell className="font-bold text-white">{l.name}</TableCell>
+                          <TableCell className="text-xs uppercase text-muted-foreground">{l.country}</TableCell>
                           <TableCell className="text-right">
                             <Button 
-                              variant={champ.importar ? "default" : "ghost"}
+                              variant={l.importar ? "default" : "ghost"} 
                               size="sm"
-                              className={champ.importar ? "bg-green-600 hover:bg-green-700" : "text-muted-foreground"}
-                              onClick={() => updateChampionship(champ.id, { importar: !champ.importar })}
+                              className={l.importar ? "bg-green-600 hover:bg-green-700" : "text-muted-foreground"}
+                              onClick={() => toggleLeagueImport(l.id)}
                             >
-                              {champ.importar ? <CheckSquare className="h-4 w-4 mr-1" /> : <Square className="h-4 w-4 mr-1" />}
-                              {champ.importar ? "Importando" : "Ignorar"}
+                              {l.importar ? "Sincronizando" : "Ignorar"}
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -259,147 +165,39 @@ export default function AdminFutebolConfigPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="widgets" className="pt-6">
-          <Card className="border-white/5 bg-card/50">
+        <TabsContent value="config" className="pt-6">
+          <Card className="max-w-2xl border-white/5 bg-card/50">
             <CardHeader>
-              <CardTitle>Configurações Visuais dos Widgets</CardTitle>
-              <CardDescription>Ajuste como os widgets oficiais da API-FOOTBALL aparecem para o usuário.</CardDescription>
+              <CardTitle>Provedor de Dados</CardTitle>
+              <CardDescription>O sistema está configurado para usar a TheSportsDB (Plano Gratuito).</CardDescription>
             </CardHeader>
-            <CardContent className="grid md:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <Label>Idioma</Label>
-                  <Select value={footballApiConfig.widgetConfig.lang} onValueChange={v => handleWidgetUpdate('lang', v)}>
-                    <SelectTrigger className="bg-black/20"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pt">Português (BR)</SelectItem>
-                      <SelectItem value="en">Inglês</SelectItem>
-                      <SelectItem value="es">Espanhol</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Tema</Label>
-                  <Select value={footballApiConfig.widgetConfig.theme} onValueChange={v => handleWidgetUpdate('theme', v)}>
-                    <SelectTrigger className="bg-black/20"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dark">Escuro</SelectItem>
-                      <SelectItem value="light">Claro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Taxa de Atualização (segundos)</Label>
-                  <Input 
-                    type="number" 
-                    value={footballApiConfig.widgetConfig.refresh} 
-                    onChange={e => handleWidgetUpdate('refresh', parseInt(e.target.value))}
-                    className="bg-black/20"
-                  />
-                </div>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Base URL</Label>
+                <Input value="https://www.thesportsdb.com/api/v1/json/1" readOnly className="bg-black/40" />
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-black/10">
-                  <Label className="text-xs">Mostrar Logos</Label>
-                  <Switch checked={footballApiConfig.widgetConfig.showLogos} onCheckedChange={v => handleWidgetUpdate('showLogos', v)} />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-black/10">
-                  <Label className="text-xs">Mostrar Erros</Label>
-                  <Switch checked={footballApiConfig.widgetConfig.showErrors} onCheckedChange={v => handleWidgetUpdate('showErrors', v)} />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-black/10">
-                  <Label className="text-xs">Classificação</Label>
-                  <Switch checked={footballApiConfig.widgetConfig.standings} onCheckedChange={v => handleWidgetUpdate('standings', v)} />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-black/10">
-                  <Label className="text-xs">Escalação</Label>
-                  <Switch checked={footballApiConfig.widgetConfig.squad} onCheckedChange={v => handleWidgetUpdate('squad', v)} />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-black/10">
-                  <Label className="text-xs">Estatísticas</Label>
-                  <Switch checked={footballApiConfig.widgetConfig.statistics} onCheckedChange={v => handleWidgetUpdate('statistics', v)} />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-black/10">
-                  <Label className="text-xs">Lesões</Label>
-                  <Switch checked={footballApiConfig.widgetConfig.injuries} onCheckedChange={v => handleWidgetUpdate('injuries', v)} />
-                </div>
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <Input value="1 (Free Tier)" readOnly className="bg-black/40" />
               </div>
             </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="preview" className="pt-6">
-          <Card className="border-white/5 bg-slate-900/50">
-            <CardHeader>
-              <CardTitle>Prévia Operacional</CardTitle>
-              <CardDescription>Simulação de carregamento dos widgets. Certifique-se de que a API Key é válida.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FootballWidgetContainer>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="border rounded-xl p-4 bg-black/40 min-h-[400px]">
-                    <h4 className="text-xs font-black uppercase text-primary mb-4">Ligas (Selecione uma para atualizar jogos)</h4>
-                    <FootballWidget 
-                      type="leagues" 
-                      targetLeague="wg-preview-games"
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="border rounded-xl p-4 bg-black/40 min-h-[400px]">
-                    <h4 className="text-xs font-black uppercase text-primary mb-4">Jogos da Liga</h4>
-                    <FootballWidget 
-                      id="wg-preview-games"
-                      type="fixtures" 
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              </FootballWidgetContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="data" className="pt-6">
-          <Card className="border-white/5 overflow-hidden">
-            <Table>
-              <TableHeader className="bg-slate-950">
-                <TableRow className="border-white/5">
-                  <TableHead className="text-[10px] uppercase font-black">Data/Hora</TableHead>
-                  <TableHead className="text-[10px] uppercase font-black">Confronto (ID)</TableHead>
-                  <TableHead className="text-[10px] uppercase font-black text-right">Ação</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {footballMatches.length === 0 ? (
-                  <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">Nenhum dado persistido localmente.</TableCell></TableRow>
-                ) : (
-                  footballMatches.map((match) => {
-                    const home = footballTeams.find(t => t.id === match.homeTeamId);
-                    const away = footballTeams.find(t => t.id === match.awayTeamId);
-                    return (
-                      <TableRow key={match.id} className="border-white/5">
-                        <TableCell className="text-xs font-mono">{new Date(match.dateTime).toLocaleString('pt-BR')}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold">{home?.name || '...'}</span>
-                            <span className="text-[9px] text-muted-foreground">x</span>
-                            <span className="font-bold">{away?.name || '...'}</span>
-                            <Badge variant="outline" className="text-[8px] font-mono ml-2">{match.id}</Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => deleteMatch(match.id)} className="text-red-500"><Trash2 size={14} /></Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
           </Card>
         </TabsContent>
       </Tabs>
     </main>
+  );
+}
+
+function StatCard({ title, value, icon: Icon }: any) {
+  return (
+    <Card className="border-white/5 bg-slate-900/50">
+      <CardHeader className="p-4 flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-[10px] uppercase font-black text-muted-foreground">{title}</CardTitle>
+        <Icon size={14} className="text-primary" />
+      </CardHeader>
+      <CardContent className="px-4 pb-4">
+        <div className="text-2xl font-black text-white italic">{value}</div>
+      </CardContent>
+    </Card>
   );
 }
