@@ -58,7 +58,6 @@ export interface FootballApiConfig {
   lastError?: string;
 }
 
-// ... Outras interfaces (Aposta, Bingo, Sinuca, etc) permanecem iguais ...
 export interface Aposta { id: string; bancaId: string; userId?: string; loteria: string; concurso: string; data: string; createdAt: string; valor: string; numeros: string; status: 'premiado' | 'perdeu' | 'aguardando' | 'won' | 'lost' | 'cash_out'; detalhes: any; usadoSaldo?: number; usadoBonus?: number; isDescarga?: boolean; }
 export interface PostedResult { bancaId: string; loteria: string; jogoDoBichoLoteria?: string; horario: string; data: string; resultados: any; }
 export interface JDBLoteria { id: string; bancaId: string; nome: string; modalidades: any[]; dias: any; }
@@ -128,7 +127,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Football States
   const [footballApiConfig, setFootballApiConfig] = useState<FootballApiConfig>({
-    bancaId: 'global', provider: 'api-football', apiKey: '', baseUrl: 'https://v3.football.api-sports.io', mode: 'live'
+    bancaId: 'global', provider: 'api-football', apiKey: '67eaf48f57d4476967f7d6557e381a7a', baseUrl: 'https://v3.football.api-sports.io', mode: 'live'
   });
   const [footballMatches, setFootballMatches] = useState<FootballMatch[]>([]);
   const [footballChampionships, setFootballChampionships] = useState<FootballChampionship[]>([]);
@@ -155,7 +154,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setFootballChampionships(load('app:football_champs:v1', []));
     setFootballTeams(load('app:football_teams:v1', []));
     
-    // ... Carregar outros estados (apostas, bingo, etc) ...
     setApostas(load('app:apostas:v1', []));
     setBanners(load('app:banners:v1', []));
     setPopups(load('app:popups:v1', []));
@@ -264,7 +262,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  // ... Outros estados e métodos ...
   const [apostas, setApostas] = useState<Aposta[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
