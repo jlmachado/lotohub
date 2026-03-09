@@ -1,9 +1,7 @@
 /**
  * @fileOverview Serviço oficial e exclusivo de integração com a API TheSportsDB (v1).
- * Fonte única de dados para o módulo de futebol utilizando a chave Free 123.
+ * Fonte única de dados para o módulo de futebol utilizando a chave Free 123 via proxy interno.
  */
-
-const BASE_URL = 'https://www.thesportsdb.com/api/v1/json/123';
 
 export interface ApiLeague {
   idLeague: string;
@@ -58,22 +56,22 @@ export interface ApiStanding {
 }
 
 class TheSportsDBService {
+  /**
+   * Faz requisição para a API TheSportsDB através da rota de proxy interna.
+   * Isso resolve erros de "Failed to fetch" no browser.
+   */
   private async request(endpoint: string) {
     try {
-      const response = await fetch(`${BASE_URL}/${endpoint}`, {
-        next: { revalidate: 300 } // Cache de 5 minutos
-      });
+      const response = await fetch(`/api/thesportsdb?endpoint=${encodeURIComponent(endpoint)}`);
       
-      if (response.status === 404) {
-        return { error: true, code: 404 };
+      if (!response.ok) {
+        if (response.status === 404) return { error: true, code: 404 };
+        throw new Error(`Proxy error: ${response.status}`);
       }
-
-      if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
       
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error(`[TheSportsDB] Falha no endpoint ${endpoint}:`, error);
+      console.error(`[TheSportsDB Proxy Request] Falha no endpoint ${endpoint}:`, error);
       return { error: true, message: String(error) };
     }
   }
