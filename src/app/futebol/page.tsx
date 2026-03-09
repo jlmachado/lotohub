@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppContext';
 import Image from 'next/image';
 import { Input } from '@/components/ui/input';
-import { X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LotteryBetSlip } from '@/components/LotteryBetSlip';
+import { TicketDialog } from '@/components/ticket-dialog';
 
 interface BetSlipItem {
     id: string;
@@ -19,42 +20,9 @@ interface BetSlipItem {
     value: number;
 }
 
-const BetSlipItemComponent = ({ item, onRemove, onValueChange }: { item: BetSlipItem, onRemove: (id: string) => void, onValueChange: (id: string, value: number) => void }) => {
-    
-    const getBetItemClass = (pick: 'home' | 'draw' | 'away') => {
-        if (pick === 'home') return 'casa';
-        if (pick === 'draw') return 'empate';
-        return 'fora';
-    }
-
-    return (
-        <div className={`aposta-item ${getBetItemClass(item.pick)}`}>
-            <div className="aposta-info">
-                 <p className="aposta-jogo">{item.match.homeTeamName} vs {item.match.awayTeamName}</p>
-                 <p className="aposta-mercado">Vencedor da Partida: <span className="font-bold">{item.pickLabel}</span></p>
-                 <p className="aposta-odd">@{item.odd.toFixed(2)}</p>
-            </div>
-            <div className="aposta-actions">
-                 <button className="remover-aposta" onClick={() => onRemove(item.id)}>&times;</button>
-            </div>
-            <div className="aposta-valor">
-                <Input 
-                    placeholder="Valor R$"
-                    type="number" 
-                    value={item.value || ''}
-                    onChange={e => onValueChange(item.id, parseFloat(e.target.value) || 0)}
-                    min="0"
-                    step="0.01"
-                />
-            </div>
-        </div>
-    );
-};
-
 const FeaturedMatch = ({ match, betSlip, handleAddBet }: { match: any, betSlip: BetSlipItem[], handleAddBet: (match: any, pick: 'home' | 'draw' | 'away') => void }) => {
     if (!match) return null;
 
-    // Simulate live data for demonstration
     const isLive = true; 
     const gameTime = 'Primeiro tempo 10:50';
     const scoreHome = 0;
@@ -114,25 +82,26 @@ export default function FutebolPage() {
     const { toast } = useToast();
     const [betSlip, setBetSlip] = useState<BetSlipItem[]>([]);
     const [activeChampionship, setActiveChampionship] = useState<string | 'all'>('all');
-    const [isBoletimOpen, setIsBoletimOpen] = useState(false);
+    
+    // Ticket Dialog States
+    const [isTicketDialogOpen, setIsTicketDialogOpen] = useState(false);
+    const [generatedTicketId, setGeneratedTicketId] = useState<string | null>(null);
+    const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
 
     useEffect(() => {
         try {
-            const savedSlip = localStorage.getItem('football_bet_slip');
-            if (savedSlip) {
-                setBetSlip(JSON.parse(savedSlip));
-            }
+            const savedSlip = localStorage.getItem('football_bet_slip_v2');
+            if (savedSlip) setBetSlip(JSON.parse(savedSlip));
         } catch (error) {
-            console.error("Failed to load bet slip from localStorage", error);
-            setBetSlip([]);
+            console.error("Failed to load bet slip", error);
         }
     }, []);
 
     useEffect(() => {
         try {
-            localStorage.setItem('football_bet_slip', JSON.stringify(betSlip));
+            localStorage.setItem('football_bet_slip_v2', JSON.stringify(betSlip));
         } catch (error) {
-            console.error("Failed to save bet slip to localStorage", error);
+            console.error("Failed to save bet slip", error);
         }
     }, [betSlip]);
 
@@ -173,9 +142,7 @@ export default function FutebolPage() {
     }, [footballMatches, footballTeams, footballChampionships]);
 
     const displayedMatches = useMemo(() => {
-        if (activeChampionship === 'all') {
-            return matchesByChampionship;
-        }
+        if (activeChampionship === 'all') return matchesByChampionship;
         return matchesByChampionship.filter(group => group.championshipId === activeChampionship);
     }, [matchesByChampionship, activeChampionship]);
     
@@ -193,26 +160,22 @@ export default function FutebolPage() {
             pick,
             pickLabel,
             odd: match.odds[pick],
-            value: 0,
+            value: 5, // Default initial value
         };
 
         setBetSlip(prev => {
             const existingIndex = prev.findIndex(item => item.match.id === match.id);
             if (existingIndex > -1) {
-                if (prev[existingIndex].id === newBet.id) {
-                    return prev.filter(item => item.id !== newBet.id);
-                }
+                if (prev[existingIndex].id === newBet.id) return prev.filter(item => item.id !== newBet.id);
                 const updatedSlip = [...prev];
-                const existingBet = updatedSlip[existingIndex];
-                updatedSlip[existingIndex] = { ...newBet, value: existingBet?.value || 0 };
+                updatedSlip[existingIndex] = { ...newBet, value: prev[existingIndex].value };
                 return updatedSlip;
             }
-            if(prev.length === 0) setIsBoletimOpen(true);
             return [...prev, newBet];
         });
     };
     
-    const handleRemoveBet = (id: string) => {
+    const handleRemoveBet = (id: string | number) => {
         setBetSlip(prev => prev.filter(item => item.id !== id));
     };
 
@@ -231,16 +194,35 @@ export default function FutebolPage() {
         );
     }, [betSlip]);
     
-    const handlePlaceBet = () => {
+    const handleFinalize = () => {
         if (totalValue <= 0) {
             toast({ variant: 'destructive', title: 'Valor Inválido', description: 'O valor total da aposta deve ser maior que zero.' });
             return;
         }
-        const success = placeFootballBet(betSlip);
-        if (success) {
-            setBetSlip([]);
-            setIsBoletimOpen(false);
+        
+        const summaryText = betSlip.map(i => `${i.match.homeTeamName} vs ${i.match.awayTeamName}: ${i.pickLabel} (@${i.odd.toFixed(2)})`).join('; ');
+        
+        const pouleId = placeFootballBet({
+            loteria: 'Futebol',
+            concurso: 'Esportivo',
+            data: new Date().toLocaleString('pt-BR'),
+            valor: `R$ ${totalValue.toFixed(2).replace('.', ',')}`,
+            numeros: summaryText,
+            detalhes: { selections: betSlip },
+        }, totalValue);
+
+        if (pouleId) {
+            setGeneratedTicketId(pouleId);
+            setTicketGenerationTime(new Date().toLocaleString('pt-BR'));
+            setIsTicketDialogOpen(true);
         }
+    };
+
+    const handleNewBet = () => {
+        setBetSlip([]);
+        setIsTicketDialogOpen(false);
+        setGeneratedTicketId(null);
+        setTicketGenerationTime(null);
     };
 
 
@@ -248,9 +230,9 @@ export default function FutebolPage() {
     <div>
       <Header />
       <main className="p-4 md:p-8">
-         <h2 className="text-3xl font-bold mb-6">Próximos Jogos de Futebol</h2>
+         <h2 className="text-3xl font-bold mb-6">Futebol</h2>
 
-         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
+         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start pb-20">
              <div className="hidden lg:block lg:col-span-1 sidebar-campeonatos">
                 <h4 className="font-bold text-lg mb-4">Campeonatos</h4>
                 <div className={`campeonato-item ${activeChampionship === 'all' ? 'active' : ''}`}>
@@ -326,52 +308,30 @@ export default function FutebolPage() {
                     </div>
                 ))}
             </div>
-
-            <>
-                <button id="boletimBtn" className="boletim-btn" onClick={() => setIsBoletimOpen(true)}>
-                    <span className="boletim-icone">🎰</span>
-                    {betSlip.length > 0 && <span className="boletim-count" id="boletim-count">{betSlip.length}</span>}
-                </button>
-
-                <div id="boletim-overlay" className={`boletim-overlay ${isBoletimOpen ? 'active' : ''}`} onClick={() => setIsBoletimOpen(false)}></div>
-
-                <div id="boletim-panel" className={`boletim-panel ${isBoletimOpen ? 'aberto' : ''}`}>
-                    <div className="boletim-header">
-                        <h3>Boletim de Apostas</h3>
-                        <button id="boletim-close" className="boletim-fechar" onClick={() => setIsBoletimOpen(false)}>&times;</button>
-                    </div>
-                    
-                    <div className="boletim-body" id="boletim-body">
-                        {betSlip.length === 0 ? (
-                            <div className="boletim-vazio" id="boletim-vazio">
-                                Nenhuma aposta selecionada
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {betSlip.map(item => <BetSlipItemComponent key={item.id} item={item} onRemove={handleRemoveBet} onValueChange={handleBetValueChange} />)}
-                            </div>
-                        )}
-                    </div>
-                    
-                    {betSlip.length > 0 && (
-                        <div className="boletim-footer" id="boletim-footer">
-                            <div className="boletim-resumo">
-                                <span>Total de Apostas: <strong>{betSlip.length}</strong></span>
-                                <span>Valor Total: <strong>R$ {totalValue.toFixed(2).replace('.', ',')}</strong></span>
-                                <span>Retorno Potencial: <strong>R$ {totalReturn.toFixed(2).replace('.', ',')}</strong></span>
-                            </div>
-                             <Button 
-                                className="btn-finalizar" 
-                                disabled={betSlip.length === 0 || totalValue <= 0}
-                                onClick={handlePlaceBet}
-                            >
-                                Fazer Aposta
-                            </Button>
-                        </div>
-                    )}
-                </div>
-            </>
          </div>
+
+         {/* Standardized Floating Bet Slip */}
+         <LotteryBetSlip 
+            items={betSlip}
+            totalValue={totalValue}
+            totalPossibleReturn={totalReturn}
+            onRemoveItem={handleRemoveBet}
+            onFinalize={handleFinalize}
+            lotteryName="Futebol"
+         />
+
+         {/* Standardized Ticket Dialog */}
+         <TicketDialog 
+            isOpen={isTicketDialogOpen}
+            onOpenChange={setIsTicketDialogOpen}
+            onNewBet={handleNewBet}
+            ticketId={generatedTicketId}
+            generationTime={ticketGenerationTime}
+            lotteryName="Futebol"
+            ticketItems={betSlip}
+            totalValue={totalValue}
+            possibleReturn={totalReturn}
+         />
       </main>
     </div>
   );

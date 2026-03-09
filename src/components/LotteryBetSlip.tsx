@@ -3,14 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import { X, ShoppingCart, Ticket } from 'lucide-react';
+import { X, ShoppingCart, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LotteryBetSlipProps {
   items: any[];
   totalValue: number;
   totalPossibleReturn: number;
-  onRemoveItem: (id: number) => void;
+  onRemoveItem: (id: string | number) => void;
   onFinalize: () => void;
   lotteryName: string;
 }
@@ -28,12 +28,10 @@ export function LotteryBetSlip({
   const [mounted, setMounted] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
 
-  // Garante que o portal só renderize no cliente
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Abre automaticamente ao adicionar a primeira aposta e dispara animação de pulso
   useEffect(() => {
     if (items.length > prevCount) {
       if (items.length === 1) setIsOpen(true);
@@ -56,14 +54,13 @@ export function LotteryBetSlip({
 
   const cartContent = (
     <>
-      {/* Botão Flutuante (FAB) - Z-index ultra alto */}
       <button
         id="boletimBtn"
         onClick={toggleOpen}
         className={cn(
           "fixed bottom-[84px] right-4 z-[9999] h-16 w-16 rounded-full bg-primary text-primary-foreground shadow-[0_8px_30px_rgba(0,0,0,0.6)] transition-all duration-300 active:scale-90 flex items-center justify-center border-2 border-white/20",
           items.length === 0 && "opacity-50 grayscale pointer-events-none scale-75",
-          isOpen && "opacity-0 scale-90 pointer-events-none", // Esconde quando aberto
+          isOpen && "opacity-0 scale-90 pointer-events-none",
           isPulsing && !isOpen && "animate-bounce"
         )}
       >
@@ -78,7 +75,6 @@ export function LotteryBetSlip({
         )}
       </button>
 
-      {/* Overlay Escuro */}
       <div
         className={cn(
           "fixed inset-0 z-[9997] bg-black/80 backdrop-blur-[3px] transition-opacity duration-300",
@@ -87,15 +83,13 @@ export function LotteryBetSlip({
         onClick={() => setIsOpen(false)}
       />
 
-      {/* Bottom Sheet Panel (Carrinho Profissional) */}
       <div
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-[9998] w-full max-w-2xl mx-auto bg-background shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) flex flex-col border-t border-white/10 rounded-t-[24px] overflow-hidden",
+          "fixed bottom-0 left-0 right-0 z-[9998] w-full max-w-2xl mx-auto bg-background shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-transform duration-500 flex flex-col border-t border-white/10 rounded-t-[24px] overflow-hidden",
           isOpen ? "translate-y-0" : "translate-y-full"
         )}
-        style={{ height: '55vh', maxHeight: '80vh' }}
+        style={{ height: '65vh', maxHeight: '85vh' }}
       >
-        {/* Header Profissional */}
         <div className="flex items-center justify-between p-5 bg-card border-b border-white/10 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary/10 rounded-xl">
@@ -114,7 +108,6 @@ export function LotteryBetSlip({
           </button>
         </div>
 
-        {/* Lista de Apostas (Área com Scroll) */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/5 custom-scrollbar">
           {items.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground italic gap-4 opacity-40">
@@ -123,12 +116,18 @@ export function LotteryBetSlip({
             </div>
           ) : (
             items.map((aposta) => {
+              const isFootball = lotteryName === 'Futebol';
               const displayNumbers = Array.isArray(aposta.numeros)
                 ? aposta.numeros.join(', ')
                 : aposta.numeros || aposta.numero;
-              const valorAposta = typeof aposta.valor === 'string' 
-                ? parseFloat(aposta.valor.replace(',', '.')) 
-                : aposta.valor;
+              
+              const valorItem = isFootball 
+                ? aposta.value 
+                : (typeof aposta.valor === 'string' ? parseFloat(aposta.valor.replace(',', '.')) : aposta.valor);
+              
+              const retornoItem = isFootball
+                ? (aposta.value * aposta.odd)
+                : (aposta.retornoPossivel || 0);
 
               return (
                 <div 
@@ -139,33 +138,44 @@ export function LotteryBetSlip({
                     onClick={() => onRemoveItem(aposta.id)}
                     className="absolute top-3 right-3 text-muted-foreground hover:text-destructive transition-colors p-1"
                   >
-                    <X size={18} />
+                    <Trash2 size={18} />
                   </button>
                   
                   <div className="pr-8">
-                    <p className="font-black text-sm uppercase italic text-primary">
-                      {aposta.modalidadeLabel}
-                    </p>
-                    <p className="text-[11px] font-bold text-muted-foreground mb-2">
-                      {aposta.colocacaoLabel || (aposta.premio ? `Até ${aposta.premio}º Prêmio` : '')}
-                    </p>
-                    
-                    <div className="bg-black/20 p-2 rounded-lg mb-3 border border-white/5">
-                      <span className="text-[10px] font-black uppercase text-muted-foreground block mb-1">Palpites:</span>
-                      <p className="font-mono text-foreground text-sm break-all leading-tight font-bold">
-                        {displayNumbers}
-                      </p>
-                    </div>
+                    {isFootball ? (
+                      <>
+                        <p className="font-black text-sm uppercase italic text-primary">
+                          {aposta.match?.homeTeamName} vs {aposta.match?.awayTeamName}
+                        </p>
+                        <p className="text-[11px] font-bold text-muted-foreground mb-2">
+                          {aposta.pickLabel} | @{aposta.odd?.toFixed(2)}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-black text-sm uppercase italic text-primary">
+                          {aposta.modalidadeLabel}
+                        </p>
+                        <p className="text-[11px] font-bold text-muted-foreground mb-2">
+                          {aposta.colocacaoLabel || (aposta.premio ? `Até ${aposta.premio}º Prêmio` : '')}
+                        </p>
+                        <div className="bg-black/20 p-2 rounded-lg mb-3 border border-white/5">
+                          <p className="font-mono text-foreground text-sm break-all leading-tight font-bold">
+                            {displayNumbers}
+                          </p>
+                        </div>
+                      </>
+                    )}
 
                     <div className="flex justify-between items-end border-t border-dashed border-white/10 pt-3">
                       <div>
                         <span className="text-[9px] font-black uppercase text-muted-foreground block">Valor</span>
-                        <span className="font-bold text-base">R$ {valorAposta.toFixed(2).replace('.', ',')}</span>
+                        <span className="font-bold text-base">R$ {valorItem.toFixed(2).replace('.', ',')}</span>
                       </div>
-                      {aposta.retornoPossivel > 0 && (
+                      {retornoItem > 0 && (
                         <div className="text-right">
                           <span className="text-[9px] font-black uppercase text-muted-foreground block">Retorno</span>
-                          <span className="font-black text-green-500">R$ {aposta.retornoPossivel.toFixed(2).replace('.', ',')}</span>
+                          <span className="font-black text-green-500">R$ {retornoItem.toFixed(2).replace('.', ',')}</span>
                         </div>
                       )}
                     </div>
@@ -176,7 +186,6 @@ export function LotteryBetSlip({
           )}
         </div>
 
-        {/* Rodapé Fixo Profissional */}
         {items.length > 0 && (
           <div className="p-5 border-t border-white/10 bg-card flex-shrink-0 shadow-[0_-15px_30px_rgba(0,0,0,0.3)]">
             <div className="mb-4 space-y-1">

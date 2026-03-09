@@ -43,13 +43,23 @@ export function TicketDialog({
   const { toast } = useToast();
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
+  const getSummaryText = () => {
+    const isFootball = lotteryName === 'Futebol';
+    return ticketItems.map(i => {
+      if (isFootball) {
+        return `${i.match?.homeTeamName} vs ${i.match?.awayTeamName}: ${i.pickLabel} (@${i.odd?.toFixed(2)})`;
+      }
+      return `${i.modalabilityLabel || i.modalidadeLabel}: ${Array.isArray(i.numeros) ? i.numeros.join(',') : i.numero}`;
+    }).join('; ');
+  };
+
   const handleShareWhatsApp = () => {
     if (!ticketId) return;
     shareTicketWhatsApp({
       poule: ticketId,
       terminal: terminal,
       jogo: lotteryName,
-      aposta: ticketItems.map(i => `${i.modalidadeLabel}: ${Array.isArray(i.numeros) ? i.numeros.join(',') : i.numero}`).join('; '),
+      aposta: getSummaryText(),
       valor: totalValue
     });
   };
@@ -62,7 +72,7 @@ export function TicketDialog({
         poule: ticketId,
         terminal: terminal,
         jogo: lotteryName,
-        aposta: ticketItems.map(i => `${i.modalidadeLabel}: ${Array.isArray(i.numeros) ? i.numeros.join(',') : i.numero}`).join('; '),
+        aposta: getSummaryText(),
         valor: totalValue,
         data: generationTime,
         status: 'PENDENTE'
@@ -84,30 +94,37 @@ export function TicketDialog({
   const handlePrint = () => {
     if (!ticketId) return;
 
-    // Preservar a intenção de restaurar o modo tela cheia se ele estiver ativo agora
     if (typeof window !== 'undefined' && document.fullscreenElement) {
       sessionStorage.setItem('app:restore_fullscreen:v1', 'true');
     }
 
+    const isFootball = lotteryName === 'Futebol';
     const ticketData = {
       banca: 'LotoHub',
       ticketId: ticketId,
       terminal: terminal || '',
       datetime: generationTime || new Date().toLocaleString('pt-BR'),
       jogo: lotteryName,
-      apostas: (ticketItems || []).map((item) => ({
-        modalidade: item.modalidadeLabel || '',
-        numero: Array.isArray(item.numeros) ? item.numeros.join(', ') : String(item.numero || ''),
-        valor: (parseFloat(String(item.valor || '0').replace(',', '.')) || 0).toFixed(2),
-      })),
+      apostas: (ticketItems || []).map((item) => {
+        if (isFootball) {
+          return {
+            modalidade: `${item.match?.homeTeamName} vs ${item.match?.awayTeamName}`,
+            numero: `Vencedor: ${item.pickLabel} (@${item.odd?.toFixed(2)})`,
+            valor: (item.value || 0).toFixed(2),
+          };
+        }
+        return {
+          modalidade: item.modalidadeLabel || '',
+          numero: Array.isArray(item.numeros) ? item.numeros.join(', ') : String(item.numero || ''),
+          valor: (parseFloat(String(item.valor || '0').replace(',', '.')) || 0).toFixed(2),
+        };
+      }),
       total: `R$ ${(totalValue || 0).toFixed(2).replace('.', ',')}`,
       possivelRetorno: (possibleReturn || 0).toFixed(2).replace('.', ','),
     };
 
-    // Salva os dados para a página de impressão ler
     localStorage.setItem('PRINT_TICKET_DATA', JSON.stringify(ticketData));
     
-    // Abre a página de impressão em uma nova janela controlada
     const printWindow = window.open('/impressao.html', 'ImpressaoLotoHub', 'width=400,height=600');
     
     if (!printWindow) {

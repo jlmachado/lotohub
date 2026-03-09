@@ -23,25 +23,44 @@ export function BilheteContent({
       </h3>
       <div className="space-y-3">
         {ticketItems.map((item, index) => {
-          const valorAposta = parseFloat(String(item.valor || '0').replace(',', '.')) || 0;
-          const retornoPossivel = item.retornoPossivel || 0;
+          const isFootball = lotteryName === 'Futebol';
+          const valorAposta = isFootball 
+            ? (item.value || 0) 
+            : (parseFloat(String(item.valor || '0').replace(',', '.')) || 0);
+          const retornoPossivel = isFootball 
+            ? (item.value * item.odd) 
+            : (item.retornoPossivel || 0);
 
           return (
             <div key={item.id || index} className="p-3 border rounded-xl bg-muted/30 text-sm space-y-1 shadow-sm">
-              <p className="font-black text-primary uppercase text-[11px] italic">
-                {item.modalidadeLabel}
-                {item.colocacaoLabel ? ` - ${item.colocacaoLabel}` : item.premio ? ` - Até ${item.premio}º Prêmio` : ''}
-              </p>
-              <p className="text-[10px] text-muted-foreground font-bold">
-                {item.loteriaLabel ? `Loteria: ${item.loteriaLabel} - ` : ''}
-                {item.horario ? `${item.horario} ` : ''}
-                (Aposta para {item.dataAposta})
-              </p>
-              <div className="bg-black/10 p-2 rounded-lg my-1">
-                <p className="font-mono text-foreground font-bold break-all">
-                  {Array.isArray(item.numeros) ? item.numeros.join(', ') : (item.numeros || item.numero)}
-                </p>
-              </div>
+              {isFootball ? (
+                <>
+                  <p className="font-black text-primary uppercase text-[11px] italic">
+                    {item.match?.homeTeamName || 'Time Casa'} vs {item.match?.awayTeamName || 'Time Fora'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                    Vencedor: <span className="text-foreground">{item.pickLabel}</span> | Odd: <span className="text-primary">@{item.odd?.toFixed(2)}</span>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-black text-primary uppercase text-[11px] italic">
+                    {item.modalidadeLabel}
+                    {item.colocacaoLabel ? ` - ${item.colocacaoLabel}` : item.premio ? ` - Até ${item.premio}º Prêmio` : ''}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground font-bold">
+                    {item.loteriaLabel ? `Loteria: ${item.loteriaLabel} - ` : ''}
+                    {item.horario ? `${item.horario} ` : ''}
+                    (Aposta para {item.dataAposta})
+                  </p>
+                  <div className="bg-black/10 p-2 rounded-lg my-1">
+                    <p className="font-mono text-foreground font-bold break-all">
+                      {Array.isArray(item.numeros) ? item.numeros.join(', ') : (item.numeros || item.numero)}
+                    </p>
+                  </div>
+                </>
+              )}
+              
               <div className="flex justify-between items-center pt-1">
                 <p className="font-medium text-muted-foreground text-xs">Valor: <span className="text-foreground font-bold">R$ {valorAposta.toFixed(2).replace('.', ',')}</span></p>
                 {retornoPossivel > 0 && (
