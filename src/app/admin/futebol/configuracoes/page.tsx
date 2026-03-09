@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,11 +20,16 @@ import {
   Calendar,
   LayoutGrid,
   ShieldCheck,
-  Eye
+  Eye,
+  Trophy,
+  Search,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FootballWidget, FootballWidgetContainer } from '@/components/football/widgets/FootballWidgetContainer';
+import Image from 'next/image';
 
 export default function AdminFutebolConfigPage() {
   const { 
@@ -34,11 +39,14 @@ export default function AdminFutebolConfigPage() {
     syncFootballData,
     footballMatches,
     footballTeams,
+    footballChampionships,
+    updateChampionship,
     deleteMatch
   } = useAppContext();
 
   const [isTesting, setIsTesting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [leagueSearch, setLeagueSearch] = useState('');
 
   const handleTest = async () => {
     setIsTesting(true);
@@ -46,9 +54,20 @@ export default function AdminFutebolConfigPage() {
     setIsTesting(false);
   };
 
-  const handleSyncAll = async () => {
+  const handleSyncLeagues = async () => {
     setIsSyncing(true);
-    await syncFootballData({ syncLeagues: true, syncTeams: true, syncFixtures: true });
+    await syncFootballData({ syncLeagues: true, syncTeams: false, syncFixtures: false });
+    setIsSyncing(false);
+  };
+
+  const handleSyncAll = async () => {
+    const hasActiveLeagues = footballChampionships.some(c => c.importar);
+    if (!hasActiveLeagues) {
+      alert("Selecione pelo menos uma liga na aba 'Ligas & Cobertura' antes de sincronizar jogos e times.");
+      return;
+    }
+    setIsSyncing(true);
+    await syncFootballData({ syncLeagues: false, syncTeams: true, syncFixtures: true });
     setIsSyncing(false);
   };
 
@@ -60,6 +79,19 @@ export default function AdminFutebolConfigPage() {
       }
     });
   };
+
+  const filteredChampionships = useMemo(() => {
+    if (!leagueSearch) return footballChampionships;
+    const term = leagueSearch.toLowerCase();
+    return footballChampionships.filter(c => 
+      c.name.toLowerCase().includes(term) || 
+      (c.country || '').toLowerCase().includes(term)
+    );
+  }, [footballChampionships, leagueSearch]);
+
+  const activeLeaguesCount = useMemo(() => 
+    footballChampionships.filter(c => c.importar).length, 
+  [footballChampionships]);
 
   return (
     <main className="p-4 md:p-8 space-y-8">
@@ -89,11 +121,11 @@ export default function AdminFutebolConfigPage() {
           </Button>
           <Button 
             onClick={handleSyncAll} 
-            disabled={isSyncing || footballApiConfig.status !== 'connected'}
+            disabled={isSyncing || footballApiConfig.status !== 'connected' || activeLeaguesCount === 0}
             className="font-black uppercase lux-shine"
           >
             {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Sincronizar Dados
+            Sincronizar Jogos ({activeLeaguesCount} ligas)
           </Button>
         </div>
       </div>
@@ -101,6 +133,7 @@ export default function AdminFutebolConfigPage() {
       <Tabs defaultValue="api" className="w-full">
         <TabsList className="bg-slate-950 border-white/10 h-12 p-1 gap-1">
           <TabsTrigger value="api" className="gap-2"><Settings size={14} /> Credenciais</TabsTrigger>
+          <TabsTrigger value="leagues" className="gap-2"><Trophy size={14} /> Ligas & Cobertura</TabsTrigger>
           <TabsTrigger value="widgets" className="gap-2"><LayoutGrid size={14} /> Configuração Widgets</TabsTrigger>
           <TabsTrigger value="preview" className="gap-2"><Eye size={14} /> Pré-visualização</TabsTrigger>
           <TabsTrigger value="data" className="gap-2"><Activity size={14} /> Dados Persistidos</TabsTrigger>
@@ -144,6 +177,85 @@ export default function AdminFutebolConfigPage() {
             <CardFooter className="justify-end border-t border-white/5 pt-6">
               <Button onClick={() => updateFootballApiConfig({})} className="lux-shine">Salvar Alterações</Button>
             </CardFooter>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="leagues" className="pt-6 space-y-6">
+          <Card className="border-white/5 bg-card/50">
+            <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <CardTitle>Seleção de Campeonatos</CardTitle>
+                <CardDescription>Busque as ligas da API e selecione quais deseja importar para o sistema.</CardDescription>
+              </div>
+              <Button onClick={handleSyncLeagues} disabled={isSyncing || footballApiConfig.status !== 'connected'} variant="outline">
+                {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Carregar Ligas da API
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Pesquisar liga ou país..." 
+                  value={leagueSearch}
+                  onChange={e => setLeagueSearch(e.target.value)}
+                  className="pl-10 bg-black/20"
+                />
+              </div>
+
+              <div className="border border-white/5 rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-slate-950">
+                    <TableRow className="border-white/5">
+                      <TableHead className="w-[50px]"></TableHead>
+                      <TableHead className="text-[10px] uppercase font-black">Liga</TableHead>
+                      <TableHead className="text-[10px] uppercase font-black">País</TableHead>
+                      <TableHead className="text-[10px] uppercase font-black text-center">Temporada</TableHead>
+                      <TableHead className="text-[10px] uppercase font-black text-right">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredChampionships.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-12 text-muted-foreground italic">
+                          {footballChampionships.length === 0 ? "Clique em 'Carregar Ligas da API' para começar." : "Nenhuma liga encontrada para sua pesquisa."}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredChampionships.map((champ) => (
+                        <TableRow key={champ.apiId} className="border-white/5 hover:bg-white/5 transition-colors">
+                          <TableCell className="py-2">
+                            <div className="relative w-8 h-8">
+                              <Image src={champ.logo} alt="" fill className="object-contain" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-bold text-white">{champ.name}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs uppercase text-muted-foreground">{champ.country}</span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className="text-[10px]">{champ.currentSeason}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button 
+                              variant={champ.importar ? "default" : "ghost"}
+                              size="sm"
+                              className={champ.importar ? "bg-green-600 hover:bg-green-700" : "text-muted-foreground"}
+                              onClick={() => updateChampionship(champ.id, { importar: !champ.importar })}
+                            >
+                              {champ.importar ? <CheckSquare className="h-4 w-4 mr-1" /> : <Square className="h-4 w-4 mr-1" />}
+                              {champ.importar ? "Importando" : "Ignorar"}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
           </Card>
         </TabsContent>
 
