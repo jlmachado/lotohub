@@ -1,6 +1,6 @@
 /**
- * @fileOverview Serviço de integração com a API TheSportsDB (v1).
- * Foco em ligas brasileiras, times, eventos e classificação.
+ * @fileOverview Serviço oficial e exclusivo de integração com a API TheSportsDB (v1).
+ * Fonte única de dados para o módulo de futebol.
  */
 
 const BASE_URL = 'https://www.thesportsdb.com/api/v1/json/3';
@@ -65,59 +65,52 @@ class TheSportsDBService {
       });
       
       if (response.status === 404) {
-        console.warn(`[TheSportsDB] Endpoint não encontrado (404): ${endpoint}. Retornando objeto vazio.`);
         return { error: true, code: 404 };
       }
 
       if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
       
-      return await response.json();
+      const data = await response.json();
+      return data;
     } catch (error) {
       console.error(`[TheSportsDB] Falha no endpoint ${endpoint}:`, error);
       return { error: true, message: String(error) };
     }
   }
 
-  // Busca todas as ligas filtradas por país e esporte
   async getLeaguesByCountry(country: string = 'Brazil', sport: string = 'Soccer'): Promise<ApiLeague[]> {
     const data = await this.request(`search_all_leagues.php?c=${encodeURIComponent(country)}&s=${encodeURIComponent(sport)}`);
     if (data?.error) return [];
     return data?.countrys || [];
   }
 
-  // Busca times de uma liga específica pelo nome
   async getTeamsInLeague(leagueName: string): Promise<ApiTeam[]> {
     const data = await this.request(`search_all_teams.php?l=${encodeURIComponent(leagueName)}`);
     if (data?.error) return [];
     return data?.teams || [];
   }
 
-  // Busca os próximos 15 jogos de uma liga
   async getNextMatches(leagueId: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventsnextleague.php?id=${leagueId}`);
     if (data?.error) return [];
     return data?.events || [];
   }
 
-  // Busca os últimos 15 resultados de uma liga
   async getPastMatches(leagueId: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventspastleague.php?id=${leagueId}`);
     if (data?.error) return [];
     return data?.events || [];
   }
 
-  // Busca jogos de um dia específico
   async getMatchesByDate(date: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventsday.php?d=${date}&s=Soccer`);
     if (data?.error) return [];
     return data?.events || [];
   }
 
-  // Busca a tabela de classificação (standings)
-  async getStandings(leagueId: string, season: string = String(new Date().getFullYear())): Promise<ApiStanding[]> {
+  async getStandings(leagueId: string, season: string): Promise<ApiStanding[]> {
     const data = await this.request(`lookuptable.php?l=${leagueId}&s=${season}`);
     
-    // Se não encontrar para o ano atual, tenta o ano anterior (transição de temporada)
     if (!data?.table) {
       const lastYear = String(parseInt(season) - 1);
       const fallbackData = await this.request(`lookuptable.php?l=${leagueId}&s=${lastYear}`);

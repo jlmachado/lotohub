@@ -1,6 +1,5 @@
 /**
- * @fileOverview Dashboard de Futebol HUB Brasil.
- * Exibe todos os campeonatos brasileiros sincronizados agrupados.
+ * @fileOverview Dashboard Hub de Futebol - EXCLUSIVO TheSportsDB.
  */
 
 'use client';
@@ -11,14 +10,13 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Trophy, Clock, Flag, LayoutGrid, AlertCircle } from 'lucide-react';
+import { Trophy, Clock, Flag, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
 import { useMemo } from 'react';
 
 export default function FutebolDashboardPage() {
   const { footballData } = useAppContext();
 
-  // Agrupar jogos por liga para exibição hub
   const groupByLeague = (matches: any[]) => {
     if (!matches) return {};
     return matches.reduce((acc: any, match) => {
@@ -38,29 +36,26 @@ export default function FutebolDashboardPage() {
       <main className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">Hub Futebol Brasil</h1>
-            <p className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Todos os campeonatos nacionais em um só lugar</p>
+            <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">Hub Futebol</h1>
+            <p className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Dados oficiais sincronizados da TheSportsDB</p>
           </div>
           <div className="flex flex-col items-end gap-1">
             <Badge variant="outline" className="h-8 border-white/10 text-[10px] uppercase font-black bg-slate-900/50">
-              Último Sync: {footballData.lastSuccessfulSync ? new Date(footballData.lastSuccessfulSync).toLocaleTimeString('pt-BR') : 'Pendente'}
+              Atualizado: {footballData.lastSuccessfulSync ? new Date(footballData.lastSuccessfulSync).toLocaleTimeString('pt-BR') : 'Pendente'}
             </Badge>
-            {footballData.syncStatus === 'syncing' && (
-              <span className="text-[9px] text-primary font-bold animate-pulse uppercase">Sincronizando dados...</span>
-            )}
           </div>
         </div>
 
         <Tabs defaultValue="hoje" className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-8 bg-slate-900 h-12 p-1">
-            <TabsTrigger value="hoje" className="text-[10px] font-black uppercase">Jogos de Hoje</TabsTrigger>
+            <TabsTrigger value="hoje" className="text-[10px] font-black uppercase">Hoje</TabsTrigger>
             <TabsTrigger value="proximos" className="text-[10px] font-black uppercase">Próximos</TabsTrigger>
             <TabsTrigger value="recentes" className="text-[10px] font-black uppercase">Resultados</TabsTrigger>
             <TabsTrigger value="classificacao" className="text-[10px] font-black uppercase">Tabelas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="hoje">
-            <GroupedMatchList groups={todayGrouped} emptyMsg="Nenhum jogo brasileiro programado para hoje." />
+            <GroupedMatchList groups={todayGrouped} emptyMsg="Nenhum jogo para hoje." />
           </TabsContent>
 
           <TabsContent value="proximos">
@@ -68,7 +63,7 @@ export default function FutebolDashboardPage() {
           </TabsContent>
 
           <TabsContent value="recentes">
-            <GroupedMatchList groups={pastGrouped} emptyMsg="Nenhum resultado recente disponível." isPast />
+            <GroupedMatchList groups={pastGrouped} emptyMsg="Nenhum resultado recente." isPast />
           </TabsContent>
 
           <TabsContent value="classificacao">
@@ -76,7 +71,7 @@ export default function FutebolDashboardPage() {
               {(!footballData.standings || footballData.standings.length === 0) ? (
                 <div className="text-center py-24 border-2 border-dashed border-white/5 rounded-3xl">
                   <Trophy className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p className="text-muted-foreground italic font-medium">Nenhuma classificação disponível no momento.</p>
+                  <p className="text-muted-foreground italic font-medium">Nenhuma classificação disponível.</p>
                 </div>
               ) : (
                 Object.entries(
@@ -95,14 +90,12 @@ export default function FutebolDashboardPage() {
                       <Table>
                         <TableHeader className="bg-slate-950">
                           <TableRow className="border-white/5">
-                            <TableHead className="w-[50px] text-center font-black">Pos</TableHead>
-                            <TableHead className="font-black">Time</TableHead>
-                            <TableHead className="text-center font-black">PTS</TableHead>
-                            <TableHead className="text-center font-black">J</TableHead>
-                            <TableHead className="text-center font-black text-green-500">V</TableHead>
-                            <TableHead className="text-center font-black">E</TableHead>
-                            <TableHead className="text-center font-black text-red-500">D</TableHead>
-                            <TableHead className="text-center font-black">SG</TableHead>
+                            <TableHead className="w-[50px] text-center font-black uppercase text-[10px]">Pos</TableHead>
+                            <TableHead className="font-black uppercase text-[10px]">Time</TableHead>
+                            <TableHead className="text-center font-black uppercase text-[10px]">PTS</TableHead>
+                            <TableHead className="text-center font-black uppercase text-[10px]">J</TableHead>
+                            <TableHead className="text-center font-black uppercase text-[10px] text-green-500">V</TableHead>
+                            <TableHead className="text-center font-black uppercase text-[10px]">SG</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -113,7 +106,7 @@ export default function FutebolDashboardPage() {
                                 <div className="flex items-center gap-3">
                                   <div className="relative w-6 h-6 bg-white/10 rounded-full p-1">
                                     {team.teamBadge ? (
-                                      <Image src={team.teamBadge} alt="" fill className="object-contain" />
+                                      <img src={team.teamBadge} alt="" className="w-full h-full object-contain" />
                                     ) : (
                                       <Trophy size={12} className="text-muted-foreground m-auto" />
                                     )}
@@ -124,8 +117,6 @@ export default function FutebolDashboardPage() {
                               <TableCell className="text-center font-black text-primary">{team.points}</TableCell>
                               <TableCell className="text-center text-xs">{team.played}</TableCell>
                               <TableCell className="text-center text-xs text-green-500">{team.wins}</TableCell>
-                              <TableCell className="text-center text-xs text-slate-400">{team.draws}</TableCell>
-                              <TableCell className="text-center text-xs text-red-500">{team.losses}</TableCell>
                               <TableCell className="text-center font-medium text-xs">{team.goalsDiff > 0 ? `+${team.goalsDiff}` : team.goalsDiff}</TableCell>
                             </TableRow>
                           ))}
@@ -191,7 +182,7 @@ function MatchCard({ match, isPast }: { match: any, isPast: boolean }) {
         <div className="flex items-center justify-between gap-2">
           <div className="flex flex-col items-center flex-1 text-center space-y-2">
             <div className="relative w-12 h-12 bg-white/5 rounded-full p-2">
-              <Image src={homeBadge} alt="" fill className="object-contain p-1" />
+              <img src={homeBadge} alt="" className="w-full h-full object-contain p-1" />
             </div>
             <span className="font-bold text-[11px] leading-tight text-white uppercase">{match.homeTeam}</span>
           </div>
@@ -207,7 +198,7 @@ function MatchCard({ match, isPast }: { match: any, isPast: boolean }) {
 
           <div className="flex flex-col items-center flex-1 text-center space-y-2">
             <div className="relative w-12 h-12 bg-white/5 rounded-full p-2">
-              <Image src={awayBadge} alt="" fill className="object-contain p-1" />
+              <img src={awayBadge} alt="" className="w-full h-full object-contain p-1" />
             </div>
             <span className="font-bold text-[11px] leading-tight text-white uppercase">{match.awayTeam}</span>
           </div>

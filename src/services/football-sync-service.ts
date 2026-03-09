@@ -1,5 +1,5 @@
 /**
- * @fileOverview Motor de sincronização e normalização de dados do Futebol via TheSportsDB V1.
+ * @fileOverview Motor de sincronização e normalização EXCLUSIVO para TheSportsDB.
  */
 
 import { theSportsDB, ApiMatch, ApiStanding, ApiLeague } from './thesportsdb-service';
@@ -74,16 +74,21 @@ const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
 });
 
 export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
-  const leagues = await theSportsDB.getLeaguesByCountry('Brazil', 'Soccer');
-  const defaults = ['Série A', 'Série B', 'Copa do Brasil'];
-  
-  return (leagues || []).map(l => ({
-    id: l.idLeague,
-    name: l.strLeague,
-    country: l.strCountry || 'Brazil',
-    badge: l.strBadge || '',
-    importar: defaults.some(d => l.strLeague.includes(d))
-  }));
+  try {
+    const leagues = await theSportsDB.getLeaguesByCountry('Brazil', 'Soccer');
+    const defaults = ['Série A', 'Série B', 'Copa do Brasil'];
+    
+    return (leagues || []).map(l => ({
+      id: l.idLeague,
+      name: l.strLeague,
+      country: l.strCountry || 'Brazil',
+      badge: l.strBadge || '',
+      importar: defaults.some(d => l.strLeague.includes(d))
+    }));
+  } catch (e) {
+    console.error("[Football Sync] Erro ao buscar ligas:", e);
+    return [];
+  }
 }
 
 export async function syncFootballMatches(leagueIds: string[]): Promise<{
@@ -107,7 +112,6 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
       const normalizedNext = (nextApi || []).map(normalizeMatch);
       const normalizedPast = (pastApi || []).map(normalizeMatch);
 
-      // Agrega e separa por período baseado no fuso SP
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
       
       const todayFromNext = normalizedNext.filter(m => m.date === todayStr);
@@ -116,11 +120,10 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
       
       allPast = [...allPast, ...normalizedPast.filter(m => m.date < todayStr)];
     } catch (e) {
-      console.error(`[SYNC] Erro na liga ${id}:`, e);
+      console.error(`[Football Sync] Erro na liga ${id}:`, e);
     }
   }
 
-  // Remove duplicatas de hoje (pode acontecer entre endpoints de next/past)
   const uniqueToday = Array.from(new Map(allToday.map(m => [m.id, m])).values());
 
   return {
@@ -154,7 +157,7 @@ export async function syncFootballStandings(leagueIds: string[]): Promise<Normal
         allStandings = [...allStandings, ...normalized];
       }
     } catch (e) {
-      console.error(`[SYNC] Erro classificação liga ${id}:`, e);
+      console.error(`[Football Sync] Erro classificação liga ${id}:`, e);
     }
   }
 
