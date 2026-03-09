@@ -9,6 +9,9 @@ import { getSession, getCurrentUser, logout } from '@/utils/auth';
 import { useRouter } from 'next/navigation';
 import { resolveCurrentBanca, getActiveContext } from '@/utils/bancaContext';
 import { syncFootballData as syncFootballService } from '@/services/football-sync';
+import { MODALIDADES_PADRAO } from '@/constants/loterias';
+
+export { MODALIDADES_PADRAO };
 
 // --- Snooker Types ---
 export interface SnookerBet {
@@ -423,21 +426,6 @@ interface AppContextType {
   isFullscreen: boolean;
   toggleFullscreen: () => Promise<void>;
 }
-
-export const MODALIDADES_PADRAO = [
-  { nome: 'Grupo', multiplicador: '18' },
-  { nome: 'Milhar', multiplicador: '5000' },
-  { nome: 'Centena', multiplicador: '700' },
-  { nome: 'Milhar e Centena', multiplicador: '5700' },
-  { nome: 'Dezena', multiplicador: '60' },
-  { nome: 'Dupla de Grupo', multiplicador: '160' },
-  { nome: 'Terno de Grupo', multiplicador: '1300' },
-  { nome: 'Passe', multiplicador: '90' },
-  { nome: 'Passe Seco', multiplicador: '160' },
-  { nome: 'Passe Vai Vem', multiplicador: '45' },
-  { nome: 'Duque de Dezena', multiplicador: '300' },
-  { nome: 'Terno de Dezena', multiplicador: '5000' },
-];
 
 const DEFAULT_GENERIC_LOTTERIES: GenericLotteryConfig[] = [
   {

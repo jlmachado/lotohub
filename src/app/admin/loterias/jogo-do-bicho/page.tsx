@@ -12,7 +12,8 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
-import { useAppContext, JDBLoteria, JDBModalidade, JDBDia, MODALIDADES_PADRAO } from '@/context/AppContext';
+import { useAppContext, JDBLoteria, JDBModalidade, JDBDia } from '@/context/AppContext';
+import { MODALIDADES_PADRAO } from '@/constants/loterias';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 interface ModalidadeForm extends JDBModalidade {

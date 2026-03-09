@@ -16,10 +16,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { MODALIDADES_PADRAO } from '@/context/AppContext';
+import { MODALIDADES_PADRAO } from '@/constants/loterias';
 
 export default function CotacoesPage() {
-  const cotacoesJogoDoBicho = (MODALIDADES_PADRAO || []).map(m => ({ 
+  const cotacoesJogoDoBicho = (Array.isArray(MODALIDADES_PADRAO) ? MODALIDADES_PADRAO : []).map(m => ({ 
     modalidade: m.nome, 
     cotacao: `${m.multiplicador}x`
   }));
@@ -110,7 +110,7 @@ export default function CotacoesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loteria.data.map((cotacao) => (
+                  {Array.isArray(loteria.data) && loteria.data.map((cotacao) => (
                     <TableRow key={cotacao.modalidade}>
                       <TableCell className="font-medium">
                         {cotacao.modalidade}
