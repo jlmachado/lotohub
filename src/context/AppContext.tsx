@@ -11,8 +11,6 @@ import { resolveCurrentBanca, getActiveContext } from '@/utils/bancaContext';
 import { syncFootballData as syncFootballService } from '@/services/football-sync';
 import { MODALIDADES_PADRAO } from '@/constants/loterias';
 
-export { MODALIDADES_PADRAO };
-
 // --- Snooker Types ---
 export interface SnookerBet {
   id: string;
@@ -254,6 +252,17 @@ export interface CasinoSettings {
   bannerMessage: string;
 }
 
+export interface BingoWinner {
+  userId: string;
+  userName: string;
+  terminalId: string;
+  category: "quadra" | "kina" | "keno";
+  winAmount: number;
+  winningNumbers: number[];
+  wonAt: string;
+  type: "USER_WIN" | "BOT_WIN";
+}
+
 export interface BingoDraw { 
   id: string; 
   bancaId: string; 
@@ -269,9 +278,9 @@ export interface BingoDraw {
   payoutTotal: number; 
   updatedAt: string;
   winnersFound: {
-    quadra: any | null;
-    kina: any | null;
-    keno: any | null;
+    quadra: BingoWinner | null;
+    kina: BingoWinner | null;
+    keno: BingoWinner | null;
   };
 }
 
