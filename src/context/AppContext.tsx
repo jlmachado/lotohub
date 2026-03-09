@@ -107,7 +107,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const FOOTBALL_STORAGE_KEY = 'app:football:v8'; // Invalida versões antigas (v7) para novo bootstrap
+const FOOTBALL_STORAGE_KEY = 'app:football:v8';
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
@@ -182,9 +182,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const syncFootballAll = useCallback(async (manual = false) => {
     if (syncInProgress.current) return;
-    syncInProgress.current = true;
+    
+    // Verificação de conexão antes de tentar o fetch
+    if (typeof window !== 'undefined' && !window.navigator.onLine) {
+      if (manual) toast({ variant: 'destructive', title: 'Sem Internet', description: 'Verifique sua conexão para sincronizar.' });
+      return;
+    }
 
+    syncInProgress.current = true;
     console.log(`[Football Sync] Iniciando sincronização (Manual: ${manual})`);
+    
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing', lastSync: new Date().toISOString() }));
     
     try {
@@ -208,7 +215,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         syncStandingsAction(activeLeagueIds)
       ]);
 
-      // Verifica se houve dados reais retornados (incluindo passados ou tabelas)
       const hasNewData = 
         matches.today.length > 0 || 
         matches.next.length > 0 || 
@@ -229,15 +235,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       if (manual) {
         toast({ 
-          title: hasNewData ? 'Sincronização Concluída' : 'Sync Finalizado (Sem dados novos)', 
-          description: hasNewData ? 'Os dados foram atualizados com sucesso.' : 'A API ainda não publicou novos dados para as ligas ativas.' 
+          title: hasNewData ? 'Sincronização Concluída' : 'Sem Dados Novos', 
+          description: hasNewData ? 'Os dados foram atualizados.' : 'Não há novas partidas publicadas no momento.' 
         });
       }
     } catch (e: any) {
       console.error("[Football Sync] Erro Crítico:", e.message);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
       if (manual) {
-        toast({ variant: 'destructive', title: 'Falha na Sincronização', description: e.message });
+        toast({ variant: 'destructive', title: 'Falha na Sincronização', description: e.message || 'Erro desconhecido ao falar com o proxy.' });
       }
     } finally {
       syncInProgress.current = false;
@@ -246,7 +252,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Scheduler Automático ---
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const runAutoSync = () => {
+      // Evitar rodar se já estiver em progresso ou offline
+      if (syncInProgress.current || !window.navigator.onLine) return;
+
       const spHourStr = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/Sao_Paulo',
         hour: 'numeric',
@@ -263,10 +274,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    const bootTimer = setTimeout(runAutoSync, 2000);
-    const interval = setInterval(runAutoSync, 60000 * 5);
+    const bootTimer = setTimeout(runAutoSync, 3000); // 3s delay para garantir estabilidade do servidor Next
+    const interval = setInterval(runAutoSync, 60000 * 5); // Verifica a cada 5 min
 
     const handleFocus = () => { if (document.visibilityState === 'visible') runAutoSync(); };
+    
     window.addEventListener('visibilitychange', handleFocus);
     window.addEventListener('online', runAutoSync);
 

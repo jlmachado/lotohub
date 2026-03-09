@@ -48,26 +48,40 @@ export interface ApiStanding {
 class TheSportsDBService {
   /**
    * Faz requisição para a API TheSportsDB através da rota de proxy interna.
-   * Lança erros reais para diagnóstico no frontend.
+   * Utiliza URL absoluta para evitar falhas de 'Failed to fetch' em contextos específicos do browser.
    */
   private async request(endpoint: string) {
+    if (typeof window === 'undefined') return null;
+
     try {
-      const response = await fetch(`/api/thesportsdb?endpoint=${encodeURIComponent(endpoint)}`, {
-        cache: 'no-store'
+      // Garantir que estamos usando a origem correta para evitar erros de rede relativos
+      const baseUrl = window.location.origin;
+      const proxyUrl = `${baseUrl}/api/thesportsdb?endpoint=${encodeURIComponent(endpoint)}`;
+      
+      console.log(`[TheSportsDB Service] Solicitando via Proxy: ${endpoint}`);
+
+      const response = await fetch(proxyUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json'
+        }
       });
       
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Erro no Proxy: ${response.status}`);
+      }
+
       const result = await response.json();
       
       if (!result.ok) {
-        const errorMsg = result.message || 'Erro desconhecido no proxy';
-        const logMsg = `[TheSportsDB Service] Erro no endpoint ${endpoint}: ${errorMsg}`;
-        console.error(logMsg, result);
-        throw new Error(errorMsg);
+        throw new Error(result.message || 'Erro desconhecido retornado pelo Proxy');
       }
       
       return result.data;
     } catch (error: any) {
-      console.error(`[TheSportsDB Service] Falha na comunicação:`, error.message);
+      console.error(`[TheSportsDB Service] Erro na requisição (${endpoint}):`, error.message);
       throw error;
     }
   }

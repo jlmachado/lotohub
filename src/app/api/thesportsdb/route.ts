@@ -9,8 +9,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const endpoint = searchParams.get('endpoint');
+  const urlObj = new URL(request.url);
+  const endpoint = urlObj.searchParams.get('endpoint');
 
   if (!endpoint) {
     return NextResponse.json({ ok: false, error: 'ENDPOINT_REQUIRED', message: 'O parâmetro endpoint é obrigatório.' }, { status: 400 });
@@ -18,19 +18,21 @@ export async function GET(request: Request) {
 
   // Base URL fixa com a chave 123 (V1 Free)
   const baseUrl = 'https://www.thesportsdb.com/api/v1/json/123';
-  const url = `${baseUrl}/${endpoint}`;
+  // Remove barras duplicadas se existirem
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+  const url = `${baseUrl}/${cleanEndpoint}`;
 
-  console.log(`[TheSportsDB Proxy] Chamando: ${url}`);
+  console.log(`[TheSportsDB Proxy] Chamando Upstream: ${url}`);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 segundos de timeout
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos de timeout para o upstream
 
   try {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'LotoHub-App/1.1'
+        'User-Agent': 'LotoHub-App/1.2'
       },
       cache: 'no-store',
       signal: controller.signal
@@ -39,6 +41,11 @@ export async function GET(request: Request) {
     clearTimeout(timeoutId);
 
     const status = response.status;
+    
+    if (status === 404) {
+      return NextResponse.json({ ok: true, endpoint, data: null, message: 'Recurso não encontrado na API externa.' });
+    }
+
     const bodyText = await response.text();
 
     if (!response.ok) {
@@ -47,25 +54,19 @@ export async function GET(request: Request) {
         ok: false, 
         error: 'UPSTREAM_ERROR', 
         status, 
-        message: `A API externa retornou erro ${status}`,
-        body: bodyText
+        message: `A API externa retornou erro ${status}`
       }, { status: 502 });
     }
 
     try {
       const data = JSON.parse(bodyText);
-      // Alguns endpoints da TheSportsDB retornam { "null": null } em vez de erro 404
-      if (data === null || (typeof data === 'object' && Object.keys(data).length === 0)) {
-         return NextResponse.json({ ok: true, endpoint, data: null, message: 'Nenhum dado encontrado para esta consulta.' });
-      }
       return NextResponse.json({ ok: true, endpoint, data });
     } catch (e) {
-      console.error(`[TheSportsDB Proxy] JSON Inválido:`, bodyText);
+      console.error(`[TheSportsDB Proxy] JSON Inválido do Upstream:`, bodyText.substring(0, 200));
       return NextResponse.json({ 
         ok: false, 
         error: 'INVALID_JSON', 
-        message: 'A API externa não retornou um JSON válido.',
-        body: bodyText 
+        message: 'A API externa não retornou um JSON válido.'
       }, { status: 502 });
     }
 
@@ -73,11 +74,11 @@ export async function GET(request: Request) {
     clearTimeout(timeoutId);
     
     if (error.name === 'AbortError') {
-      console.error(`[TheSportsDB Proxy] Timeout na requisição: ${url}`);
-      return NextResponse.json({ ok: false, error: 'TIMEOUT', message: 'A API demorou muito para responder (Timeout).' }, { status: 504 });
+      console.error(`[TheSportsDB Proxy] Timeout na requisição Upstream: ${url}`);
+      return NextResponse.json({ ok: false, error: 'TIMEOUT', message: 'A API externa demorou muito para responder.' }, { status: 504 });
     }
 
-    console.error(`[TheSportsDB Proxy] Falha Crítica:`, error);
-    return NextResponse.json({ ok: false, error: 'FETCH_FAILED', message: error.message || 'Falha ao conectar com o servidor da API.' }, { status: 500 });
+    console.error(`[TheSportsDB Proxy] Falha Crítica de Rede:`, error.message);
+    return NextResponse.json({ ok: false, error: 'FETCH_FAILED', message: 'Falha de conexão com o servidor da API.' }, { status: 500 });
   }
 }
