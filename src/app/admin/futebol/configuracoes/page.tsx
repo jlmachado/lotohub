@@ -1,192 +1,259 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import Link from 'next/link';
-import { ChevronLeft, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
-import { useAppContext, FootballApiConfig } from '@/context/AppContext';
-import { useToast } from '@/hooks/use-toast';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { 
+  Settings, 
+  RefreshCw, 
+  CheckCircle2, 
+  AlertCircle, 
+  Globe, 
+  Layers, 
+  TrendingUp, 
+  Zap,
+  Activity,
+  Trash2
+} from 'lucide-react';
+import { useAppContext } from '@/context/AppContext';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import Image from 'next/image';
 
-export default function AdminFutebolConfiguracoesPage() {
-  const { footballApiConfig, footballChampionships, updateFootballApiConfig, updateFootballChampionship, syncFootballData } = useAppContext();
-  const { toast } = useToast();
-  
-  const [config, setConfig] = useState<Partial<FootballApiConfig> | null>(null);
+export default function AdminFutebolConfigPage() {
+  const { 
+    footballApiConfig, 
+    updateFootballApiConfig, 
+    testFootballConnection, 
+    syncFootballData,
+    footballChampionships,
+    footballTeams,
+    footballMatches,
+    updateChampionship,
+    deleteMatch
+  } = useAppContext();
+
+  const [isTesting, setIsTesting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  useEffect(() => {
-    if (footballApiConfig) {
-      setConfig(footballApiConfig);
-    }
-  }, [footballApiConfig]);
-
-  const handleInputChange = (field: keyof FootballApiConfig, value: any) => {
-    if (!config) return;
-    setConfig({ ...config, [field]: value });
-  };
-  
-  const handleSave = () => {
-    if (config) {
-      updateFootballApiConfig(config);
-      toast({
-        title: 'Configurações Salvas',
-        description: 'As configurações da API de Futebol foram atualizadas.',
-      });
-    }
+  const handleTest = async () => {
+    setIsTesting(true);
+    await testFootballConnection();
+    setIsTesting(false);
   };
 
-  const handleSync = async () => {
-    if (!config?.apiKey && config?.mode === 'live') {
-        toast({ variant: 'destructive', title: 'Chave Ausente', description: 'Informe a chave da API para sincronizar em modo LIVE.' });
-        return;
-    }
-
+  const handleSyncAll = async () => {
     setIsSyncing(true);
-    try {
-        await syncFootballData();
-    } catch (e: any) {
-        toast({ variant: 'destructive', title: 'Erro na Sincronização', description: e.message || 'Erro desconhecido.' });
-    } finally {
-        setIsSyncing(false);
-    }
+    await syncFootballData({ syncLeagues: true, syncTeams: true, syncFixtures: true });
+    setIsSyncing(false);
   };
-
-  if (!config) {
-    return (
-        <div className="flex items-center justify-center p-20">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-    );
-  }
 
   return (
-    <main className="p-4 md:p-8">
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/admin/futebol"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
-        <h1 className="text-3xl font-bold">Configurações de Futebol</h1>
+    <main className="p-4 md:p-8 space-y-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Configuração Futebol</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+              Provider: {footballApiConfig.provider.toUpperCase()}
+            </Badge>
+            {footballApiConfig.status === 'connected' ? (
+              <Badge className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" /> Conectado</Badge>
+            ) : (
+              <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" /> {footballApiConfig.status || 'Desconectado'}</Badge>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleTest} 
+            disabled={isTesting}
+            className="font-bold border-white/10"
+          >
+            {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4 text-primary" />}
+            Testar Conexão
+          </Button>
+          <Button 
+            onClick={handleSyncAll} 
+            disabled={isSyncing || footballApiConfig.status !== 'connected'}
+            className="font-black uppercase lux-shine"
+          >
+            {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Sincronizar Tudo
+          </Button>
+        </div>
       </div>
 
-      <Card className="max-w-4xl mx-auto shadow-lg border-white/5">
-          <CardHeader>
-              <CardTitle className="flex items-center gap-2 italic uppercase">
-                Integração com API
-                {config.apiKey ? (
-                    <Badge className="bg-green-600 ml-2"><CheckCircle2 className="h-3 w-3 mr-1" /> CONFIGURADA</Badge>
-                ) : (
-                    <Badge variant="destructive" className="ml-2"><AlertCircle className="h-3 w-3 mr-1" /> SEM CHAVE</Badge>
-                )}
-              </CardTitle>
-              <CardDescription>Configure o provedor e a chave secreta para importar jogos reais.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-8">
-              <div className="grid md:grid-cols-2 gap-6">
-                  <div className="grid gap-2">
-                      <Label htmlFor="api-provider">Provedor da API</Label>
-                      <Select value={config.provider} onValueChange={(value: 'api-futebol' | 'api-football') => handleInputChange('provider', value)}>
-                          <SelectTrigger id="api-provider">
-                              <SelectValue placeholder="Selecione o provedor" />
-                          </SelectTrigger>
-                          <SelectContent>
-                              <SelectItem value="api-futebol">API-Futebol (Brasileirão/Nacional)</SelectItem>
-                              <SelectItem value="api-football">API-Football (Internacional)</SelectItem>
-                          </SelectContent>
-                      </Select>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/20">
-                      <div className="space-y-0.5">
-                          <Label htmlFor="api-mode" className="text-base font-bold">Modo Operacional</Label>
-                          <p className="text-xs text-muted-foreground">
-                              Modo TESTE usa dados simulados. Modo LIVE usa API real.
-                          </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-bold ${config.mode === 'test' ? 'text-blue-400' : 'text-muted-foreground'}`}>TESTE</span>
-                        <Switch id="api-mode" checked={config.mode === 'live'} onCheckedChange={(checked) => handleInputChange('mode', checked ? 'live' : 'test')} />
-                        <span className={`text-[10px] font-bold ${config.mode === 'live' ? 'text-red-500' : 'text-muted-foreground'}`}>LIVE</span>
-                      </div>
-                  </div>
-              </div>
-              
-              <div className="grid gap-2">
-                  <Label htmlFor="api-key" className="flex items-center justify-between">
-                    Chave da API (Token Secreto)
-                    <span className="text-[10px] text-muted-foreground uppercase font-mono">Sensível</span>
-                  </Label>
-                  <Input 
-                    id="api-key" 
-                    type="password"
-                    value={config.apiKey} 
-                    onChange={e => handleInputChange('apiKey', e.target.value)} 
-                    placeholder="Cole seu token aqui..."
-                    className="bg-black/20 font-mono"
-                  />
-                  <p className="text-[10px] text-muted-foreground italic">Obtenha sua chave nos portais oficiais dos provedores.</p>
-              </div>
-              
-              <Separator />
-
-              <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-black uppercase italic tracking-tighter">Campeonatos Ativos</h3>
-                    <Badge variant="outline" className="border-primary/20 text-primary">{footballChampionships.filter(c => c.importar).length} Ativos</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-4">Marque os campeonatos que devem ser sincronizados para o painel de apostas.</p>
-                  
-                  {footballChampionships.length === 0 ? (
-                    <div className="text-center py-8 border-2 border-dashed rounded-xl opacity-50">
-                        <p className="text-sm">Nenhum campeonato encontrado. Execute a sincronização inicial.</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {footballChampionships.map(champ => (
-                            <div key={champ.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors">
-                                <Checkbox 
-                                    id={`champ-${champ.id}`} 
-                                    checked={champ.importar} 
-                                    onCheckedChange={(checked) => updateFootballChampionship(champ.id, { importar: !!checked })}
-                                />
-                                <div className="flex flex-col">
-                                    <label
-                                        htmlFor={`champ-${champ.id}`}
-                                        className="text-xs font-bold leading-none cursor-pointer"
-                                    >
-                                        {champ.name}
-                                    </label>
-                                    <span className="text-[9px] text-muted-foreground font-mono mt-1">ID: {champ.apiId}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                  )}
-              </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-slate-900/50 border-white/5">
+          <CardHeader className="p-4 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Ligas</CardTitle></CardHeader>
+          <CardContent className="p-4 pt-0"><p className="text-2xl font-black text-white">{footballChampionships.length}</p></CardContent>
+        </Card>
+        <Card className="bg-slate-900/50 border-white/5">
+          <CardHeader className="p-4 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Times</CardTitle></CardHeader>
+          <CardContent className="p-4 pt-0"><p className="text-2xl font-black text-white">{footballTeams.length}</p></CardContent>
+        </Card>
+        <Card className="bg-slate-900/50 border-white/5">
+          <CardHeader className="p-4 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Jogos</CardTitle></CardHeader>
+          <CardContent className="p-4 pt-0"><p className="text-2xl font-black text-white">{footballMatches.length}</p></CardContent>
+        </Card>
+        <Card className="bg-slate-900/50 border-white/5">
+          <CardHeader className="p-4 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Último Sync</CardTitle></CardHeader>
+          <CardContent className="p-4 pt-0">
+            <p className="text-sm font-bold text-primary">
+              {footballApiConfig.lastSync ? new Date(footballApiConfig.lastSync).toLocaleString('pt-BR') : 'Nunca'}
+            </p>
           </CardContent>
-          <CardFooter className="flex-col md:flex-row justify-between items-start md:items-center gap-4 border-t pt-6 bg-muted/5">
-              <div className="flex gap-3 w-full md:w-auto">
-                  <Button onClick={handleSave} className="flex-1 md:flex-none">Salvar Configurações</Button>
-                  <Button variant="secondary" onClick={handleSync} disabled={isSyncing} className="flex-1 md:flex-none lux-shine">
-                      <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                      {isSyncing ? 'Sincronizando...' : 'Sincronizar com API'}
-                  </Button>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="api" className="w-full">
+        <TabsList className="bg-slate-950 border-white/10 h-12 p-1 gap-1">
+          <TabsTrigger value="api" className="gap-2"><Settings size={14} /> Configuração API</TabsTrigger>
+          <TabsTrigger value="leagues" className="gap-2"><Globe size={14} /> Ligas & Coverage</TabsTrigger>
+          <TabsTrigger value="matches" className="gap-2"><Activity size={14} /> Gerenciar Jogos</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="api" className="pt-6">
+          <Card className="max-w-2xl border-white/5 bg-card/50">
+            <CardHeader>
+              <CardTitle>Credenciais da Integração</CardTitle>
+              <CardDescription>Configure sua chave da API-FOOTBALL para importar dados reais.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label>API Key (x-apisports-key)</Label>
+                <Input 
+                  type="password" 
+                  value={footballApiConfig.apiKey} 
+                  onChange={e => updateFootballApiConfig({ apiKey: e.target.value })}
+                  placeholder="Cole sua chave aqui..."
+                  className="bg-black/20 font-mono"
+                />
               </div>
-               {footballApiConfig?.lastSync && (
-                  <div className="flex flex-col items-end">
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Última Sincronização</p>
-                    <p className="text-xs font-mono">
-                        {new Date(footballApiConfig.lastSync).toLocaleString('pt-BR')}
-                    </p>
-                  </div>
-              )}
-          </CardFooter>
-      </Card>
+              <div className="space-y-2">
+                <Label>Base URL</Label>
+                <Input 
+                  value={footballApiConfig.baseUrl} 
+                  onChange={e => updateFootballApiConfig({ baseUrl: e.target.value })}
+                  className="bg-black/20"
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5">
+                <div className="space-y-0.5">
+                  <Label>Modo de Operação</Label>
+                  <p className="text-[10px] text-muted-foreground">Alternar entre dados reais ou testes.</p>
+                </div>
+                <Badge className={footballApiConfig.mode === 'live' ? 'bg-red-600' : 'bg-blue-600'}>
+                  {footballApiConfig.mode.toUpperCase()}
+                </Badge>
+              </div>
+            </CardContent>
+            <CardFooter className="border-t border-white/5 pt-6 justify-end">
+              <Button onClick={() => updateFootballApiConfig({})} className="lux-shine px-8">Salvar Configurações</Button>
+            </CardFooter>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="leagues" className="pt-6">
+          <Card className="border-white/5 overflow-hidden">
+            <Table>
+              <TableHeader className="bg-slate-950">
+                <TableRow className="border-white/5">
+                  <TableHead className="text-[10px] uppercase font-black">Liga</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black">País/Tipo</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black">Coverage</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-right">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {footballChampionships.map((champ) => (
+                  <TableRow key={champ.id} className="border-white/5 hover:bg-white/5">
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Image src={champ.logo} alt={champ.name} width={24} height={24} className="rounded-sm" />
+                        <span className="font-bold text-white text-sm">{champ.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-white">{champ.country}</span>
+                        <span className="text-[10px] text-muted-foreground uppercase">{champ.type}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {champ.coverage?.standings && <Badge variant="outline" className="text-[8px] border-green-500/20 text-green-500">STANDINGS</Badge>}
+                        {champ.coverage?.odds && <Badge variant="outline" className="text-[8px] border-blue-500/20 text-blue-500">ODDS</Badge>}
+                        {champ.coverage?.fixtures?.events && <Badge variant="outline" className="text-[8px] border-amber-500/20 text-amber-500">EVENTS</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">Importar</span>
+                        <Switch 
+                          checked={champ.importar} 
+                          onCheckedChange={v => updateChampionship(champ.id, { importar: v })} 
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="matches" className="pt-6">
+          <Card className="border-white/5 overflow-hidden">
+            <Table>
+              <TableHeader className="bg-slate-950">
+                <TableRow className="border-white/5">
+                  <TableHead className="text-[10px] uppercase font-black">Data/Hora</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black">Confronto</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black">Status</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-right">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {footballMatches.map((match) => {
+                  const home = footballTeams.find(t => t.id === match.homeTeamId);
+                  const away = footballTeams.find(t => t.id === match.awayTeamId);
+                  return (
+                    <TableRow key={match.id} className="border-white/5 hover:bg-white/5">
+                      <TableCell className="text-xs font-mono">
+                        {new Date(match.dateTime).toLocaleString('pt-BR')}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold">{home?.name}</span>
+                          <span className="text-muted-foreground text-[10px]">x</span>
+                          <span className="font-bold">{away?.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="uppercase text-[9px]">
+                          {match.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => deleteMatch(match.id)} className="text-red-500 hover:bg-red-500/10">
+                          <Trash2 size={14} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }

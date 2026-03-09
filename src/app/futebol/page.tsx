@@ -10,6 +10,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LotteryBetSlip } from '@/components/LotteryBetSlip';
 import { TicketDialog } from '@/components/ticket-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Search, Trophy, Calendar, Zap } from 'lucide-react';
 
 interface BetSlipItem {
     id: string;
@@ -20,66 +22,17 @@ interface BetSlipItem {
     value: number;
 }
 
-const FeaturedMatch = ({ match, betSlip, handleAddBet }: { match: any, betSlip: BetSlipItem[], handleAddBet: (match: any, pick: 'home' | 'draw' | 'away') => void }) => {
-    if (!match) return null;
-
-    const isLive = true; 
-    const gameTime = 'Primeiro tempo 10:50';
-    const scoreHome = 0;
-    const scoreAway = 0;
-
-    return (
-        <div className="live-player">
-            <div className="game-info">
-                <span className="league">{match.championshipName}</span>
-                {isLive && <span className="time">{gameTime}</span>}
-            </div>
-            <div className="scoreboard">
-                <span className="team">{match.homeTeamName}</span>
-                <span className="score">{scoreHome} : {scoreAway}</span>
-                <span className="team">{match.awayTeamName}</span>
-            </div>
-             <Tabs defaultValue="vencedor" className="w-full market-tabs">
-                <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="vencedor">Vencedor</TabsTrigger>
-                    <TabsTrigger value="gols" disabled>Gols</TabsTrigger>
-                    <TabsTrigger value="handicap" disabled>Handicap</TabsTrigger>
-                </TabsList>
-                <TabsContent value="vencedor">
-                    <div className="odds-container">
-                        <button className={`odd-btn ${betSlip.find(b => b.id === `${match.id}-home`) ? 'active' : ''}`} onClick={() => handleAddBet(match, 'home')}>
-                            <span className="odd-label">Casa</span>
-                            <span className="odd-value">{match.odds.home.toFixed(2)}</span>
-                        </button>
-                        <button className={`odd-btn ${betSlip.find(b => b.id === `${match.id}-draw`) ? 'active' : ''}`} onClick={() => handleAddBet(match, 'draw')}>
-                            <span className="odd-label">Empate</span>
-                            <span className="odd-value">{match.odds.draw.toFixed(2)}</span>
-                        </button>
-                        <button className={`odd-btn ${betSlip.find(b => b.id === `${match.id}-away`) ? 'active' : ''}`} onClick={() => handleAddBet(match, 'away')}>
-                            <span className="odd-label">Fora</span>
-                            <span className="odd-value">{match.odds.away.toFixed(2)}</span>
-                        </button>
-                        <button className="odd-btn" disabled>
-                            <span className="odd-label">Mais Mercados</span>
-                            <span className="odd-value">+350</span>
-                        </button>
-                    </div>
-                </TabsContent>
-                 <TabsContent value="gols">
-                     <div className="p-4 text-center text-white/50">Em breve</div>
-                </TabsContent>
-                <TabsContent value="handicap">
-                     <div className="p-4 text-center text-white/50">Em breve</div>
-                </TabsContent>
-            </Tabs>
-        </div>
-    );
-};
-
-
 export default function FutebolPage() {
-    const { footballMatches, footballTeams, footballChampionships, placeFootballBet } = useAppContext();
+    const { 
+      footballMatches, 
+      footballTeams, 
+      footballChampionships, 
+      placeFootballBet,
+      user
+    } = useAppContext();
     const { toast } = useToast();
+    
+    const [searchTerm, setSearchTerm] = useState('');
     const [betSlip, setBetSlip] = useState<BetSlipItem[]>([]);
     const [activeChampionship, setActiveChampionship] = useState<string | 'all'>('all');
     
@@ -88,32 +41,23 @@ export default function FutebolPage() {
     const [generatedTicketId, setGeneratedTicketId] = useState<string | null>(null);
     const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
 
-    useEffect(() => {
-        try {
-            const savedSlip = localStorage.getItem('football_bet_slip_v2');
-            if (savedSlip) setBetSlip(JSON.parse(savedSlip));
-        } catch (error) {
-            console.error("Failed to load bet slip", error);
-        }
-    }, []);
-
-    useEffect(() => {
-        try {
-            localStorage.setItem('football_bet_slip_v2', JSON.stringify(betSlip));
-        } catch (error) {
-            console.error("Failed to save bet slip", error);
-        }
-    }, [betSlip]);
-
     const matchesByChampionship = useMemo(() => {
         const grouped: Record<string, any> = {};
         const importedMatches = footballMatches.filter(match => match.isImported);
 
         importedMatches.forEach(match => {
-            if (match.status !== 'scheduled') return;
-            
             const championship = footballChampionships.find(c => c.apiId === match.championshipApiId);
             if (!championship) return;
+
+            // Filtro de pesquisa
+            const homeTeam = footballTeams.find(t => t.id === match.homeTeamId);
+            const awayTeam = footballTeams.find(t => t.id === match.awayTeamId);
+            
+            if (searchTerm && 
+                !homeTeam?.name.toLowerCase().includes(searchTerm.toLowerCase()) && 
+                !awayTeam?.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+              return;
+            }
 
             if (!grouped[championship.id]) {
                 grouped[championship.id] = {
@@ -124,9 +68,6 @@ export default function FutebolPage() {
                 };
             }
             
-            const homeTeam = footballTeams.find(t => t.id === match.homeTeamId);
-            const awayTeam = footballTeams.find(t => t.id === match.awayTeamId);
-
             grouped[championship.id].matches.push({
                 ...match,
                 homeTeamName: homeTeam?.name,
@@ -139,28 +80,24 @@ export default function FutebolPage() {
             group.matches.sort((a:any,b:any) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
             return group;
         });
-    }, [footballMatches, footballTeams, footballChampionships]);
-
-    const displayedMatches = useMemo(() => {
-        if (activeChampionship === 'all') return matchesByChampionship;
-        return matchesByChampionship.filter(group => group.championshipId === activeChampionship);
-    }, [matchesByChampionship, activeChampionship]);
-    
-    const featuredMatch = useMemo(() => {
-        const allImportedMatches = matchesByChampionship.flatMap(group => group.matches);
-        return allImportedMatches.length > 0 ? allImportedMatches[0] : null;
-    }, [matchesByChampionship]);
-
+    }, [footballMatches, footballTeams, footballChampionships, searchTerm]);
 
     const handleAddBet = (match: any, pick: 'home' | 'draw' | 'away') => {
+        if (!user) {
+          toast({ variant: 'destructive', title: 'Acesso Negado', description: 'Faça login para apostar.' });
+          return;
+        }
+
         const pickLabel = pick === 'home' ? match.homeTeamName : pick === 'draw' ? 'Empate' : match.awayTeamName;
+        const oddValue = match.odds[pick] || 1.95; // Fallback se não houver odd sincronizada
+
         const newBet: BetSlipItem = {
             id: `${match.id}-${pick}`,
             match,
             pick,
             pickLabel,
-            odd: match.odds[pick],
-            value: 5, // Default initial value
+            odd: oddValue,
+            value: 10,
         };
 
         setBetSlip(prev => {
@@ -174,14 +111,6 @@ export default function FutebolPage() {
             return [...prev, newBet];
         });
     };
-    
-    const handleRemoveBet = (id: string | number) => {
-        setBetSlip(prev => prev.filter(item => item.id !== id));
-    };
-
-    const handleBetValueChange = (id: string, value: number) => {
-        setBetSlip(prev => prev.map(bet => bet.id === id ? { ...bet, value } : bet));
-    };
 
     const { totalValue, totalReturn } = useMemo(() => {
         return betSlip.reduce(
@@ -193,146 +122,138 @@ export default function FutebolPage() {
             { totalValue: 0, totalReturn: 0 }
         );
     }, [betSlip]);
-    
-    const handleFinalize = () => {
-        if (totalValue <= 0) {
-            toast({ variant: 'destructive', title: 'Valor Inválido', description: 'O valor total da aposta deve ser maior que zero.' });
-            return;
-        }
-        
-        const summaryText = betSlip.map(i => `${i.match.homeTeamName} vs ${i.match.awayTeamName}: ${i.pickLabel} (@${i.odd.toFixed(2)})`).join('; ');
-        
-        const pouleId = placeFootballBet({
-            loteria: 'Futebol',
-            concurso: 'Esportivo',
-            data: new Date().toLocaleString('pt-BR'),
-            valor: `R$ ${totalValue.toFixed(2).replace('.', ',')}`,
-            numeros: summaryText,
-            detalhes: { selections: betSlip },
-        }, totalValue);
 
-        if (pouleId) {
-            setGeneratedTicketId(pouleId);
-            setTicketGenerationTime(new Date().toLocaleString('pt-BR'));
-            setIsTicketDialogOpen(true);
-        }
-    };
-
-    const handleNewBet = () => {
-        setBetSlip([]);
-        setIsTicketDialogOpen(false);
-        setGeneratedTicketId(null);
-        setTicketGenerationTime(null);
-    };
-
-
-  return (
-    <div>
-      <Header />
-      <main className="p-4 md:p-8">
-         <h2 className="text-3xl font-bold mb-6">Futebol</h2>
-
-         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start pb-20">
-             <div className="hidden lg:block lg:col-span-1 sidebar-campeonatos">
-                <h4 className="font-bold text-lg mb-4">Campeonatos</h4>
-                <div className={`campeonato-item ${activeChampionship === 'all' ? 'active' : ''}`}>
-                    <a href="#" onClick={(e) => { e.preventDefault(); setActiveChampionship('all'); }}>
-                        Todos os Jogos
-                    </a>
+    return (
+        <div className="min-h-screen bg-[#0a0f1e]">
+            <Header />
+            <main className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white">Futebol Ao Vivo</h2>
+                  <div className="relative w-full md:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="Buscar time..." 
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      className="bg-slate-900 border-white/10 h-11 pl-10 text-white rounded-xl"
+                    />
+                  </div>
                 </div>
-                {matchesByChampionship.map(group => (
-                    <div key={group.championshipId} className={`campeonato-item ${activeChampionship === group.championshipId ? 'active' : ''}`}>
-                        <a href="#" onClick={(e) => { e.preventDefault(); setActiveChampionship(group.championshipId); }}>
-                            {group.championshipName}
-                            <span className="badge">{group.matches.length}</span>
-                        </a>
-                    </div>
-                ))}
-            </div>
 
-            <div className="lg:col-span-3 space-y-6">
-                {featuredMatch && <FeaturedMatch match={featuredMatch} betSlip={betSlip} handleAddBet={handleAddBet} />}
-                
-                {displayedMatches.length === 0 && (
-                    <div className="jogo-card">
-                        <div className="p-8 text-center text-muted-foreground">
-                            <p>Nenhum jogo programado para os campeonatos selecionados.</p>
-                        </div>
-                    </div>
-                )}
-                {displayedMatches.map(group => (
-                    <div key={group.championshipName}>
-                        <div className="space-y-4">
-                           {group.matches.map((match: any) => (
-                                <div key={match.id} className="jogo-card">
-                                  <div className="jogo-header">
-                                    <span className="liga">{group.championshipName}</span>
-                                    <span className="status-badge">{new Date(match.dateTime).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })} {new Date(match.dateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                  </div>
-
-                                  <div className="jogo-info">
-                                    <div className="times">
-                                      <div className="time time-casa">
-                                        {match.homeTeamLogo && <Image src={match.homeTeamLogo} alt={match.homeTeamName} width={28} height={28} />}
-                                        <span className="nome">{match.homeTeamName}</span>
-                                      </div>
-                                      <div className="versus">VS</div>
-                                      <div className="time time-fora">
-                                        {match.awayTeamLogo && <Image src={match.awayTeamLogo} alt={match.awayTeamName} width={28} height={28} />}
-                                        <span className="nome">{match.awayTeamName}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="odds-container">
-                                    <button className={`odd-btn ${betSlip.find(b => b.id === `${match.id}-home`) ? 'active' : ''}`} onClick={() => handleAddBet(match, 'home')}>
-                                      <span className="odd-label">Casa</span>
-                                      <span className="odd-value">{match.odds.home.toFixed(2)}</span>
-                                    </button>
-                                    <button className={`odd-btn ${betSlip.find(b => b.id === `${match.id}-draw`) ? 'active' : ''}`} onClick={() => handleAddBet(match, 'draw')}>
-                                      <span className="odd-label">Empate</span>
-                                      <span className="odd-value">{match.odds.draw.toFixed(2)}</span>
-                                    </button>
-                                    <button className={`odd-btn ${betSlip.find(b => b.id === `${match.id}-away`) ? 'active' : ''}`} onClick={() => handleAddBet(match, 'away')}>
-                                      <span className="odd-label">Fora</span>
-                                      <span className="odd-value">{match.odds.away.toFixed(2)}</span>
-                                    </button>
-                                     <button className="odd-btn" disabled>
-                                      <span className="odd-label">Mais Mercados</span>
-                                      <span className="odd-value">+350</span>
-                                    </button>
-                                  </div>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pb-24">
+                    {/* Sidebar Ligas */}
+                    <div className="hidden lg:block lg:col-span-3 space-y-4">
+                        <Card className="bg-slate-900/50 border-white/5 rounded-2xl overflow-hidden">
+                          <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">
+                            <Trophy size={16} className="text-primary" />
+                            <span className="font-black uppercase italic text-xs tracking-widest text-white">Campeonatos</span>
+                          </div>
+                          <div className="p-2 space-y-1">
+                            <button 
+                              onClick={() => setActiveChampionship('all')}
+                              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all font-bold text-sm ${activeChampionship === 'all' ? 'bg-primary text-black' : 'text-slate-400 hover:bg-white/5'}`}
+                            >
+                              <Globe size={16} /> Todos os Jogos
+                            </button>
+                            {matchesByChampionship.map(group => (
+                              <button 
+                                key={group.championshipId}
+                                onClick={() => setActiveChampionship(group.championshipId)}
+                                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all font-bold text-sm ${activeChampionship === group.championshipId ? 'bg-primary text-black' : 'text-slate-400 hover:bg-white/5'}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <Image src={group.championshipLogo} alt="" width={20} height={20} />
+                                  <span className="truncate max-w-[140px]">{group.championshipName}</span>
                                 </div>
+                                <Badge variant="outline" className="bg-white/10 border-0 h-5 text-[10px]">{group.matches.length}</Badge>
+                              </button>
                             ))}
-                        </div>
+                          </div>
+                        </Card>
                     </div>
-                ))}
-            </div>
-         </div>
 
-         {/* Standardized Floating Bet Slip */}
-         <LotteryBetSlip 
-            items={betSlip}
-            totalValue={totalValue}
-            totalPossibleReturn={totalReturn}
-            onRemoveItem={handleRemoveBet}
-            onFinalize={handleFinalize}
-            lotteryName="Futebol"
-         />
+                    {/* Lista de Jogos */}
+                    <div className="lg:col-span-9 space-y-8">
+                        {matchesByChampionship
+                          .filter(g => activeChampionship === 'all' || g.championshipId === activeChampionship)
+                          .map(group => (
+                            <div key={group.championshipId} className="space-y-4">
+                                <div className="flex items-center gap-3 px-2">
+                                  <div className="p-2 bg-primary/10 rounded-lg">
+                                    <Image src={group.championshipLogo} alt="" width={24} height={24} />
+                                  </div>
+                                  <h3 className="text-xl font-black uppercase italic text-white tracking-tight">{group.championshipName}</h3>
+                                </div>
 
-         {/* Standardized Ticket Dialog */}
-         <TicketDialog 
-            isOpen={isTicketDialogOpen}
-            onOpenChange={setIsTicketDialogOpen}
-            onNewBet={handleNewBet}
-            ticketId={generatedTicketId}
-            generationTime={ticketGenerationTime}
-            lotteryName="Futebol"
-            ticketItems={betSlip}
-            totalValue={totalValue}
-            possibleReturn={totalReturn}
-         />
-      </main>
-    </div>
-  );
+                                <div className="grid gap-4">
+                                  {group.matches.map((match: any) => (
+                                    <Card key={match.id} className="bg-slate-900 border-white/5 rounded-2xl overflow-hidden hover:border-primary/30 transition-colors">
+                                      <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                        <div className="flex-1 flex items-center justify-between md:justify-start gap-8">
+                                          {/* Time Casa */}
+                                          <div className="flex flex-col items-center gap-2 w-24 text-center">
+                                            <div className="w-12 h-12 relative bg-white/5 rounded-full p-2">
+                                              <Image src={match.homeTeamLogo} alt="" fill className="object-contain p-2" />
+                                            </div>
+                                            <span className="text-xs font-bold text-white line-clamp-2">{match.homeTeamName}</span>
+                                          </div>
+
+                                          <div className="flex flex-col items-center gap-1">
+                                            {match.status === 'live' ? (
+                                              <Badge className="bg-red-600 animate-pulse text-[9px] h-5">AO VIVO</Badge>
+                                            ) : (
+                                              <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                                                {new Date(match.dateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                              </span>
+                                            )}
+                                            <span className="text-2xl font-black italic text-primary">VS</span>
+                                            <span className="text-[9px] font-bold text-muted-foreground uppercase">{match.round}</span>
+                                          </div>
+
+                                          {/* Time Fora */}
+                                          <div className="flex flex-col items-center gap-2 w-24 text-center">
+                                            <div className="w-12 h-12 relative bg-white/5 rounded-full p-2">
+                                              <Image src={match.awayTeamLogo} alt="" fill className="object-contain p-2" />
+                                            </div>
+                                            <span className="text-xs font-bold text-white line-clamp-2">{match.awayTeamName}</span>
+                                          </div>
+                                        </div>
+
+                                        {/* Odds */}
+                                        <div className="grid grid-cols-3 gap-2 w-full md:w-auto">
+                                          {[
+                                            { label: 'Casa', key: 'home' },
+                                            { label: 'Empate', key: 'draw' },
+                                            { label: 'Fora', key: 'away' }
+                                          ].map(opt => (
+                                            <button 
+                                              key={opt.key}
+                                              onClick={() => handleAddBet(match, opt.key as any)}
+                                              className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all h-16 w-full md:w-24 ${betSlip.find(b => b.id === `${match.id}-${opt.key}`) ? 'bg-primary border-primary text-black' : 'bg-white/5 border-white/5 text-white hover:bg-white/10'}`}
+                                            >
+                                              <span className="text-[9px] uppercase font-black opacity-70">{opt.label}</span>
+                                              <span className="text-sm font-black italic">{(match.odds[opt.key as keyof typeof match.odds] || 1.95).toFixed(2)}</span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </Card>
+                                  ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <LotteryBetSlip 
+                    items={betSlip}
+                    totalValue={totalValue}
+                    totalPossibleReturn={totalReturn}
+                    onRemoveItem={(id) => setBetSlip(betSlip.filter(b => b.id !== id))}
+                    onFinalize={() => {}}
+                    lotteryName="Futebol"
+                />
+            </main>
+        </div>
+    );
 }
