@@ -92,7 +92,18 @@ export async function syncFromApiFootball(
       // Sincronizar Times
       if (options.syncTeams) {
         try {
-          const apiTeams = await api.getTeams(Number(league.apiId), Number(season));
+          let apiTeams;
+          try {
+            apiTeams = await api.getTeams(Number(league.apiId), Number(season));
+          } catch (e: any) {
+            // Fallback para plano Free que bloqueia temporadas atuais
+            if (e.message.includes("Free plans do not have access to this season")) {
+              apiTeams = await api.getTeams(Number(league.apiId), 2024);
+            } else {
+              throw e;
+            }
+          }
+
           const mappedTeams = apiTeams.map((t: any) => ({
             id: String(t.team.id),
             bancaId: config.bancaId,
@@ -110,12 +121,25 @@ export async function syncFromApiFootball(
       // Sincronizar Jogos (Apenas Futuros/Recentes da Temporada Atual)
       if (options.syncFixtures) {
         try {
-          // Buscamos os próximos 50 jogos da liga na temporada atual
-          const apiFixtures = await api.getFixtures({ 
-            league: league.apiId, 
-            season: String(season),
-            next: '50' 
-          });
+          let apiFixtures;
+          try {
+            apiFixtures = await api.getFixtures({ 
+              league: league.apiId, 
+              season: String(season),
+              next: '50' 
+            });
+          } catch (e: any) {
+            // Fallback para plano Free que bloqueia temporadas atuais
+            if (e.message.includes("Free plans do not have access to this season")) {
+              apiFixtures = await api.getFixtures({ 
+                league: league.apiId, 
+                season: '2024',
+                next: '50' 
+              });
+            } else {
+              throw e;
+            }
+          }
 
           const mappedMatches = apiFixtures.map((f: any) => ({
             id: String(f.fixture.id),
