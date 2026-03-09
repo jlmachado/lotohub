@@ -1,5 +1,5 @@
 /**
- * @fileOverview Contexto global do sistema. Adaptado para TheSportsDB.
+ * @fileOverview Contexto global do sistema. Gerenciamento de Futebol via TheSportsDB.
  */
 
 'use client';
@@ -41,7 +41,7 @@ interface AppContextType {
   updateFootballLeagues: (leagues: NormalizedLeague[]) => void;
   syncFootballAll: () => Promise<void>;
   
-  // Mocks/Stubs para outros módulos (não alterados)
+  // Stubs para outros módulos
   news: any[]; banners: any[]; popups: any[]; jdbLoterias: any[]; postedResults: any[];
   genericLotteryConfigs: any[]; updateGenericLottery: (c: any) => void; casinoSettings: any; updateCasinoSettings: (s: any) => void;
   bingoSettings: any; updateBingoSettings: (s: any) => void; bingoDraws: any[]; bingoTickets: any[];
@@ -73,8 +73,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const stored = localStorage.getItem('app:football:v2');
-    if (stored) setFootballData(JSON.parse(stored));
+    const stored = localStorage.getItem('app:football:v3');
+    if (stored) {
+      try {
+        setFootballData(JSON.parse(stored));
+      } catch (e) {
+        console.error("Erro ao carregar dados do futebol:", e);
+      }
+    }
 
     const refreshSession = () => {
       const currentUser = getCurrentUser();
@@ -92,7 +98,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    localStorage.setItem('app:football:v2', JSON.stringify(footballData));
+    localStorage.setItem('app:football:v3', JSON.stringify(footballData));
   }, [footballData]);
 
   const updateFootballLeagues = (leagues: NormalizedLeague[]) => {
@@ -102,7 +108,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const syncFootballAll = async () => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
     try {
-      // 1. Garante que temos a lista de ligas se estiver vazia
+      // 1. Garante que temos a lista de ligas do Brasil
       let currentLeagues = footballData.leagues;
       if (currentLeagues.length === 0) {
         currentLeagues = await fetchAllAvailableLeagues();
@@ -112,11 +118,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       
       if (activeLeagueIds.length === 0) {
         setFootballData(prev => ({ ...prev, leagues: currentLeagues, syncStatus: 'idle' }));
-        toast({ variant: 'destructive', title: 'Nenhuma liga selecionada', description: 'Selecione pelo menos uma liga para importar.' });
+        toast({ variant: 'destructive', title: 'Nenhuma liga selecionada', description: 'Ative pelo menos uma liga brasileira para sincronizar.' });
         return;
       }
 
-      // 2. Sincroniza Jogos e Classificação
+      // 2. Sincroniza Jogos e Classificação para as ligas selecionadas
       const [matches, standings] = await Promise.all([
         syncMatchesAction(activeLeagueIds),
         syncStandingsAction(activeLeagueIds)
@@ -132,14 +138,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         syncStatus: 'idle'
       });
 
-      toast({ title: 'Sincronização Concluída', description: 'Dados do futebol atualizados com sucesso.' });
+      toast({ title: 'Sync Concluído', description: `Dados de ${activeLeagueIds.length} ligas brasileiras atualizados.` });
     } catch (e) {
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
-      toast({ variant: 'destructive', title: 'Erro no Sync', description: 'Falha ao conectar com o provedor.' });
+      toast({ variant: 'destructive', title: 'Erro no Sync', description: 'Falha ao conectar com TheSportsDB.' });
     }
   };
 
-  // Stubs para manter compatibilidade
   const value: AppContextType = {
     user, balance, bonus, terminal, logout: () => { logout(); setUser(null); router.push('/'); },
     apostas: [],

@@ -60,14 +60,15 @@ const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
 
 export async function fetchAllAvailableLeagues(): Promise<NormalizedLeague[]> {
   const leagues = await theSportsDB.getAllLeagues();
+  // Filtra apenas ligas de futebol no Brasil
   return leagues
-    .filter(l => l.strSport === 'Soccer')
+    .filter(l => l.strSport === 'Soccer' && l.strCountry === 'Brazil')
     .map(l => ({
       id: l.idLeague,
       name: l.strLeague,
-      country: l.strCountry || 'Unknown',
+      country: l.strCountry || 'Brazil',
       active: true,
-      importar: l.strCountry === 'Brazil' // Prioriza Brasil por padrão
+      importar: true
     }));
 }
 
@@ -89,8 +90,8 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
         theSportsDB.getPastMatches(id)
       ]);
 
-      const normalizedNext = nextApi.map(normalizeMatch);
-      const normalizedPast = pastApi.map(normalizeMatch);
+      const normalizedNext = (nextApi || []).map(normalizeMatch);
+      const normalizedPast = (pastApi || []).map(normalizeMatch);
 
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
       allToday = [...allToday, ...normalizedNext.filter(m => m.date === todayStr), ...normalizedPast.filter(m => m.date === todayStr)];
@@ -113,20 +114,22 @@ export async function syncFootballStandings(leagueIds: string[]): Promise<Normal
   for (const id of leagueIds) {
     try {
       const table = await theSportsDB.getStandings(id);
-      const normalized = table.map(s => ({
-        position: parseInt(s.intRank),
-        teamId: s.idTeam,
-        teamName: s.strTeam,
-        teamBadge: s.strTeamBadge,
-        played: parseInt(s.intPlayed),
-        points: parseInt(s.intPoints),
-        wins: parseInt(s.intWin),
-        draws: parseInt(s.intDraw),
-        losses: parseInt(s.intLoss),
-        goalsDiff: parseInt(s.intGoalDifference),
-        leagueId: id
-      }));
-      allStandings = [...allStandings, ...normalized];
+      if (table && Array.isArray(table)) {
+        const normalized = table.map(s => ({
+          position: parseInt(s.intRank),
+          teamId: s.idTeam,
+          teamName: s.strTeam,
+          teamBadge: s.strTeamBadge,
+          played: parseInt(s.intPlayed),
+          points: parseInt(s.intPoints),
+          wins: parseInt(s.intWin),
+          draws: parseInt(s.intDraw),
+          losses: parseInt(s.intLoss),
+          goalsDiff: parseInt(s.intGoalDifference),
+          leagueId: id
+        }));
+        allStandings = [...allStandings, ...normalized];
+      }
     } catch (e) {
       console.error(`Erro ao sincronizar classificação da liga ${id}:`, e);
     }

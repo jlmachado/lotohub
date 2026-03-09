@@ -1,5 +1,6 @@
 /**
  * @fileOverview Área Administrativa do Futebol (TheSportsDB).
+ * Agora com suporte a todas as ligas brasileiras.
  */
 
 'use client';
@@ -19,9 +20,9 @@ import {
   Activity, 
   Search, 
   CheckCircle2, 
-  AlertCircle,
   Database,
-  Globe
+  Globe,
+  Flag
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { fetchAllAvailableLeagues } from '@/services/football-sync-service';
@@ -55,7 +56,7 @@ export default function AdminFutebolConfigPage() {
     return footballData.leagues.filter(l => 
       l.name.toLowerCase().includes(term) || 
       l.country.toLowerCase().includes(term)
-    ).slice(0, 100);
+    );
   }, [footballData.leagues, leagueSearch]);
 
   const activeCount = footballData.leagues.filter(l => l.importar).length;
@@ -64,10 +65,10 @@ export default function AdminFutebolConfigPage() {
     <main className="p-4 md:p-8 space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central Futebol</h1>
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central Futebol Brasil</h1>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Provedor: TheSportsDB</Badge>
-            <Badge className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" /> Conectado (API Free)</Badge>
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Provider: TheSportsDB</Badge>
+            <Badge className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" /> Conectado (Gratuito)</Badge>
           </div>
         </div>
         <Button 
@@ -76,31 +77,38 @@ export default function AdminFutebolConfigPage() {
           className="lux-shine font-black uppercase"
         >
           {footballData.syncStatus === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
-          Sincronizar Tudo ({activeCount} Ligas)
+          Sincronizar Ligas ({activeCount})
         </Button>
       </div>
 
       <Tabs defaultValue="monitor" className="w-full">
         <TabsList className="bg-slate-950 border-white/10 h-12 p-1 gap-1">
           <TabsTrigger value="monitor" className="gap-2"><Activity size={14} /> Monitoramento</TabsTrigger>
-          <TabsTrigger value="leagues" className="gap-2"><Globe size={14} /> Ligas & Coverage</TabsTrigger>
+          <TabsTrigger value="leagues" className="gap-2"><Flag size={14} /> Ligas Brasileiras</TabsTrigger>
           <TabsTrigger value="config" className="gap-2"><Settings size={14} /> Configuração</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monitor" className="pt-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatCard title="Ligas Ativas" value={activeCount} icon={Globe} />
-            <StatCard title="Jogos Carregados" value={footballData.todayMatches.length + footballData.nextMatches.length} icon={RefreshCw} />
-            <StatCard title="Times Sincronizados" value={footballData.standings.length} icon={Trophy} />
+            <StatCard title="Ligas Ativas" value={activeCount} icon={Flag} />
+            <StatCard title="Jogos Ativos" value={footballData.todayMatches.length + footballData.nextMatches.length} icon={RefreshCw} />
+            <StatCard title="Times na Base" value={footballData.standings.length} icon={Trophy} />
             <StatCard title="Status do Sync" value={footballData.syncStatus.toUpperCase()} icon={Activity} />
           </div>
           
           <Card className="mt-6 border-white/5 bg-card/50">
-            <CardHeader><CardTitle>Logs de Sincronização</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Status Operacional</CardTitle></CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Última atualização global: {footballData.lastSync ? new Date(footballData.lastSync).toLocaleString('pt-BR') : 'Nunca'}
-              </p>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground flex justify-between">
+                  <span>Última sincronização global:</span>
+                  <span className="font-bold text-white">{footballData.lastSync ? new Date(footballData.lastSync).toLocaleString('pt-BR') : 'Nunca'}</span>
+                </p>
+                <p className="text-sm text-muted-foreground flex justify-between">
+                  <span>Ligas Brasileiras detectadas:</span>
+                  <span className="font-bold text-white">{footballData.leagues.length}</span>
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -109,20 +117,20 @@ export default function AdminFutebolConfigPage() {
           <Card className="border-white/5 bg-card/50">
             <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <CardTitle>Gestão de Ligas</CardTitle>
-                <CardDescription>Pesquise e selecione os campeonatos que deseja monitorar.</CardDescription>
+                <CardTitle>Gestão de Campeonatos Brasileiros</CardTitle>
+                <CardDescription>O sistema detecta automaticamente ligas do Brasil na TheSportsDB.</CardDescription>
               </div>
-              <Button onClick={handleSearchLeagues} disabled={isSearchingLeagues} variant="outline">
+              <Button onClick={handleSearchLeagues} disabled={isSearchingLeagues} variant="outline" size="sm">
                 {isSearchingLeagues ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Recarregar Ligas da API
+                Buscar Novas Ligas
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input 
-                  placeholder="Pesquisar liga ou país..." 
-                  className="w-full bg-black/20 border border-white/10 rounded-lg pl-10 h-10 text-sm focus:outline-none focus:border-primary"
+                  placeholder="Pesquisar campeonato..." 
+                  className="w-full bg-black/20 border border-white/10 rounded-lg pl-10 h-10 text-sm focus:outline-none focus:border-primary text-white"
                   value={leagueSearch}
                   onChange={e => setLeagueSearch(e.target.value)}
                 />
@@ -134,12 +142,12 @@ export default function AdminFutebolConfigPage() {
                     <TableRow className="border-white/5">
                       <TableHead className="text-[10px] uppercase font-black">Liga</TableHead>
                       <TableHead className="text-[10px] uppercase font-black">País</TableHead>
-                      <TableHead className="text-[10px] uppercase font-black text-right">Status</TableHead>
+                      <TableHead className="text-[10px] uppercase font-black text-right">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredLeagues.length === 0 ? (
-                      <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">Nenhuma liga encontrada.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">Nenhuma liga brasileira encontrada. Clique em "Buscar Novas Ligas".</TableCell></TableRow>
                     ) : (
                       filteredLeagues.map(l => (
                         <TableRow key={l.id} className="border-white/5 hover:bg-white/5 transition-colors">
@@ -152,7 +160,7 @@ export default function AdminFutebolConfigPage() {
                               className={l.importar ? "bg-green-600 hover:bg-green-700" : "text-muted-foreground"}
                               onClick={() => toggleLeagueImport(l.id)}
                             >
-                              {l.importar ? "Sincronizando" : "Ignorar"}
+                              {l.importar ? "Ativa" : "Inativa"}
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -168,17 +176,17 @@ export default function AdminFutebolConfigPage() {
         <TabsContent value="config" className="pt-6">
           <Card className="max-w-2xl border-white/5 bg-card/50">
             <CardHeader>
-              <CardTitle>Provedor de Dados</CardTitle>
-              <CardDescription>O sistema está configurado para usar a TheSportsDB (Plano Gratuito).</CardDescription>
+              <CardTitle>Configuração do Provider</CardTitle>
+              <CardDescription>Conexão direta com TheSportsDB API v1.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Base URL</Label>
-                <Input value="https://www.thesportsdb.com/api/v1/json/1" readOnly className="bg-black/40" />
+                <Label className="text-xs uppercase text-muted-foreground">Base URL</Label>
+                <Input value="https://www.thesportsdb.com/api/v1/json/1" readOnly className="bg-black/40 text-white" />
               </div>
               <div className="space-y-2">
-                <Label>API Key</Label>
-                <Input value="1 (Free Tier)" readOnly className="bg-black/40" />
+                <Label className="text-xs uppercase text-muted-foreground">API Key</Label>
+                <Input value="1 (Free Tier)" readOnly className="bg-black/40 text-white" />
               </div>
             </CardContent>
           </Card>
