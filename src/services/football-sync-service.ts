@@ -55,7 +55,7 @@ export async function syncFromApiFootball(
       const apiLeagues = await api.getLeagues({ current: 'true' });
       
       results.data.championships = apiLeagues.map((l: any) => {
-        // CORREÇÃO: Preservar a flag 'importar' já existente no sistema
+        // Preservar a flag 'importar' já existente no sistema
         const existingChamp = currentData.championships.find((c: any) => c.apiId === String(l.league.id));
         
         return {
@@ -85,13 +85,26 @@ export async function syncFromApiFootball(
     }
 
     // 3. Sync de Times e Jogos (Limitado às ligas ativas para economizar API)
+    // Lógica de Temporada: Tentar 2025, se falhar por plano free, usar 2024
     const currentYear = new Date().getFullYear();
+    const fallbackYear = 2024;
 
     for (const league of leaguesToSync) {
       // Sync Teams
       if (options.syncTeams) {
         try {
-          const apiTeams = await api.getTeams(Number(league.apiId), currentYear);
+          let apiTeams;
+          try {
+            apiTeams = await api.getTeams(Number(league.apiId), currentYear);
+          } catch (e: any) {
+            if (e.message.includes('Free plans') || e.message.includes('2024')) {
+              console.warn(`[SYNC] Plano Free detectado. Fazendo fallback para temporada ${fallbackYear} na liga ${league.name}`);
+              apiTeams = await api.getTeams(Number(league.apiId), fallbackYear);
+            } else {
+              throw e;
+            }
+          }
+
           const mappedTeams = apiTeams.map((t: any) => ({
             id: String(t.team.id),
             bancaId: config.bancaId,
@@ -102,19 +115,33 @@ export async function syncFromApiFootball(
           results.data.teams = [...results.data.teams, ...mappedTeams];
           results.counts.teams += mappedTeams.length;
         } catch (e) {
-          console.error(`Erro ao sincronizar times da liga ${league.apiId}`);
+          console.error(`Erro ao sincronizar times da liga ${league.apiId}:`, e);
         }
       }
 
       // Sync Fixtures (Jogos)
       if (options.syncFixtures) {
         try {
-          // Busca jogos dos próximos 7 dias ou próximos 50
-          const apiFixtures = await api.getFixtures({ 
-            league: league.apiId, 
-            season: String(currentYear),
-            next: '50'
-          });
+          let apiFixtures;
+          try {
+            // Tenta temporada atual
+            apiFixtures = await api.getFixtures({ 
+              league: league.apiId, 
+              season: String(currentYear),
+              next: '50'
+            });
+          } catch (e: any) {
+            // Se for erro de plano free, tenta o ano anterior
+            if (e.message.includes('Free plans') || e.message.includes('2024')) {
+              apiFixtures = await api.getFixtures({ 
+                league: league.apiId, 
+                season: String(fallbackYear),
+                next: '50'
+              });
+            } else {
+              throw e;
+            }
+          }
 
           const mappedMatches = apiFixtures.map((f: any) => ({
             id: String(f.fixture.id),
@@ -133,7 +160,7 @@ export async function syncFromApiFootball(
           results.data.matches = [...results.data.matches, ...mappedMatches];
           results.counts.fixtures += mappedMatches.length;
         } catch (e) {
-          console.error(`Erro ao sincronizar jogos da liga ${league.apiId}`);
+          console.error(`Erro ao sincronizar jogos da liga ${league.apiId}:`, e);
         }
       }
     }
