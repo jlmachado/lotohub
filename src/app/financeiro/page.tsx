@@ -42,7 +42,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 
 export default function FinanceiroPage() {
-    const { apostas, depositos, saques } = useAppContext();
+    const { apostas = [], depositos = [], saques = [] } = useAppContext();
 
     const getStatusBadgeVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
         switch (status) {
@@ -76,6 +76,7 @@ export default function FinanceiroPage() {
     const COMISSION_PERCENTAGE = 0.10; // 10%
 
     const parseDate = (dateString: string): Date => {
+        if (!dateString) return new Date('invalid');
         // Handles formats like "26/07/2024, 10:30:00" or "26/07/2024 10:30:00"
         const cleanedDateString = dateString.replace(',', '');
         const [datePart, timePart] = cleanedDateString.split(' ');
@@ -87,11 +88,12 @@ export default function FinanceiroPage() {
 
     const parseValor = (valorString: string): number => {
         if (!valorString) return 0;
-        return parseFloat(valorString.replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+        if (typeof valorString === 'number') return valorString;
+        return parseFloat(valorString.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
     };
     
     const calcularPremio = (bilhete: Aposta) => {
-        if (bilhete.status !== 'premiado') {
+        if (bilhete.status !== 'premiado' && bilhete.status !== 'won') {
             return 0;
         }
 
@@ -108,7 +110,8 @@ export default function FinanceiroPage() {
         const startDate = dataInicio ? new Date(dataInicio + 'T00:00:00') : null;
         const endDate = dataFim ? new Date(dataFim + 'T23:59:59') : null;
 
-        const apostasFiltradas = apostas.filter(aposta => {
+        const safeApostas = apostas || [];
+        const apostasFiltradas = safeApostas.filter(aposta => {
             const apostaDate = parseDate(aposta.data);
             if (apostaDate.toString() === 'Invalid Date') return false;
             if (startDate && apostaDate < startDate) return false;
@@ -185,7 +188,7 @@ export default function FinanceiroPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {depositos.length > 0 ? (
+                                        {Array.isArray(depositos) && depositos.length > 0 ? (
                                             depositos.map((deposito, index) => (
                                                 <TableRow key={index}>
                                                     <TableCell>{deposito.data}</TableCell>
@@ -221,7 +224,7 @@ export default function FinanceiroPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {saques.length > 0 ? (
+                                        {Array.isArray(saques) && saques.length > 0 ? (
                                             saques.map((saque, index) => (
                                                 <TableRow key={index}>
                                                     <TableCell>{saque.data}</TableCell>
@@ -357,4 +360,3 @@ export default function FinanceiroPage() {
         </div>
     );
 }
-    
