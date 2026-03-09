@@ -11,6 +11,7 @@ import { LotteryBetSlip } from '@/components/LotteryBetSlip';
 import { TicketDialog } from '@/components/ticket-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Search, Trophy, Globe, Calendar } from 'lucide-react';
+import { FootballMatch } from '@/context/AppContext';
 
 interface BetSlipItem {
     id: string;
@@ -265,7 +266,7 @@ export default function FutebolPage() {
                                     ))}
                                   </div>
                               </div>
-                          )
+                            ))
                         )}
                     </div>
                 </div>
