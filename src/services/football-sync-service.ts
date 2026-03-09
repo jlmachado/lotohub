@@ -111,10 +111,15 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
     const mapped: NormalizedLeague[] = (leagues || []).map(l => {
       const category = categorizeLeague(l);
       
+      const name = normalizeText(l.strLeague);
+      const alt = normalizeText(l.strLeagueAlternate || "");
+      
       // Auto-ativar principais por padrão
       const isPriority = category === 'NACIONAL' || 
-                        normalizeText(l.strLeague).includes('paulista') || 
-                        normalizeText(l.strLeague).includes('carioca');
+                        name.includes('paulista') || 
+                        name.includes('carioca') ||
+                        alt.includes('paulista') ||
+                        alt.includes('carioca');
 
       return {
         ...l,
@@ -124,6 +129,13 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
         importar: isPriority
       };
     });
+
+    // Se nenhuma liga foi ativada automaticamente, ativa as 5 primeiras como garantia
+    if (mapped.length > 0 && !mapped.some(l => l.importar)) {
+      for (let i = 0; i < Math.min(5, mapped.length); i++) {
+        mapped[i].importar = true;
+      }
+    }
 
     return mapped;
   } catch (e) {
@@ -198,23 +210,30 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
 export async function syncFootballStandings(leagueIds: string[]): Promise<NormalizedStanding[]> {
   let allStandings: NormalizedStanding[] = [];
-  const currentYear = getSPDate().split('-')[0];
+  const currentYear = parseInt(getSPDate().split('-')[0], 10);
 
   for (const id of leagueIds) {
     try {
-      const table = await theSportsDB.getStandings(id, currentYear);
+      // Tentar ano atual
+      let table = await theSportsDB.getStandings(id, String(currentYear));
+      
+      // Fallback para ano anterior se atual vier vazio (comum em jan/fev)
+      if (!table || !Array.isArray(table) || table.length === 0) {
+        table = await theSportsDB.getStandings(id, String(currentYear - 1));
+      }
+
       if (table && Array.isArray(table) && table.length > 0) {
         const normalized = table.map(s => ({
-          position: parseInt(s.intRank),
+          position: parseInt(s.intRank || "0"),
           teamId: s.idTeam,
           teamName: s.strTeam,
           teamBadge: s.strTeamBadge,
-          played: parseInt(s.intPlayed),
-          points: parseInt(s.intPoints),
-          wins: parseInt(s.intWin),
-          draws: parseInt(s.intDraw),
-          losses: parseInt(s.intLoss),
-          goalsDiff: parseInt(s.intGoalDifference),
+          played: parseInt(s.intPlayed || "0"),
+          points: parseInt(s.intPoints || "0"),
+          wins: parseInt(s.intWin || "0"),
+          draws: parseInt(s.intDraw || "0"),
+          losses: parseInt(s.intLoss || "0"),
+          goalsDiff: parseInt(s.intGoalDifference || "0"),
           leagueId: id
         }));
         allStandings = [...allStandings, ...normalized];

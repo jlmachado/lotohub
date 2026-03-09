@@ -104,7 +104,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const FOOTBALL_STORAGE_KEY = 'app:football:v9';
+const FOOTBALL_STORAGE_KEY = 'app:football:v10';
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
@@ -210,6 +210,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const hasNewData = matches.today.length > 0 || matches.next.length > 0 || matches.past.length > 0 || standings.length > 0;
 
       setFootballData(prev => ({
+        ...prev,
         leagues: currentLeagues,
         todayMatches: matches.today.length > 0 ? matches.today : prev.todayMatches,
         nextMatches: matches.next.length > 0 ? matches.next : prev.nextMatches,
@@ -217,7 +218,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         standings: standings.length > 0 ? standings : prev.standings,
         lastSync: new Date().toISOString(),
         lastSuccessfulSync: hasNewData ? new Date().toISOString() : prev.lastSuccessfulSync,
-        nextScheduledSync: null,
         syncStatus: hasNewData ? 'idle' : 'partial'
       }));
 
@@ -237,7 +237,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const runAutoSync = () => {
       if (syncInProgress.current || !window.navigator.onLine) return;
-      const spHour = parseInt(new Intl.DateTimeFormat('en-US', {timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false}).format(new Date()), 10);
+      
+      const spHour = parseInt(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo', 
+        hour: 'numeric', 
+        hour12: false
+      }).format(new Date()), 10);
+      
       const interval = (spHour >= 8 && spHour <= 23) ? 15 : 60;
       const last = footballData.lastSync ? new Date(footballData.lastSync) : new Date(0);
       const diff = (Date.now() - last.getTime()) / (1000 * 60);
@@ -247,8 +253,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
+    // Atraso de 3 segundos para o primeiro sync após carregar
     const bootTimer = setTimeout(runAutoSync, 3000); 
     const interval = setInterval(runAutoSync, 60000 * 5); 
+    
     const handleFocus = () => { if (document.visibilityState === 'visible') runAutoSync(); };
     window.addEventListener('visibilitychange', handleFocus);
     window.addEventListener('online', runAutoSync);
@@ -265,8 +273,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     user, balance, bonus, terminal, logout: () => { logout(); setUser(null); router.push('/'); },
     apostas, depositos: [], saques: [],
     footballData, updateFootballLeagues, syncFootballAll,
-    cambistaMovements: [], registerCambistaMovement: () => {},
-    userCommissions: [], promoterCredits: [],
+    cambistaMovements: [], userCommissions: [], promoterCredits: [],
     news, addNews: (n) => setNews([...news, n]), updateNews: (n) => setNews(news.map(x => x.id === n.id ? n : x)), deleteNews: (id) => setNews(news.filter(x => x.id !== id)),
     banners, addBanner: (b) => setBanners([...banners, b]), updateBanner: (b) => setBanners(banners.map(x => x.id === b.id ? b : x)), deleteBanner: (id) => setBanners(banners.filter(x => x.id !== id)),
     popups, addPopup: (p) => setPopups([...popups, p]), updatePopup: (p) => setPopups(popups.map(x => x.id === p.id ? p : x)), deletePopup: (id) => setPopups(popups.filter(x => x.id !== id)),

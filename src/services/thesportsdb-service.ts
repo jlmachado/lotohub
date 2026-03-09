@@ -63,7 +63,7 @@ export interface ApiStanding {
 
 class TheSportsDBService {
   /**
-   * Faz requisição para a API através da rota de proxy interna.
+   * Faz requisição para a API através da rota de proxy interna com tratamento resiliente.
    */
   private async request(endpoint: string) {
     if (typeof window === 'undefined') return null;
@@ -80,20 +80,26 @@ class TheSportsDBService {
       
       const result = await response.json();
       
-      if (!response.ok || !result.ok) {
+      // Se o proxy reportar erro interno (5xx), lançamos erro
+      if (!response.ok) {
         throw new Error(result.message || `Erro no servidor: ${response.status}`);
+      }
+      
+      // Se o proxy retornou ok: false (erro reportado pelo proxy na comunicação com o upstream)
+      if (result.ok === false) {
+        console.warn(`[TheSportsDB Service] Aviso em ${endpoint}:`, result.message);
+        return null;
       }
       
       return result.data;
     } catch (error: any) {
-      console.error(`[TheSportsDB Service] Erro (${endpoint}):`, error.message);
-      throw error;
+      console.error(`[TheSportsDB Service] Erro crítico (${endpoint}):`, error.message);
+      return null; // Retorna null para evitar quebras em cadeia
     }
   }
 
   async getLeaguesByCountry(country: string = 'Brazil', sport: string = 'Soccer'): Promise<ApiLeague[]> {
     const data = await this.request(`search_all_leagues.php?c=${encodeURIComponent(country)}&s=${encodeURIComponent(sport)}`);
-    // A API V1 retorna as ligas na chave 'countrys' (com s)
     return data?.countrys || data?.countries || [];
   }
 

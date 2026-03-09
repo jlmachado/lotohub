@@ -25,8 +25,6 @@ export async function GET(request: Request) {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
   const url = `${baseUrl}/${cleanEndpoint}`;
 
-  console.log(`[TheSportsDB Proxy] Upstream Call: ${url}`);
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000); 
 
@@ -43,9 +41,7 @@ export async function GET(request: Request) {
 
     clearTimeout(timeoutId);
 
-    const status = response.status;
-    
-    if (status === 404) {
+    if (response.status === 404) {
       return NextResponse.json({ 
         ok: true, 
         endpoint, 
@@ -60,22 +56,29 @@ export async function GET(request: Request) {
       return NextResponse.json({ 
         ok: false, 
         error: 'UPSTREAM_ERROR', 
-        status, 
-        message: `API retornou erro ${status}`,
-        body: bodyText.substring(0, 300)
+        status: response.status, 
+        message: `API retornou erro ${response.status}`,
+        body: bodyText.substring(0, 200)
       }, { status: 502 });
+    }
+
+    // Se o corpo estiver vazio, retorna sucesso com data null
+    if (!bodyText || bodyText.trim() === "") {
+      return NextResponse.json({ ok: true, endpoint, data: null });
     }
 
     try {
       const data = JSON.parse(bodyText);
       return NextResponse.json({ ok: true, endpoint, data });
     } catch (e) {
+      // Se não for JSON, não quebra o sistema, apenas retorna data null
+      console.warn(`[TheSportsDB Proxy] Resposta não-JSON de ${url}`);
       return NextResponse.json({ 
-        ok: false, 
-        error: 'INVALID_JSON', 
-        message: 'Resposta da API não é um JSON válido.',
-        body: bodyText.substring(0, 300)
-      }, { status: 502 });
+        ok: true, 
+        endpoint, 
+        data: null,
+        message: 'Resposta da API não é um JSON válido.' 
+      });
     }
 
   } catch (error: any) {
