@@ -68,7 +68,7 @@ export default function AdminFutebolConfigPage() {
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central Futebol Brasil</h1>
           <div className="flex items-center gap-2 mt-1">
             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Provider: TheSportsDB</Badge>
-            <Badge className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" /> Conectado (Gratuito)</Badge>
+            <Badge className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" /> Conectado</Badge>
           </div>
         </div>
         <Button 
@@ -182,11 +182,11 @@ export default function AdminFutebolConfigPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label className="text-xs uppercase text-muted-foreground">Base URL</Label>
-                <Input value="https://www.thesportsdb.com/api/v1/json/1" readOnly className="bg-black/40 text-white" />
+                <Input value="https://www.thesportsdb.com/api/v1/json/123" readOnly className="bg-black/40 text-white" />
               </div>
               <div className="space-y-2">
                 <Label className="text-xs uppercase text-muted-foreground">API Key</Label>
-                <Input value="1 (Free Tier)" readOnly className="bg-black/40 text-white" />
+                <Input value="123" readOnly className="bg-black/40 text-white" />
               </div>
             </CardContent>
           </Card>

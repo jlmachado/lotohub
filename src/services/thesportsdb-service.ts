@@ -3,7 +3,7 @@
  * Foco em ligas brasileiras, times, eventos e classificação.
  */
 
-const BASE_URL = 'https://www.thesportsdb.com/api/v1/json/1';
+const BASE_URL = 'https://www.thesportsdb.com/api/v1/json/123';
 
 export interface ApiLeague {
   idLeague: string;
