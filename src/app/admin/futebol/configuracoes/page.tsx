@@ -1,5 +1,5 @@
 /**
- * @fileOverview Área Administrativa do Futebol EXCLUSIVA para TheSportsDB.
+ * @fileOverview Área Administrativa do Futebol EXCLUSIVA para TheSportsDB Free V1 (Chave 123).
  */
 
 'use client';
@@ -67,7 +67,7 @@ export default function AdminFutebolConfigPage() {
         <div>
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central Futebol</h1>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 uppercase font-black text-[10px]">Fonte Única: TheSportsDB</Badge>
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 uppercase font-black text-[10px]">TheSportsDB V1 (Free 123)</Badge>
             <Badge className="bg-green-600 font-black uppercase text-[10px]"><CheckCircle2 className="h-3 w-3 mr-1" /> Auto-Sync Ativo</Badge>
           </div>
         </div>
@@ -77,15 +77,15 @@ export default function AdminFutebolConfigPage() {
           className="lux-shine font-black uppercase"
         >
           {footballData.syncStatus === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
-          Sincronizar Ligas ({activeCount})
+          Sincronizar Agora
         </Button>
       </div>
 
       <Tabs defaultValue="monitor" className="w-full">
         <TabsList className="bg-slate-950 border-white/10 h-12 p-1 gap-1">
           <TabsTrigger value="monitor" className="gap-2 font-black uppercase text-[10px]"><Activity size={14} /> Monitoramento</TabsTrigger>
-          <TabsTrigger value="leagues" className="gap-2 font-black uppercase text-[10px]"><Flag size={14} /> Ligas Brasileiras</TabsTrigger>
-          <TabsTrigger value="config" className="gap-2 font-black uppercase text-[10px]"><Settings size={14} /> Configuração</TabsTrigger>
+          <TabsTrigger value="leagues" className="gap-2 font-black uppercase text-[10px]"><Flag size={14} /> Ligas & Campeonatos</TabsTrigger>
+          <TabsTrigger value="config" className="gap-2 font-black uppercase text-[10px]"><Settings size={14} /> Configuração API</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monitor" className="pt-6">
@@ -99,7 +99,7 @@ export default function AdminFutebolConfigPage() {
           <Card className="mt-6 border-white/5 bg-card/50 overflow-hidden shadow-xl">
             <CardHeader className="bg-white/5 border-b border-white/5">
               <CardTitle className="text-sm font-black uppercase italic tracking-widest text-white flex items-center gap-2">
-                <Clock size={16} className="text-primary" /> Histórico de Atualização
+                <Clock size={16} className="text-primary" /> Histórico de Atualização Automática
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
@@ -122,7 +122,7 @@ export default function AdminFutebolConfigPage() {
                   <div className="p-4 rounded-lg bg-slate-800/50 border border-white/5 flex items-start gap-3">
                     <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={16} />
                     <p className="text-[10px] text-muted-foreground uppercase leading-relaxed font-bold">
-                      O sistema utiliza exclusivamente a TheSportsDB. As sincronizações ocorrem automaticamente a cada 15 min (dia) e 60 min (noite).
+                      A sincronização automática ocorre a cada 15 min entre 08h e 00h (SP). Durante a madrugada, o intervalo é de 60 min.
                     </p>
                   </div>
                 </div>
@@ -135,12 +135,12 @@ export default function AdminFutebolConfigPage() {
           <Card className="border-white/5 bg-card/50">
             <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <CardTitle>Gestão de Campeonatos Brasileiros</CardTitle>
-                <CardDescription>Ative as ligas que deseja sincronizar da TheSportsDB.</CardDescription>
+                <CardTitle>Gestão de Ligas Brasileiras</CardTitle>
+                <CardDescription>Ative os campeonatos que o sistema deve monitorar na TheSportsDB.</CardDescription>
               </div>
               <Button onClick={handleSearchLeagues} disabled={isSearchingLeagues} variant="outline" size="sm" className="h-9">
                 <RefreshCw className={isSearchingLeagues ? "mr-2 h-4 w-4 animate-spin" : "mr-2 h-4 w-4"} />
-                Recarregar Ligas
+                Buscar Ligas do Brasil
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -160,12 +160,12 @@ export default function AdminFutebolConfigPage() {
                     <TableRow className="border-white/5 h-12">
                       <TableHead className="text-[10px] uppercase font-black px-4">Liga</TableHead>
                       <TableHead className="text-[10px] uppercase font-black">ID</TableHead>
-                      <TableHead className="text-[10px] uppercase font-black text-right px-4">Sincronizar?</TableHead>
+                      <TableHead className="text-[10px] uppercase font-black text-right px-4">Monitorar?</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredLeagues.length === 0 ? (
-                      <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">Nenhuma liga encontrada.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">Nenhum campeonato encontrado.</TableCell></TableRow>
                     ) : (
                       filteredLeagues.map(l => (
                         <TableRow key={l.id} className="border-white/5 hover:bg-white/5 transition-colors">
@@ -189,7 +189,7 @@ export default function AdminFutebolConfigPage() {
                               className={l.importar ? "bg-green-600 hover:bg-green-700 h-8 text-[10px] font-black" : "text-muted-foreground h-8 text-[10px] font-black"}
                               onClick={() => toggleLeagueImport(l.id)}
                             >
-                              {l.importar ? "HABILITADA" : "DESATIVADA"}
+                              {l.importar ? "ATIVO" : "INATIVO"}
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -205,17 +205,21 @@ export default function AdminFutebolConfigPage() {
         <TabsContent value="config" className="pt-6">
           <Card className="max-w-2xl border-white/5 bg-card/50 shadow-2xl">
             <CardHeader>
-              <CardTitle>Configuração da Fonte</CardTitle>
-              <CardDescription>O sistema utiliza o endpoint JSON da TheSportsDB V1.</CardDescription>
+              <CardTitle>Configuração da Fonte de Dados</CardTitle>
+              <CardDescription>O sistema está configurado para a TheSportsDB V1 (Free).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label className="text-xs uppercase text-muted-foreground font-bold">Base URL</Label>
-                <Input value="https://www.thesportsdb.com/api/v1/json/3" readOnly className="bg-black/40 text-white font-mono text-xs h-10" />
+                <Input value="https://www.thesportsdb.com/api/v1/json/123" readOnly className="bg-black/40 text-white font-mono text-xs h-10" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs uppercase text-muted-foreground font-bold">API Key (Free V1)</Label>
+                <Input value="123" readOnly className="bg-black/40 text-white font-mono text-xs h-10" />
               </div>
               <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg">
                 <p className="text-xs text-primary leading-relaxed font-bold uppercase italic">
-                  Padronização Total: O sistema de futebol foi simplificado para usar apenas uma fonte de dados, garantindo maior estabilidade e facilidade de manutenção.
+                  Utilizando chave free pública 123. Esta chave possui limites de requisições por minuto e dados limitados por dia.
                 </p>
               </div>
             </CardContent>

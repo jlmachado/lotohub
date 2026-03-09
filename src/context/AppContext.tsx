@@ -1,5 +1,5 @@
 /**
- * @fileOverview Contexto global padronizado para uso EXCLUSIVO da TheSportsDB no futebol.
+ * @fileOverview Contexto global com bootstrap automático e sincronização resiliente para Futebol.
  */
 
 'use client';
@@ -147,11 +147,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [celebrationTrigger, setCelebrationTrigger] = useState(false);
 
+  // --- Recuperação de Estado e Bootstrap ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const storedFootball = localStorage.getItem('app:football:v6');
+    
+    // Recuperar futebol do storage
+    const storedFootball = localStorage.getItem('app:football:v7');
     if (storedFootball) setFootballData(JSON.parse(storedFootball));
 
+    // Sessão do usuário
     const refreshSession = () => {
       const currentUser = getCurrentUser();
       setUser(currentUser);
@@ -166,9 +170,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => window.removeEventListener('auth-change', refreshSession);
   }, []);
 
+  // --- Persistência de Futebol ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    localStorage.setItem('app:football:v6', JSON.stringify(footballData));
+    localStorage.setItem('app:football:v7', JSON.stringify(footballData));
   }, [footballData]);
 
   const updateFootballLeagues = (leagues: NormalizedLeague[]) => {
@@ -183,6 +188,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     try {
       let currentLeagues = footballData.leagues;
+      
+      // Bootstrap automático de ligas se estiver vazio
       if (currentLeagues.length === 0) {
         currentLeagues = await fetchBrazilianLeagues();
       }
@@ -214,17 +221,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       if (manual) toast({ title: 'Sincronização Concluída', description: 'Dados da TheSportsDB atualizados.' });
     } catch (e) {
-      console.error("[Football] Erro de sincronização:", e);
+      console.error("[Football Sync] Erro:", e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
     } finally {
       syncInProgress.current = false;
     }
   }, [footballData.leagues, toast]);
 
+  // --- Automatismos: Timer e Focus ---
   useEffect(() => {
     const runAutoSync = () => {
       const now = new Date();
       const hour = now.getHours();
+      
+      // 15 min em horário comercial (SP), 60 min fora
       const intervalMinutes = (hour >= 8) ? 15 : 60;
       const last = footballData.lastSuccessfulSync ? new Date(footballData.lastSuccessfulSync) : new Date(0);
       const diffMin = (now.getTime() - last.getTime()) / (1000 * 60);
@@ -234,9 +244,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
+    // Bootstrap imediato e intervalo
     const bootTimer = setTimeout(runAutoSync, 2000);
-    const interval = setInterval(runAutoSync, 60000 * 5);
-    return () => { clearTimeout(bootTimer); clearInterval(interval); };
+    const interval = setInterval(runAutoSync, 60000 * 5); // Checar a cada 5 min se precisa rodar o timer de 15/60
+
+    // Sincronizar ao focar na página novamente
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') runAutoSync();
+    };
+    window.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('online', runAutoSync);
+
+    return () => { 
+      clearTimeout(bootTimer); 
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('online', handleFocus);
+    };
   }, [syncFootballAll, footballData.lastSuccessfulSync, footballData.leagues.length]);
 
   const value: AppContextType = {

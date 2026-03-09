@@ -1,5 +1,5 @@
 /**
- * @fileOverview Motor de sincronização e normalização EXCLUSIVO para TheSportsDB.
+ * @fileOverview Motor de sincronização e normalização EXCLUSIVO para TheSportsDB com suporte a SP Timezone.
  */
 
 import { theSportsDB, ApiMatch, ApiStanding, ApiLeague } from './thesportsdb-service';
@@ -76,14 +76,24 @@ const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
 export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
   try {
     const leagues = await theSportsDB.getLeaguesByCountry('Brazil', 'Soccer');
-    const defaults = ['Série A', 'Série B', 'Copa do Brasil'];
+    
+    // Lista expandida de ativação padrão para campeonatos brasileiros
+    const defaults = [
+      'Serie A', 'Série A', 
+      'Serie B', 'Série B',
+      'Serie C', 'Série C',
+      'Serie D', 'Série D',
+      'Copa do Brasil', 
+      'Paulista', 'Carioca', 'Mineiro', 'Gaúcho', 
+      'Baiano', 'Paranaense', 'Pernambucano', 'Cearense'
+    ];
     
     return (leagues || []).map(l => ({
       id: l.idLeague,
       name: l.strLeague,
       country: l.strCountry || 'Brazil',
       badge: l.strBadge || '',
-      importar: defaults.some(d => l.strLeague.includes(d))
+      importar: defaults.some(d => l.strLeague.toLowerCase().includes(d.toLowerCase()))
     }));
   } catch (e) {
     console.error("[Football Sync] Erro ao buscar ligas:", e);
@@ -112,18 +122,22 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
       const normalizedNext = (nextApi || []).map(normalizeMatch);
       const normalizedPast = (pastApi || []).map(normalizeMatch);
 
+      // Filtrar jogos futuros
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
       
+      // Filtrar jogos de hoje (buscando tanto em next quanto em past, pois status muda)
       const todayFromNext = normalizedNext.filter(m => m.date === todayStr);
       const todayFromPast = normalizedPast.filter(m => m.date === todayStr);
       allToday = [...allToday, ...todayFromNext, ...todayFromPast];
       
+      // Filtrar resultados passados
       allPast = [...allPast, ...normalizedPast.filter(m => m.date < todayStr)];
     } catch (e) {
       console.error(`[Football Sync] Erro na liga ${id}:`, e);
     }
   }
 
+  // Remover duplicatas de hoje
   const uniqueToday = Array.from(new Map(allToday.map(m => [m.id, m])).values());
 
   return {
@@ -135,7 +149,9 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
 export async function syncFootballStandings(leagueIds: string[]): Promise<NormalizedStanding[]> {
   let allStandings: NormalizedStanding[] = [];
-  const currentYear = String(new Date().getFullYear());
+  
+  // Temporada dinâmica baseada no ano de São Paulo
+  const currentYear = getSPDate().split('-')[0];
 
   for (const id of leagueIds) {
     try {

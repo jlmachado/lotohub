@@ -1,9 +1,9 @@
 /**
  * @fileOverview Serviço oficial e exclusivo de integração com a API TheSportsDB (v1).
- * Fonte única de dados para o módulo de futebol.
+ * Fonte única de dados para o módulo de futebol utilizando a chave Free 123.
  */
 
-const BASE_URL = 'https://www.thesportsdb.com/api/v1/json/3';
+const BASE_URL = 'https://www.thesportsdb.com/api/v1/json/123';
 
 export interface ApiLeague {
   idLeague: string;
