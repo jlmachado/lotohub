@@ -1,8 +1,8 @@
 /**
- * @fileOverview Motor de sincronização e normalização de dados do Futebol via TheSportsDB.
+ * @fileOverview Motor de sincronização e normalização de dados do Futebol via TheSportsDB V1.
  */
 
-import { theSportsDB, ApiMatch, ApiStanding, ApiLeague, ApiTeam } from './thesportsdb-service';
+import { theSportsDB, ApiMatch, ApiStanding, ApiLeague } from './thesportsdb-service';
 
 export interface NormalizedMatch {
   id: string;
@@ -18,6 +18,7 @@ export interface NormalizedMatch {
   time: string;
   status: string;
   venue?: string;
+  thumb?: string;
 }
 
 export interface NormalizedStanding {
@@ -38,8 +39,9 @@ export interface NormalizedLeague {
   id: string;
   name: string;
   country: string;
-  active: boolean;
+  badge: string;
   importar: boolean;
+  lastSync?: string;
 }
 
 const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
@@ -55,21 +57,19 @@ const normalizeMatch = (m: ApiMatch): NormalizedMatch => ({
   date: m.dateEvent,
   time: m.strTime,
   status: m.strStatus,
-  venue: m.strVenue
+  venue: m.strVenue,
+  thumb: m.strThumb
 });
 
-export async function fetchAllAvailableLeagues(): Promise<NormalizedLeague[]> {
-  const leagues = await theSportsDB.getAllLeagues();
-  // Filtra apenas ligas de futebol no Brasil
-  return leagues
-    .filter(l => l.strSport === 'Soccer' && l.strCountry === 'Brazil')
-    .map(l => ({
-      id: l.idLeague,
-      name: l.strLeague,
-      country: l.strCountry || 'Brazil',
-      active: true,
-      importar: true
-    }));
+export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
+  const leagues = await theSportsDB.getLeaguesByCountry('Brazil', 'Soccer');
+  return leagues.map(l => ({
+    id: l.idLeague,
+    name: l.strLeague,
+    country: l.strCountry || 'Brazil',
+    badge: l.strBadge || '',
+    importar: l.strLeague.includes('Serie A') // Pré-ativa Série A por padrão
+  }));
 }
 
 export async function syncFootballMatches(leagueIds: string[]): Promise<{
@@ -93,16 +93,23 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
       const normalizedNext = (nextApi || []).map(normalizeMatch);
       const normalizedPast = (pastApi || []).map(normalizeMatch);
 
+      // Agrega e separa por período
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
-      allToday = [...allToday, ...normalizedNext.filter(m => m.date === todayStr), ...normalizedPast.filter(m => m.date === todayStr)];
+      allToday = [...allToday, 
+        ...normalizedNext.filter(m => m.date === todayStr), 
+        ...normalizedPast.filter(m => m.date === todayStr)
+      ];
       allPast = [...allPast, ...normalizedPast.filter(m => m.date < todayStr)];
     } catch (e) {
       console.error(`Erro ao sincronizar jogos da liga ${id}:`, e);
     }
   }
 
+  // Remove duplicatas de hoje (pode acontecer entre endpoints)
+  const uniqueToday = Array.from(new Map(allToday.map(m => [m.id, m])).values());
+
   return {
-    today: allToday,
+    today: uniqueToday,
     next: allNext.sort((a, b) => a.date.localeCompare(b.date)),
     past: allPast.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 50)
   };

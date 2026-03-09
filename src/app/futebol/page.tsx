@@ -11,14 +11,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Trophy, History, Clock, LayoutGrid, Flag } from 'lucide-react';
+import { Calendar, Trophy, Clock, Flag, LayoutGrid } from 'lucide-react';
 import Image from 'next/image';
 import { useMemo } from 'react';
 
 export default function FutebolDashboardPage() {
   const { footballData } = useAppContext();
 
-  // Agrupar jogos por liga
+  // Agrupar jogos por liga para exibição hub
   const groupByLeague = (matches: any[]) => {
     return matches.reduce((acc: any, match) => {
       if (!acc[match.league]) acc[match.league] = [];
@@ -38,7 +38,7 @@ export default function FutebolDashboardPage() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">Hub Futebol Brasil</h1>
-            <p className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Acompanhe todos os campeonatos nacionais em um só lugar</p>
+            <p className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Todos os campeonatos nacionais em um só lugar</p>
           </div>
           <Badge variant="outline" className="h-8 border-white/10 text-[10px] uppercase font-black bg-slate-900/50">
             Último Sync: {footballData.lastSync ? new Date(footballData.lastSync).toLocaleTimeString('pt-BR') : 'Pendente'}
@@ -67,13 +67,12 @@ export default function FutebolDashboardPage() {
 
           <TabsContent value="classificacao">
             <div className="space-y-12">
-              {Object.keys(todayGrouped).length === 0 && footballData.standings.length === 0 ? (
+              {Object.keys(footballData.standings.reduce((acc:any, s) => { acc[s.leagueId] = true; return acc; }, {})).length === 0 ? (
                 <div className="text-center py-24">
                   <Trophy className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p className="text-muted-foreground italic font-medium">Nenhuma tabela carregada. Ative as ligas no Admin.</p>
+                  <p className="text-muted-foreground italic font-medium">Nenhuma classificação disponível. Sincronize no Admin.</p>
                 </div>
               ) : (
-                // Agrupa classificação por liga
                 Object.entries(
                   footballData.standings.reduce((acc: any, s) => {
                     const leagueName = footballData.leagues.find(l => l.id === s.leagueId)?.name || 'Campeonato';
@@ -94,9 +93,9 @@ export default function FutebolDashboardPage() {
                             <TableHead className="font-black">Time</TableHead>
                             <TableHead className="text-center font-black">PTS</TableHead>
                             <TableHead className="text-center font-black">J</TableHead>
-                            <TableHead className="text-center font-black">V</TableHead>
+                            <TableHead className="text-center font-black text-green-500">V</TableHead>
                             <TableHead className="text-center font-black">E</TableHead>
-                            <TableHead className="text-center font-black">D</TableHead>
+                            <TableHead className="text-center font-black text-red-500">D</TableHead>
                             <TableHead className="text-center font-black">SG</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -170,7 +169,7 @@ function MatchCard({ match, isPast }: { match: any, isPast: boolean }) {
       <CardHeader className="p-3 bg-white/5 border-b border-white/5">
         <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-muted-foreground">
           <span className="text-primary flex items-center gap-1">
-            <Clock size={10} /> {match.time?.substring(0, 5) || '---'}
+            <Clock size={10} /> {match.time?.substring(0, 5) || '--:--'}
           </span>
           <Badge variant="outline" className="text-[8px] border-white/10">{match.date.split('-').reverse().slice(0,2).join('/')}</Badge>
         </div>
@@ -188,7 +187,9 @@ function MatchCard({ match, isPast }: { match: any, isPast: boolean }) {
             <div className="text-2xl font-black italic tracking-tighter text-white">
               {isPast || match.status === 'Match Finished' ? `${match.homeScore} - ${match.awayScore}` : 'VS'}
             </div>
-            <Badge variant="secondary" className="text-[7px] uppercase font-black py-0 h-3">{match.status === 'Match Finished' ? 'Encerrado' : 'Agendado'}</Badge>
+            <Badge variant="secondary" className="text-[7px] uppercase font-black py-0 h-3">
+              {match.status === 'Match Finished' ? 'Finalizado' : 'Agendado'}
+            </Badge>
           </div>
 
           <div className="flex flex-col items-center flex-1 text-center space-y-2">

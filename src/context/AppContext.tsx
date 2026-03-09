@@ -12,7 +12,7 @@ import {
   NormalizedMatch, 
   NormalizedStanding, 
   NormalizedLeague,
-  fetchAllAvailableLeagues,
+  fetchBrazilianLeagues,
   syncFootballMatches as syncMatchesAction,
   syncFootballStandings as syncStandingsAction
 } from '@/services/football-sync-service';
@@ -29,8 +29,8 @@ export interface FootballSyncData {
 
 // Interfaces básicas para outros módulos
 export interface NewsMessage { id: string; text: string; active: boolean; order: number; }
-export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; }
-export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; }
+export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
+export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
 
 interface AppContextType {
   user: any;
@@ -176,20 +176,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    // Carregar dados salvos
-    const storedFootball = localStorage.getItem('app:football:v3');
+    // Carregar dados salvos do futebol
+    const storedFootball = localStorage.getItem('app:football:v4');
     if (storedFootball) setFootballData(JSON.parse(storedFootball));
 
-    const storedMovements = localStorage.getItem('app:cambista_movements:v1');
-    if (storedMovements) setCambistaMovements(JSON.parse(storedMovements));
-
-    const storedCommissions = localStorage.getItem('app:commissions:v1');
-    if (storedCommissions) setUserCommissions(JSON.parse(storedCommissions));
-
-    const storedApostas = localStorage.getItem('app:apostas:v1');
-    if (storedApostas) setApostas(JSON.parse(storedApostas));
-
-    // Carregar sessão
+    // Inicializa sessões e outros estados...
     const refreshSession = () => {
       const currentUser = getCurrentUser();
       setUser(currentUser);
@@ -207,7 +198,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Persistência de Futebol
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    localStorage.setItem('app:football:v3', JSON.stringify(footballData));
+    localStorage.setItem('app:football:v4', JSON.stringify(footballData));
   }, [footballData]);
 
   const updateFootballLeagues = (leagues: NormalizedLeague[]) => {
@@ -219,7 +210,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     try {
       let currentLeagues = footballData.leagues;
       if (currentLeagues.length === 0) {
-        currentLeagues = await fetchAllAvailableLeagues();
+        currentLeagues = await fetchBrazilianLeagues();
       }
 
       const activeLeagueIds = currentLeagues.filter(l => l.importar).map(l => l.id);

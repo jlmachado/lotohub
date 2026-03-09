@@ -3,7 +3,7 @@
  * Foco em ligas brasileiras, times, eventos e classificação.
  */
 
-const BASE_URL = 'https://www.thesportsdb.com/api/v1/json/123';
+const BASE_URL = 'https://www.thesportsdb.com/api/v1/json/1';
 
 export interface ApiLeague {
   idLeague: string;
@@ -71,26 +71,37 @@ class TheSportsDBService {
     }
   }
 
-  async getAllLeagues(): Promise<ApiLeague[]> {
-    const data = await this.request('all_leagues.php');
-    return data.leagues || [];
+  // Busca todas as ligas filtradas por país e esporte
+  async getLeaguesByCountry(country: string = 'Brazil', sport: string = 'Soccer'): Promise<ApiLeague[]> {
+    const data = await this.request(`search_all_leagues.php?c=${country}&s=${sport}`);
+    return data.countrys || [];
   }
 
-  async getTeamsInLeague(leagueId: string): Promise<ApiTeam[]> {
-    const data = await this.request(`lookup_all_teams.php?id=${leagueId}`);
+  // Busca times de uma liga específica pelo nome
+  async getTeamsInLeague(leagueName: string): Promise<ApiTeam[]> {
+    const data = await this.request(`search_all_teams.php?l=${encodeURIComponent(leagueName)}`);
     return data.teams || [];
   }
 
+  // Busca os próximos 15 jogos de uma liga
   async getNextMatches(leagueId: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventsnextleague.php?id=${leagueId}`);
     return data.events || [];
   }
 
+  // Busca os últimos 15 resultados de uma liga
   async getPastMatches(leagueId: string): Promise<ApiMatch[]> {
     const data = await this.request(`eventspastleague.php?id=${leagueId}`);
     return data.events || [];
   }
 
+  // Busca jogos de um dia específico
+  async getMatchesByDate(date: string): Promise<ApiMatch[]> {
+    const data = await this.request(`eventsday.php?d=${date}&s=Soccer`);
+    return data.events || [];
+  }
+
+  // Busca a tabela de classificação (standings)
   async getStandings(leagueId: string, season: string = '2024'): Promise<ApiStanding[]> {
     const data = await this.request(`lookuptable.php?l=${leagueId}&s=${season}`);
     return data.table || [];
