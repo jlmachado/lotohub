@@ -81,48 +81,51 @@ export default function PromoterCreditsPage() {
             <CardContent className="p-4 pt-0">
               <p className="text-3xl font-black text-white italic">{formatBRL(stats.last)}</p>
             </CardContent>
-          </div>
+          </Card>
+        </div>
 
         <Card className="border-white/5 overflow-hidden shadow-2xl">
           <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">
             <Calendar size={14} className="text-primary" />
             <h3 className="text-xs font-black uppercase italic tracking-widest text-white">Registros de Crédito</h3>
           </div>
-          <Table>
-            <TableHeader className="bg-slate-950/50">
-              <TableRow className="border-white/5">
-                <TableHead className="text-[10px] font-black uppercase">Data/Hora</TableHead>
-                <TableHead className="text-[10px] font-black uppercase">Motivo</TableHead>
-                <TableHead className="text-[10px] font-black uppercase text-right">Valor</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {userCredits.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-center py-20 text-muted-foreground italic">
-                    Nenhum crédito administrativo recebido ainda.
-                  </TableCell>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-slate-950/50">
+                <TableRow className="border-white/5">
+                  <TableHead className="text-[10px] font-black uppercase px-4">Data/Hora</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase">Motivo</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase text-right px-4">Valor</TableHead>
                 </TableRow>
-              ) : (
-                userCredits.map((c) => (
-                  <TableRow key={c.id} className="border-white/5 hover:bg-white/5 transition-colors">
-                    <TableCell className="py-4">
-                      <div className="flex flex-col">
-                        <span className="text-[11px] font-bold text-white">{new Date(c.createdAt).toLocaleDateString('pt-BR')}</span>
-                        <span className="text-[9px] text-muted-foreground">{new Date(c.createdAt).toLocaleTimeString('pt-BR')}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs font-bold text-slate-300 uppercase italic">{c.motivo}</p>
-                    </TableCell>
-                    <TableCell className="text-right font-black text-green-500">
-                      +{formatBRL(c.valor)}
+              </TableHeader>
+              <TableBody>
+                {userCredits.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-20 text-muted-foreground italic">
+                      Nenhum crédito administrativo recebido ainda.
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  userCredits.map((c) => (
+                    <TableRow key={c.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                      <TableCell className="py-4 px-4">
+                        <div className="flex flex-col">
+                          <span className="text-[11px] font-bold text-white">{new Date(c.createdAt).toLocaleDateString('pt-BR')}</span>
+                          <span className="text-[9px] text-muted-foreground">{new Date(c.createdAt).toLocaleTimeString('pt-BR')}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-xs font-bold text-slate-300 uppercase italic">{c.motivo}</p>
+                      </TableCell>
+                      <TableCell className="text-right font-black text-green-500 px-4">
+                        +{formatBRL(c.valor)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
         </Card>
       </main>
     </div>

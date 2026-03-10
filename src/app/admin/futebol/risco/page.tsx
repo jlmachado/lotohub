@@ -18,7 +18,7 @@ export default function AdminFootballRiskPage() {
   const { footballBets } = useAppContext();
 
   const stats = useMemo(() => {
-    const activeBets = footballBets.filter(b => b.status === 'OPEN');
+    const activeBets = (footballBets || []).filter(b => b.status === 'OPEN');
     const totalStaked = activeBets.reduce((acc, b) => acc + b.stake, 0);
     const totalLiability = activeBets.reduce((acc, b) => acc + b.potentialWin, 0);
     
@@ -64,37 +64,39 @@ export default function AdminFootballRiskPage() {
               <Goal size={14} className="text-primary" /> Exposição por Evento
             </CardTitle>
           </CardHeader>
-          <Table>
-            <TableHeader className="bg-slate-950/20">
-              <TableRow className="border-white/5">
-                <TableHead className="text-[10px] uppercase font-black">Confronto</TableHead>
-                <TableHead className="text-[10px] uppercase font-black text-right">Volume</TableHead>
-                <TableHead className="text-[10px] uppercase font-black text-right">Responsabilidade</TableHead>
-                <TableHead className="text-[10px] uppercase font-black text-center w-[120px]">Risco</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {stats.matchExposures.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="text-center py-24 text-muted-foreground italic">Nenhum evento com apostas abertas.</TableCell></TableRow>
-              ) : (
-                stats.matchExposures.map((m, idx) => {
-                  const riskLevel = Math.min(100, (m.liability / 10000) * 100);
-                  return (
-                    <TableRow key={idx} className="border-white/5 hover:bg-white/5 transition-colors">
-                      <TableCell className="py-4">
-                        <p className="text-[11px] font-black text-white uppercase italic truncate max-w-[200px]">{m.name}</p>
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-white text-[11px]">{formatBRL(m.staked)}</TableCell>
-                      <TableCell className="text-right font-black text-red-500 text-[11px]">{formatBRL(m.liability)}</TableCell>
-                      <TableCell className="text-center px-4">
-                        <Progress value={riskLevel} className="h-1.5 bg-white/5" indicatorClassName={cn(riskLevel > 70 ? "bg-red-600" : "bg-primary")} />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-slate-950/20">
+                <TableRow className="border-white/5">
+                  <TableHead className="text-[10px] uppercase font-black">Confronto</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-right">Volume</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-right">Responsabilidade</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-center w-[120px]">Risco</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.matchExposures.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="text-center py-24 text-muted-foreground italic">Nenhum evento com apostas abertas.</TableCell></TableRow>
+                ) : (
+                  stats.matchExposures.map((m, idx) => {
+                    const riskLevel = Math.min(100, (m.liability / 10000) * 100);
+                    return (
+                      <TableRow key={idx} className="border-white/5 hover:bg-white/5 transition-colors">
+                        <TableCell className="py-4">
+                          <p className="text-[11px] font-black text-white uppercase italic truncate max-w-[200px]">{m.name}</p>
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-white text-[11px]">{formatBRL(m.staked)}</TableCell>
+                        <TableCell className="text-right font-black text-red-500 text-[11px]">{formatBRL(m.liability)}</TableCell>
+                        <TableCell className="text-center px-4">
+                          <Progress value={riskLevel} className="h-1.5 bg-white/5" indicatorClassName={cn(riskLevel > 70 ? "bg-red-600" : "bg-primary")} />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
         </Card>
 
         <div className="space-y-6">
