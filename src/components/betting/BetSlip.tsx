@@ -20,13 +20,13 @@ export function BetSlip() {
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
-  if (betSlip.length === 0) return null;
-
   const totalOdds = useMemo(() => {
     if (betSlip.length === 0) return 0;
     const prod = betSlip.reduce((acc, item) => acc * (item.odd || 1), 1);
     return parseFloat(prod.toFixed(2));
   }, [betSlip]);
+
+  if (betSlip.length === 0) return null;
 
   const stake = parseFloat(stakeInput) || 0;
   const potentialWin = parseFloat((stake * totalOdds).toFixed(2));
@@ -114,10 +114,10 @@ export function BetSlip() {
                 >
                   <X size={14} />
                 </button>
-                <p className="text-[10px] font-black text-primary uppercase italic tracking-tighter mb-1 truncate pr-6">{item.matchName}</p>
+                <p className="text-[10px] font-black text-primary uppercase italic tracking-tighter mb-1.5 truncate pr-6">{item.matchName}</p>
                 <div className="flex justify-between items-end">
                   <div>
-                    <p className="text-[11px] font-bold text-slate-300">{item.market}</p>
+                    <p className="text-[11px] font-bold text-slate-300 leading-none">{item.market}</p>
                     <Badge className="bg-primary/10 text-primary border-primary/20 text-[9px] uppercase font-black h-4 px-1.5 mt-1">
                       {item.pickLabel}
                     </Badge>
