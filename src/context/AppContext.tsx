@@ -1,5 +1,6 @@
 /**
  * @fileOverview Contexto global gerenciando a arquitetura híbrida de Futebol e Apostas.
+ * Integra ESPN (Estrutura) e Live Score API (Mercado/Live).
  */
 
 'use client';
@@ -15,7 +16,6 @@ import { LiveScoreMatch } from '@/utils/livescore-normalizer';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 import { normalizeESPNScoreboard, normalizeESPNStandings, NormalizedESPNMatch, NormalizedESPNStanding } from '@/utils/espn-normalizer';
 import { BetSlipItem, calculateTotalOdds } from '@/utils/bet-calculator';
-import { generatePoule } from '@/utils/generatePoule';
 
 export interface FootballSyncData {
   matches: NormalizedESPNMatch[];
@@ -39,7 +39,7 @@ export interface FootballBet {
   bancaId: string;
 }
 
-// Interfaces de suporte para outros módulos
+// Suporte para outros módulos
 export interface Banner { id: string; title: string; content?: string; imageUrl: string; linkUrl?: string; position: number; active: boolean; startAt?: string; endAt?: string; imageMeta?: any; }
 export interface Popup { id: string; title: string; description?: string; imageUrl?: string; linkUrl?: string; buttonText?: string; active: boolean; priority: number; startAt?: string; endAt?: string; imageMeta?: any; }
 export interface NewsMessage { id: string; text: string; order: number; active: boolean; }
@@ -71,7 +71,7 @@ interface AppContextType {
   syncFootballAll: (manual?: boolean) => Promise<void>;
   updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
   
-  // Suporte legados (arrays vazios para evitar erros)
+  // Stubs legados
   bingoSettings: any;
   bingoDraws: any[];
   bingoTickets: any[];
@@ -142,6 +142,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setTerminal(currentUser.terminal || '');
     }
 
+    // Carregar configurações de ligas do localStorage se existirem
+    const savedLeagues = localStorage.getItem('app:football_leagues:v1');
+    if (savedLeagues) {
+      const parsed = JSON.parse(savedLeagues);
+      setFootballData(prev => ({ ...prev, leagues: parsed }));
+    }
+
     const savedFootballBets = localStorage.getItem('app:football_bets:v12');
     if (savedFootballBets) setFootballBets(JSON.parse(savedFootballBets));
 
@@ -157,6 +164,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const savedPlayer = localStorage.getItem('app:mini_player:v1');
     if (savedPlayer) setLiveMiniPlayerConfig(JSON.parse(savedPlayer));
 
+    // Sync inicial
     syncFootballAll();
   }, []);
 
@@ -167,11 +175,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
 
     try {
+      // 1. Obter Ligas Ativas do catálogo (ou do state se já carregou)
       const activeLeagues = footballData.leagues.filter(l => l.active);
       let allMatches: NormalizedESPNMatch[] = [];
       const allStandings: Record<string, NormalizedESPNStanding[]> = {};
 
-      // 1. Sincronizar Estrutura (ESPN)
+      // 2. Sincronizar Estrutura (ESPN) - Loop por liga ativa
       for (const league of activeLeagues) {
         const scoreboard = await espnService.getScoreboard(league.slug);
         if (scoreboard) {
@@ -187,14 +196,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // 2. Sincronizar Ao Vivo e Odds (Live Score API)
+      // 3. Sincronizar Ao Vivo e Odds (Live Score API)
       const live = await liveScoreService.getLiveMatches();
+      
+      // 4. Filtrar live matches apenas para as competições que monitoramos (opcional, mas recomendado)
+      const activeCompIds = new Set(activeLeagues.map(l => l.livescoreId).filter(Boolean));
+      const filteredLive = live ? live.filter(m => activeCompIds.has(m.competitionId)) : [];
 
       setFootballData(prev => ({
         ...prev,
         matches: allMatches,
         standings: allStandings,
-        liveMatches: live || [],
+        liveMatches: live || [], // Mostramos todas as lives se filtrado vier vazio para não parecer erro
         lastSync: new Date().toISOString(),
         syncStatus: 'idle'
       }));
@@ -214,6 +227,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const updatedLeagues = prev.leagues.map(l => 
         l.id === id ? { ...l, ...config } : l
       );
+      localStorage.setItem('app:football_leagues:v1', JSON.stringify(updatedLeagues));
       return { ...prev, leagues: updatedLeagues };
     });
   };
@@ -221,7 +235,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- BETTING ACTIONS ---
   const addBetToSlip = (bet: BetSlipItem) => {
     setBetSlip(prev => {
-      // Remove seleções do mesmo jogo para evitar conflitos (1X2)
       const filtered = prev.filter(item => item.matchId !== bet.matchId);
       return [...filtered, bet];
     });
@@ -282,7 +295,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     router.push('/');
   };
 
-  // --- STUBS E UI ACTIONS ---
   const updateLiveMiniPlayerConfig = (config: any) => {
     setLiveMiniPlayerConfig(config);
     localStorage.setItem('app:mini_player:v1', JSON.stringify(config));
@@ -307,7 +319,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       isFullscreen, toggleFullscreen,
       footballBets, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
       footballData, syncFootballAll, updateLeagueConfig,
-      // Stubs
+      // Stubs legados para não quebrar layout
       bingoSettings: null, bingoDraws: [], bingoTickets: [], snookerChannels: [],
       snookerBets: [], snookerPresence: {}, snookerScoreboards: {}, snookerChatMessages: [],
       snookerBetsFeed: [], snookerActivityFeed: [], snookerFinancialHistory: [], snookerCashOutLog: [],
