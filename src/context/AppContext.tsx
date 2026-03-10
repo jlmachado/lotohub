@@ -78,8 +78,8 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Versão v11 para ESPN
-const FOOTBALL_STORAGE_KEY = 'app:football:v11_espn';
+// Versão v12 para maior resiliência na ESPN
+const FOOTBALL_STORAGE_KEY = 'app:football:v12_espn';
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
@@ -211,11 +211,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const bootTimer = setTimeout(() => {
-      syncFootballAll();
-    }, 2000);
+      if (navigator.onLine) {
+        syncFootballAll();
+      }
+    }, 3000);
 
     return () => clearTimeout(bootTimer);
-  }, []);
+  }, [syncFootballAll]);
 
   const value: AppContextType = {
     user, balance, bonus, terminal, logout: () => { authLogout(); setUser(null); router.push('/'); },

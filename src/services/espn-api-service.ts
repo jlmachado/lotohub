@@ -6,18 +6,28 @@ class ESPNApiService {
   private async request(league: string, resource: string = 'scoreboard', params: Record<string, string> = {}) {
     if (typeof window === 'undefined') return null;
 
-    const url = new URL(`${window.location.origin}/api/espn`);
-    url.searchParams.append('league', league);
-    url.searchParams.append('resource', resource);
-    Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
-
     try {
+      const url = new URL(`${window.location.origin}/api/espn`);
+      url.searchParams.append('league', league);
+      url.searchParams.append('resource', resource);
+      Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
+
       const response = await fetch(url.toString());
+      
+      if (!response.ok) {
+        console.warn(`[ESPN Service] Recurso indisponível: ${resource}/${league} (HTTP ${response.status})`);
+        return null;
+      }
+
       const result = await response.json();
-      if (!result.ok) throw new Error(result.message || 'Erro na ESPN API');
+      if (!result.ok) {
+        console.warn(`[ESPN Service] Proxy reportou falha para ${resource}/${league}: ${result.message}`);
+        return null;
+      }
+
       return result.data;
-    } catch (e) {
-      console.error(`[ESPN Service] Erro no recurso ${resource} da liga ${league}:`, e);
+    } catch (e: any) {
+      console.error(`[ESPN Service] Erro na requisição ${resource}/${league}:`, e.message);
       return null;
     }
   }
@@ -34,9 +44,8 @@ class ESPNApiService {
     return this.request(league, 'teams');
   }
 
-  async getSummary(eventId: string) {
-    // Para o resumo, passamos um slug fixo ou genérico pois o eventId é soberano no proxy
-    return this.request('bra.1', 'summary', { event: eventId });
+  async getSummary(eventId: string, league: string = 'bra.1') {
+    return this.request(league, 'summary', { event: eventId });
   }
 }
 

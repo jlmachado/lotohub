@@ -51,7 +51,7 @@ export const ESPN_BRAZILIAN_LEAGUES: ESPNLeagueConfig[] = [
   {
     id: 'bra-copa-brasil',
     name: 'Copa do Brasil',
-    slug: 'bra.copa_do_brazil',
+    slug: 'bra.copa_do_brasil',
     category: 'COPA',
     priority: 4,
     active: true,

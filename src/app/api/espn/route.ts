@@ -17,27 +17,43 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, message: 'Parâmetro league ou event é obrigatório.' }, { status: 400 });
   }
 
+  // Se for summary, o endpoint é construído de forma específica
   let url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/${resource}`;
   
-  // Se for summary, o endpoint é ligeiramente diferente ou usa query
-  if (resource === 'summary') {
-    url = `https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/summary?event=${eventId}`;
+  if (resource === 'summary' && eventId) {
+    // Summary endpoint aceita um slug de liga mas o ID do evento é o que manda
+    url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league || 'bra.1'}/summary?event=${eventId}`;
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 segundos de timeout
+
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      cache: 'no-store'
+      cache: 'no-store',
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      return NextResponse.json({ ok: false, status: response.status }, { status: response.status });
+      return NextResponse.json({ 
+        ok: false, 
+        status: response.status,
+        message: `ESPN retornou status ${response.status}`
+      }, { status: response.status });
     }
 
     const data = await response.json();
     return NextResponse.json({ ok: true, data });
   } catch (error: any) {
-    return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
+    const isTimeout = error.name === 'AbortError';
+    console.error(`[ESPN Proxy Error] ${url}:`, error.message);
+    return NextResponse.json({ 
+      ok: false, 
+      message: isTimeout ? 'Tempo esgotado (Timeout)' : error.message 
+    }, { status: isTimeout ? 504 : 500 });
   }
 }
