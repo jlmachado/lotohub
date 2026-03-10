@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 /**
  * @fileOverview Proxy Server-Side para Live Score API.
- * Protege as chaves API_KEY e API_SECRET.
+ * Utiliza as chaves fornecidas para autenticação segura.
  */
 
 export const runtime = 'nodejs';
@@ -12,20 +12,38 @@ export async function GET(request: Request, { params }: { params: { path: string
   const { searchParams } = new URL(request.url);
   const path = params.path.join('/');
   
-  const API_KEY = process.env.LIVE_SCORE_API_KEY || 'demo_key';
-  const API_SECRET = process.env.LIVE_SCORE_API_SECRET || 'demo_secret';
+  // Chaves fornecidas pelo usuário
+  const API_KEY = 'XtV2v4puj9N4kVUw';
+  const API_SECRET = '9mbzt6wQ38ovAFMy9HAFM0959W9uR411';
 
   const baseUrl = `https://livescore-api.com/api-client/${path}`;
   const url = new URL(baseUrl);
   
-  // Adiciona credenciais e repassa os parâmetros da query original
+  // Adiciona credenciais obrigatórias
   url.searchParams.append('key', API_KEY);
   url.searchParams.append('secret', API_SECRET);
-  searchParams.forEach((v, k) => url.searchParams.append(k, v));
+  
+  // Repassa os demais parâmetros da query original
+  searchParams.forEach((v, k) => {
+    if (k !== 'key' && k !== 'secret') {
+      url.searchParams.append(k, v);
+    }
+  });
 
   try {
-    const response = await fetch(url.toString(), { cache: 'no-store' });
-    if (!response.ok) throw new Error(`LiveScore API error: ${response.status}`);
+    const response = await fetch(url.toString(), { 
+      cache: 'no-store',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      return NextResponse.json({ 
+        ok: false, 
+        message: `LiveScore API retornou erro ${response.status}` 
+      }, { status: response.status });
+    }
     
     const data = await response.json();
     return NextResponse.json({ ok: true, data });

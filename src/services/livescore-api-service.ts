@@ -1,6 +1,6 @@
 /**
  * @fileOverview Serviço para integração com a Live Score API (Jogos ao vivo e Odds).
- * Consome apenas as rotas internas /api/livescore/* para segurança.
+ * Consome exclusivamente as rotas internas /api/livescore/* para segurança.
  */
 
 export interface LiveScoreMatch {
@@ -39,11 +39,14 @@ class LiveScoreApiService {
 
   /**
    * Busca jogos que estão ocorrendo no momento.
+   * A API free retorna um subset de jogos.
    */
   async getLiveMatches(): Promise<LiveScoreMatch[]> {
     const data = await this.request('scores/live.json');
-    if (!data?.match) return [];
-    return data.match.map((m: any) => ({
+    if (!data?.success || !data.data?.match) return [];
+    
+    // Mapeia os dados da API para o formato interno
+    return data.data.match.map((m: any) => ({
       id: String(m.id),
       home_name: m.home_name,
       away_name: m.away_name,
@@ -56,10 +59,12 @@ class LiveScoreApiService {
 
   /**
    * Busca odds para uma partida específica.
+   * Nota: Na API free, as odds podem estar limitadas.
    */
   async getMatchOdds(matchId: string) {
     const data = await this.request('matches/odds.json', { match_id: matchId });
-    return data?.odds || null;
+    if (!data?.success) return null;
+    return data.data?.odds || null;
   }
 }
 

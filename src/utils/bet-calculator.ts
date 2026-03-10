@@ -1,5 +1,5 @@
 /**
- * @fileOverview Utilitários para cálculo de apostas.
+ * @fileOverview Utilitários para cálculo de apostas e multiplicadores.
  */
 
 export interface BetSlipItem {
@@ -8,11 +8,14 @@ export interface BetSlipItem {
   matchName: string;
   market: string;
   selection: string;
+  pickLabel: string;
   odd: number;
+  match?: any;
 }
 
 /**
- * Calcula o multiplicador total de um bilhete acumulado.
+ * Calcula o multiplicador total de um bilhete (odds acumuladas).
+ * Em apostas múltiplas, as odds são multiplicadas entre si.
  */
 export function calculateTotalOdds(items: BetSlipItem[]): number {
   if (items.length === 0) return 0;
@@ -20,8 +23,9 @@ export function calculateTotalOdds(items: BetSlipItem[]): number {
 }
 
 /**
- * Calcula o retorno potencial baseado no valor apostado.
+ * Calcula o retorno potencial baseado no valor apostado (stake).
  */
 export function calculatePotentialWin(stake: number, totalOdds: number): number {
+  if (stake <= 0 || totalOdds <= 0) return 0;
   return stake * totalOdds;
 }
