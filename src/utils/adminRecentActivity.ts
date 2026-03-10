@@ -2,7 +2,7 @@
  * @fileOverview Agregador de atividade recente atualizado para ESPN.
  */
 
-import { Aposta, BingoTicket, SnookerBet, BingoDraw } from '@/context/AppContext';
+import { Aposta, BingoTicket, SnookerBet, BingoDraw, FootballBet } from '@/context/AppContext';
 import { getUsers } from './usersStorage';
 
 export interface UnifiedActivity {
@@ -15,6 +15,7 @@ export interface UnifiedActivity {
   descricao: string;
   valor: number;
   bancaId?: string;
+  isDescarga?: boolean;
 }
 
 const parseBRL = (val: string | number): number => {
@@ -28,6 +29,7 @@ export function getRecentBets(
     apostas: Aposta[];
     bingoTickets: BingoTicket[];
     snookerBets: SnookerBet[];
+    footballBets?: FootballBet[];
   },
   filter: { mode: 'GLOBAL' | 'BANCA'; bancaId: string | null }
 ): UnifiedActivity[] {
@@ -35,6 +37,7 @@ export function getRecentBets(
   const { mode, bancaId } = filter;
   const combined: UnifiedActivity[] = [];
 
+  // Loterias
   (data.apostas || []).forEach(a => {
     if (mode === 'BANCA' && a.bancaId !== bancaId) return;
     const user = users.find(u => u.id === a.userId);
@@ -51,8 +54,55 @@ export function getRecentBets(
     });
   });
 
-  // Bingo e Sinuca seguem o mesmo padrão...
-  // (Mantido para brevidade, mas focado em remover tipos TDB legados se houvesse)
+  // Futebol
+  (data.footballBets || []).forEach(b => {
+    if (mode === 'BANCA' && b.bancaId !== bancaId) return;
+    const user = users.find(u => u.id === b.userId);
+    combined.push({
+      id: b.id,
+      at: b.createdAt,
+      tipoUsuario: user?.tipoUsuario || "USUARIO",
+      terminal: user?.terminal || "-",
+      nome: user?.nome || "Usuário",
+      modulo: 'Futebol',
+      descricao: b.items.map(i => i.matchName).join(' | '),
+      valor: b.stake,
+      bancaId: b.bancaId,
+      isDescarga: b.isDescarga
+    });
+  });
+
+  // Bingo
+  (data.bingoTickets || []).forEach(t => {
+    if (mode === 'BANCA' && t.bancaId !== bancaId) return;
+    combined.push({
+      id: t.id,
+      at: t.createdAt,
+      tipoUsuario: "USUARIO", // Bingo ticket simplified
+      terminal: t.terminalId,
+      nome: t.userName,
+      modulo: 'Bingo',
+      descricao: `Sorteio #${t.drawId.substring(0,8)}`,
+      valor: t.amountPaid,
+      bancaId: t.bancaId
+    });
+  });
+
+  // Sinuca
+  (data.snookerBets || []).forEach(b => {
+    // Snooker assumes global or default banca for now
+    combined.push({
+      id: b.id,
+      at: b.createdAt,
+      tipoUsuario: "USUARIO",
+      terminal: "-",
+      nome: b.userName,
+      modulo: 'Sinuca',
+      descricao: `Aposta em ${b.pick}`,
+      valor: b.amount,
+      bancaId: 'default'
+    });
+  });
 
   return combined
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
@@ -64,6 +114,7 @@ export function getRecentPayouts(
     apostas: Aposta[];
     bingoDraws: BingoDraw[];
     snookerBets: SnookerBet[];
+    footballBets?: FootballBet[];
   },
   filter: { mode: 'GLOBAL' | 'BANCA'; bancaId: string | null }
 ): UnifiedActivity[] {
@@ -71,6 +122,7 @@ export function getRecentPayouts(
   const { mode, bancaId } = filter;
   const combined: UnifiedActivity[] = [];
 
+  // Loterias
   (data.apostas || []).filter(a => a.status === 'premiado' || a.status === 'won').forEach(a => {
     if (mode === 'BANCA' && a.bancaId !== bancaId) return;
     const user = users.find(u => u.id === a.userId);
@@ -87,6 +139,24 @@ export function getRecentPayouts(
       descricao: "Prêmio Loteria",
       valor: prize,
       bancaId: a.bancaId
+    });
+  });
+
+  // Futebol
+  (data.footballBets || []).filter(b => b.status === 'WON').forEach(b => {
+    if (mode === 'BANCA' && b.bancaId !== bancaId) return;
+    const user = users.find(u => u.id === b.userId);
+    combined.push({
+      id: `pay-fb-${b.id}`,
+      at: b.createdAt,
+      tipoUsuario: user?.tipoUsuario || "USUARIO",
+      terminal: user?.terminal || "-",
+      nome: user?.nome || "Usuário",
+      modulo: 'Futebol',
+      descricao: "Prêmio Futebol",
+      valor: b.potentialWin,
+      bancaId: b.bancaId,
+      isDescarga: b.isDescarga
     });
   });
 

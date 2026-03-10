@@ -42,6 +42,7 @@ export default function AdminPage() {
       bingoDraws: context.bingoDraws,
       snookerBets: context.snookerBets,
       snookerFinancialHistory: context.snookerFinancialHistory,
+      footballBets: context.footballBets,
       userCommissions: context.userCommissions,
       users: users
     }, {
@@ -56,6 +57,7 @@ export default function AdminPage() {
       apostas: context.apostas,
       bingoTickets: context.bingoTickets,
       snookerBets: context.snookerBets,
+      footballBets: context.footballBets,
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
@@ -68,6 +70,7 @@ export default function AdminPage() {
       apostas: context.apostas,
       bingoDraws: context.bingoDraws,
       snookerBets: context.snookerBets,
+      footballBets: context.footballBets,
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId

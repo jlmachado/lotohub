@@ -3,7 +3,7 @@
  * Consolida dados de Loterias, Bingo e Sinuca para todos os tipos de usuários.
  */
 
-import { Aposta, BingoDraw, BingoTicket, SnookerBet, SnookerFinancialSummary, UserCommission } from '@/context/AppContext';
+import { Aposta, BingoDraw, BingoTicket, SnookerBet, SnookerFinancialSummary, UserCommission, FootballBet } from '@/context/AppContext';
 import { User } from './usersStorage';
 
 export interface DashboardTotals {
@@ -31,6 +31,7 @@ export function getDashboardTotals(
     bingoDraws: BingoDraw[];
     snookerBets: SnookerBet[];
     snookerFinancialHistory: SnookerFinancialSummary[];
+    footballBets?: FootballBet[];
     userCommissions: UserCommission[];
     users: User[];
   },
@@ -49,6 +50,7 @@ export function getDashboardTotals(
   const fApostasRaw = filterByBanca(data.apostas);
   const fBingoTickets = filterByBanca(data.bingoTickets);
   const fBingoDraws = filterByBanca(data.bingoDraws);
+  const fFootballBets = filterByBanca(data.footballBets || []);
   const fSnookerBets = data.snookerBets || []; // Snooker ainda não tem bancaId, assume-se global
   const fSnookerHistory = data.snookerFinancialHistory || [];
   const fUsers = filterByBanca(data.users);
@@ -59,10 +61,7 @@ export function getDashboardTotals(
 
   // 2. Cálculo: TOTAL APOSTADO (Respeitando Descarga por Item)
   const betLoterias = fApostasRaw.reduce((acc, a) => {
-    // Se estiver em modo GLOBAL, conta tudo (incluindo o que foi descarregado para o superadmin)
     if (mode === 'GLOBAL') return acc + parseCurrency(a.valor);
-
-    // Se estiver em modo BANCA, precisa excluir os itens individuais em descarga
     const details = Array.isArray(a.detalhes) ? a.detalhes : [a.detalhes];
     const bancaAssumedValue = details.reduce((sum, item) => {
       if (item && !item.isDescarga) {
@@ -71,14 +70,18 @@ export function getDashboardTotals(
       }
       return sum;
     }, 0);
-    
     return acc + bancaAssumedValue;
+  }, 0);
+
+  const betFootball = fFootballBets.reduce((acc, b) => {
+    if (mode === 'GLOBAL') return acc + b.stake;
+    return acc + (b.isDescarga ? 0 : b.stake);
   }, 0);
 
   const betBingo = fBingoTickets.filter(t => t.status !== 'refunded').reduce((acc, t) => acc + t.amountPaid, 0);
   const betSnooker = fSnookerBets.filter(b => b.status !== 'refunded').reduce((acc, b) => acc + b.amount, 0);
   
-  const totalApostado = betLoterias + betBingo + betSnooker;
+  const totalApostado = betLoterias + betFootball + betBingo + betSnooker;
 
   // 3. Cálculo: TOTAL PRÊMIOS (Respeitando Descarga por Item)
   const prizesBingo = fBingoDraws.reduce((acc, d) => acc + (d.payoutTotal || 0), 0);
@@ -86,17 +89,19 @@ export function getDashboardTotals(
   
   const prizesLoterias = fApostasRaw.filter(a => a.status === 'premiado' || a.status === 'won').reduce((acc, a) => {
     const details = Array.isArray(a.detalhes) ? a.detalhes : [a.detalhes];
-    
     const assumedPrize = details.reduce((sum: number, item: any) => {
-      // Se estiver em modo BANCA, só conta prêmio de itens que NÃO foram para descarga
       if (mode === 'BANCA' && item.isDescarga) return sum;
       return sum + (item.retornoPossivel || 0);
     }, 0);
-
     return acc + assumedPrize;
   }, 0);
 
-  const totalPremios = prizesBingo + prizesSnooker + prizesLoterias;
+  const prizesFootball = fFootballBets.filter(b => b.status === 'WON').reduce((acc, b) => {
+    if (mode === 'BANCA' && b.isDescarga) return acc;
+    return acc + b.potentialWin;
+  }, 0);
+
+  const totalPremios = prizesBingo + prizesSnooker + prizesLoterias + prizesFootball;
 
   // 4. Cálculo: TOTAL COMISSÕES (Ganhos de Promotores e Cambistas)
   const totalComissoes = fCommissions.reduce((acc, c) => acc + c.valorComissao, 0);

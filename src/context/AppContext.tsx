@@ -16,6 +16,8 @@ import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catal
 import { normalizeESPNScoreboard, normalizeESPNStandings, NormalizedESPNMatch, NormalizedESPNStanding } from '@/utils/espn-normalizer';
 import { MatchMapperService, MatchModel } from '@/services/match-mapper-service';
 import { BetPermissionService } from '@/services/bet-permission-service';
+import { registerDescarga } from '@/utils/descargaStorage';
+import { resolveCurrentBanca } from '@/utils/bancaContext';
 
 export interface BetSlipItem {
   id: string; // selectionKey + matchId
@@ -42,6 +44,7 @@ export interface FootballBet {
   createdAt: string;
   items: BetSlipItem[];
   bancaId: string;
+  isDescarga?: boolean;
 }
 
 export interface FootballSyncData {
@@ -271,6 +274,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const removeBetFromSlip = (id: string) => setBetSlip(prev => prev.filter(item => item.id !== id));
   const clearBetSlip = () => setBetSlip([]);
 
+  const registerCambistaMovement = (movement: any) => {
+    const newMovement = {
+      ...movement,
+      id: `mov-${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    const updated = [newMovement, ...cambistaMovements];
+    setCambistaMovements(updated);
+    localStorage.setItem('app:cambista_movements:v1', JSON.stringify(updated));
+  };
+
   const placeFootballBet = async (stake: number): Promise<boolean> => {
     if (!user) { 
       router.push('/login'); 
@@ -302,6 +316,43 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      const totalOdds = betSlip.reduce((acc, item) => acc * item.odd, 1);
+      const potentialWin = stake * totalOdds;
+      const currentBanca = resolveCurrentBanca();
+      const bancaId = user.bancaId || 'default';
+
+      let isDescarga = false;
+
+      // 3. Lógica de Descarga para Cambistas
+      if (user.tipoUsuario === 'CAMBISTA' && currentBanca) {
+        if (currentBanca.descargaConfig.ativo && potentialWin > currentBanca.descargaConfig.limitePremio) {
+          isDescarga = true;
+          registerDescarga({
+            bancaId: currentBanca.id,
+            bancaNome: currentBanca.nome,
+            apostaId: `fb-${Date.now()}`,
+            userId: user.id,
+            terminal: user.terminal,
+            nomeUsuario: user.nome || 'Cambista',
+            tipoUsuario: user.tipoUsuario,
+            modulo: 'Futebol',
+            valorApostado: stake,
+            retornoPossivel: potentialWin,
+            status: 'EM_DESCARGA'
+          });
+        }
+
+        // Registrar movimento de caixa para o cambista (Venda)
+        registerCambistaMovement({
+          userId: user.id,
+          terminal: user.terminal,
+          tipo: 'APOSTA',
+          valor: stake,
+          modulo: 'Futebol',
+          observacao: `Venda Futebol - Pule: fb-${Date.now()}`
+        });
+      }
+
       const response = await fetch('/api/betting/place-bet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -320,25 +371,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
 
-      const totalOdds = betSlip.reduce((acc, item) => acc * item.odd, 1);
       const newBet: FootballBet = {
         id: `fb-${Date.now()}`,
         userId: user.id,
         terminal: user.terminal,
         stake,
         totalOdds,
-        potentialWin: stake * totalOdds,
+        potentialWin,
         status: 'OPEN',
         createdAt: new Date().toISOString(),
         items: [...betSlip],
-        bancaId: user.bancaId || 'default'
+        bancaId,
+        isDescarga
       };
 
       const updatedBets = [newBet, ...footballBets];
       setFootballBets(updatedBets);
       localStorage.setItem('app:football_bets:v1', JSON.stringify(updatedBets));
 
-      // 3. Atualização de saldo (Apenas se não for Cambista)
+      // 4. Atualização de saldo (Apenas se não for Cambista)
       if (user.tipoUsuario !== 'CAMBISTA') {
         const newBalance = balance - stake;
         setBalance(newBalance);
@@ -353,17 +404,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       toast({ variant: 'destructive', title: 'Erro de conexão', description: 'Tente novamente em instantes.' });
       return false;
     }
-  };
-
-  const registerCambistaMovement = (movement: any) => {
-    const newMovement = {
-      ...movement,
-      id: `mov-${Date.now()}`,
-      createdAt: new Date().toISOString()
-    };
-    const updated = [newMovement, ...cambistaMovements];
-    setCambistaMovements(updated);
-    localStorage.setItem('app:cambista_movements:v1', JSON.stringify(updated));
   };
 
   const logout = () => { authLogout(); setUser(null); setBalance(0); setTerminal(''); router.push('/'); };
