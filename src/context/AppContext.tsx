@@ -1,6 +1,5 @@
 /**
- * @fileOverview Contexto global gerenciando a arquitetura híbrida de Futebol e Apostas.
- * Integra ESPN (Estrutura) e Live Score API (Mercado/Live) com lógica de sportsbook.
+ * @fileOverview Contexto global atualizado para lógica de Sportsbook Profissional.
  */
 
 'use client';
@@ -12,12 +11,10 @@ import { upsertUser } from '@/utils/usersStorage';
 import { useRouter } from 'next/navigation';
 import { espnService } from '@/services/espn-api-service';
 import { liveScoreService } from '@/services/livescore-api-service';
-import { LiveScoreMatch } from '@/utils/livescore-normalizer';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 import { normalizeESPNScoreboard, normalizeESPNStandings, NormalizedESPNMatch, NormalizedESPNStanding } from '@/utils/espn-normalizer';
 import { BetSlipItem, calculateTotalOdds } from '@/utils/bet-calculator';
 import { MatchMapperService, MatchModel } from '@/services/match-mapper-service';
-import { RiskManagementService } from '@/services/risk-management-service';
 
 export interface FootballSyncData {
   matches: NormalizedESPNMatch[];
@@ -48,26 +45,26 @@ interface AppContextType {
   terminal: string;
   logout: () => void;
 
-  // Imagens e CMS
+  // Sportsbook
+  footballBets: FootballBet[];
+  betSlip: BetSlipItem[];
+  addBetToSlip: (bet: BetSlipItem) => void;
+  removeBetFromSlip: (id: string) => void;
+  clearBetSlip: () => void;
+  placeFootballBet: (stake: number) => Promise<boolean>;
+  footballData: FootballSyncData;
+  syncFootballAll: (manual?: boolean) => Promise<void>;
+  updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
+
+  // CMS & Outros
   banners: any[];
   popups: any[];
   news: any[];
   liveMiniPlayerConfig: any;
   isFullscreen: boolean;
   toggleFullscreen: () => void;
-
-  // Football & Betting
-  footballBets: FootballBet[];
-  betSlip: BetSlipItem[];
-  addBetToSlip: (bet: BetSlipItem) => void;
-  removeBetFromSlip: (id: string) => void;
-  clearBetSlip: () => void;
-  placeFootballBet: (stake: number) => boolean;
-  footballData: FootballSyncData;
-  syncFootballAll: (manual?: boolean) => Promise<void>;
-  updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
   
-  // Stubs para outros módulos
+  // Stubs preservados
   bingoSettings: any;
   bingoDraws: any[];
   bingoTickets: any[];
@@ -125,7 +122,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [news, setNews] = useState([]);
   const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState(null);
 
-  // Inicialização e Carregamento de Dados Persistidos
   useEffect(() => {
     const currentUser = getCurrentUser();
     if (currentUser) {
@@ -135,6 +131,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setTerminal(currentUser.terminal || '');
     }
 
+    // Hydrate data
     const savedLeagues = localStorage.getItem('app:football_leagues:v1');
     if (savedLeagues) setFootballData(prev => ({ ...prev, leagues: JSON.parse(savedLeagues) }));
 
@@ -166,7 +163,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       let allEspnMatches: NormalizedESPNMatch[] = [];
       const allStandings: Record<string, NormalizedESPNStanding[]> = {};
 
-      // 1. Carregar Estrutura ESPN
       for (const league of activeLeagues) {
         const scoreboard = await espnService.getScoreboard(league.slug);
         if (scoreboard) {
@@ -178,12 +174,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // 2. Carregar Mercado LiveScore
       const live = await liveScoreService.getLiveMatches();
-      const history = await liveScoreService.getFixtures(); // Fixtures do dia
+      const history = await liveScoreService.getFixtures();
       const allLiveScore = [...(live || []), ...(history || [])];
 
-      // 3. Unificar via Matching Engine
       const unified = MatchMapperService.mapEspnWithLiveScore(allEspnMatches, allLiveScore);
 
       setFootballData(prev => ({
@@ -212,70 +206,66 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  // --- Lógica de Apostas ---
-
   const addBetToSlip = (bet: BetSlipItem) => {
     setBetSlip(prev => {
-      // Regra de Conflito: Remove seleção anterior do mesmo jogo para evitar apostas conflitantes (ex: 1 e X no mesmo jogo)
+      // Regra de Conflito: Um jogo por bilhete
       const filtered = prev.filter(item => item.matchId !== bet.matchId);
       return [...filtered, bet];
     });
-    
-    // Feedback visual opcional
-    const totalOdds = calculateTotalOdds([...betSlip.filter(i => i.matchId !== bet.matchId), bet]);
-    toast({ 
-      title: 'Seleção Adicionada', 
-      description: `${bet.matchName}: ${bet.selection} (@${bet.odd.toFixed(2)})` 
-    });
+    toast({ title: 'Adicionado ao bilhete', description: `${bet.matchName}: ${bet.selection}` });
   };
 
   const removeBetFromSlip = (id: string) => setBetSlip(prev => prev.filter(item => item.id !== id));
   const clearBetSlip = () => setBetSlip([]);
 
-  const placeFootballBet = (stake: number): boolean => {
+  const placeFootballBet = async (stake: number): Promise<boolean> => {
     if (!user) { router.push('/login'); return false; }
-    
-    const totalOdds = calculateTotalOdds(betSlip);
-    
-    // Validação de Risco e Saldo
-    const riskCheck = RiskManagementService.validateBet(stake, totalOdds, balance);
-    if (!riskCheck.allowed) {
-      toast({ variant: 'destructive', title: 'Aposta Recusada', description: riskCheck.reason });
+
+    try {
+      // Validação Server-Side
+      const response = await fetch('/api/betting/place-bet', {
+        method: 'POST',
+        body: JSON.stringify({ stake, items: betSlip, balance })
+      });
+
+      const result = await response.json();
+
+      if (!result.ok) {
+        toast({ variant: 'destructive', title: 'Erro na Aposta', description: result.message });
+        return false;
+      }
+
+      // Registro Local
+      const totalOdds = calculateTotalOdds(betSlip);
+      const newBet: FootballBet = {
+        id: `bet-fb-${Date.now()}`,
+        userId: user.id,
+        terminal: user.terminal,
+        items: [...betSlip],
+        stake,
+        totalOdds,
+        potentialWin: stake * totalOdds,
+        status: 'OPEN',
+        createdAt: new Date().toISOString(),
+        bancaId: user.bancaId || 'default'
+      };
+
+      const updatedBets = [newBet, ...footballBets];
+      setFootballBets(updatedBets);
+      localStorage.setItem('app:football_bets:v12', JSON.stringify(updatedBets));
+
+      const newBalance = balance - stake;
+      setBalance(newBalance);
+      upsertUser({ terminal: user.terminal, saldo: newBalance });
+
+      clearBetSlip();
+      toast({ title: 'Bilhete Confirmado! ⚽', description: `Pule: ${newBet.id.substring(7, 15)}` });
+      return true;
+
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Falha de Conexão', description: 'Não foi possível registrar a aposta.' });
       return false;
     }
-
-    const potentialWin = calculatePotentialWin(stake, totalOdds);
-
-    const newBet: FootballBet = {
-      id: `bet-fb-${Date.now()}`,
-      userId: user.id,
-      terminal: user.terminal,
-      items: [...betSlip],
-      stake,
-      totalOdds,
-      potentialWin,
-      status: 'OPEN',
-      createdAt: new Date().toISOString(),
-      bancaId: user.bancaId || 'default'
-    };
-
-    // Registrar aposta
-    const updatedBets = [newBet, ...footballBets];
-    setFootballBets(updatedBets);
-    localStorage.setItem('app:football_bets:v12', JSON.stringify(updatedBets));
-
-    // Debitar saldo
-    const newBalance = balance - stake;
-    setBalance(newBalance);
-    upsertUser({ terminal: user.terminal, saldo: newBalance });
-
-    clearBetSlip();
-    toast({ 
-      title: 'Bilhete Confirmado! ⚽', 
-      description: `Pule: ${newBet.id.substring(7, 15)} | Retorno: R$ ${potentialWin.toFixed(2)}` 
-    });
-    
-    return true;
   };
 
   const logout = () => { authLogout(); setUser(null); setBalance(0); setTerminal(''); router.push('/'); };
@@ -284,8 +274,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   return (
     <AppContext.Provider value={{
       user, balance, bonus, terminal, logout,
-      banners, popups, news, liveMiniPlayerConfig,
-      isFullscreen, toggleFullscreen,
+      banners, popups, news, liveMiniPlayerConfig, isFullscreen, toggleFullscreen,
       footballBets, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
       footballData, syncFootballAll, updateLeagueConfig,
       
