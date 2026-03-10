@@ -12,6 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { TrendingUp, ShieldAlert, ReceiptText, Users, DollarSign, Goal } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { formatBRL } from '@/utils/currency';
+import { cn } from '@/lib/utils';
 
 export default function AdminFootballRiskPage() {
   const { footballBets } = useAppContext();
