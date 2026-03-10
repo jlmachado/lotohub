@@ -29,6 +29,19 @@ export interface BetSlipItem {
   addedAt: number;
 }
 
+export interface FootballBet {
+  id: string;
+  userId: string;
+  terminal: string;
+  stake: number;
+  potentialWin: number;
+  totalOdds: number;
+  status: 'OPEN' | 'WON' | 'LOST' | 'CANCELLED';
+  createdAt: string;
+  items: BetSlipItem[];
+  bancaId: string;
+}
+
 export interface FootballSyncData {
   matches: NormalizedESPNMatch[];
   unifiedMatches: MatchModel[];
@@ -47,6 +60,7 @@ interface AppContextType {
 
   // Sportsbook Frontend
   footballData: FootballSyncData;
+  footballBets: FootballBet[];
   betSlip: BetSlipItem[];
   addBetToSlip: (bet: BetSlipItem) => void;
   removeBetFromSlip: (id: string) => void;
@@ -105,6 +119,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [betSlip, setBetSlip] = useState<BetSlipItem[]>([]);
+  const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
   const [footballData, setFootballData] = useState<FootballSyncData>({
     matches: [],
     unifiedMatches: [],
@@ -120,6 +135,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState(null);
   const [celebrationTrigger, setCelebrationTrigger] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+
+  const [cambistaMovements, setCambistaMovements] = useState<any[]>([]);
+  const [userCommissions, setUserCommissions] = useState<any[]>([]);
+  const [promoterCredits, setPromoterCredits] = useState<any[]>([]);
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -144,6 +163,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const savedPlayer = localStorage.getItem('app:mini_player:v1');
     if (savedPlayer) setLiveMiniPlayerConfig(JSON.parse(savedPlayer));
+
+    const savedFBets = localStorage.getItem('app:football_bets:v1');
+    if (savedFBets) setFootballBets(JSON.parse(savedFBets) || []);
+
+    const savedMovements = localStorage.getItem('app:cambista_movements:v1');
+    if (savedMovements) setCambistaMovements(JSON.parse(savedMovements) || []);
 
     syncFootballAll();
   }, []);
@@ -202,8 +227,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const addBetToSlip = (bet: BetSlipItem) => {
     setBetSlip(prev => {
-      // Regra de Conflito: Uma seleção por jogo (Sportsbook Standard)
-      // Remove seleções anteriores do mesmo jogo para dar lugar à nova
       const filtered = prev.filter(item => item.matchId !== bet.matchId);
       return [...filtered, bet];
     });
@@ -230,6 +253,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
 
+      const totalOdds = betSlip.reduce((acc, item) => acc * item.odd, 1);
+      const newBet: FootballBet = {
+        id: `fb-${Date.now()}`,
+        userId: user.id,
+        terminal: user.terminal,
+        stake,
+        totalOdds,
+        potentialWin: stake * totalOdds,
+        status: 'OPEN',
+        createdAt: new Date().toISOString(),
+        items: [...betSlip],
+        bancaId: user.bancaId || 'default'
+      };
+
+      const updatedBets = [newBet, ...footballBets];
+      setFootballBets(updatedBets);
+      localStorage.setItem('app:football_bets:v1', JSON.stringify(updatedBets));
+
       const newBalance = balance - stake;
       setBalance(newBalance);
       upsertUser({ terminal: user.terminal, saldo: newBalance });
@@ -243,15 +284,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const registerCambistaMovement = (movement: any) => {
+    const newMovement = {
+      ...movement,
+      id: `mov-${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    const updated = [newMovement, ...cambistaMovements];
+    setCambistaMovements(updated);
+    localStorage.setItem('app:cambista_movements:v1', JSON.stringify(updated));
+  };
+
   const logout = () => { authLogout(); setUser(null); setBalance(0); setTerminal(''); router.push('/'); };
-  const toggleFullscreen = () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); setIsFullscreen(true); } else { document.exitFullscreen(); setIsFullscreen(false); } };
+  const toggleFullscreen = () => { 
+    if (!document.fullscreenElement) { 
+      document.documentElement.requestFullscreen(); 
+      setIsFullscreen(true); 
+    } else { 
+      document.exitFullscreen(); 
+      setIsFullscreen(false); 
+    } 
+  };
   const toggleSound = () => setSoundEnabled(!soundEnabled);
   const clearCelebration = () => setCelebrationTrigger(false);
 
   return (
     <AppContext.Provider value={{
       user, balance, bonus, terminal, logout,
-      footballData, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
+      footballData, footballBets, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
       syncFootballAll, updateLeagueConfig,
       banners, popups, news, liveMiniPlayerConfig, isFullscreen, toggleFullscreen,
       celebrationTrigger, clearCelebration, soundEnabled, toggleSound,
@@ -261,8 +321,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       snookerBets: [], snookerPresence: {}, snookerScoreboards: {}, snookerChatMessages: [],
       snookerBetsFeed: [], snookerActivityFeed: [], snookerFinancialHistory: [], snookerCashOutLog: [],
       apostas: [], jdbLoterias: [], genericLotteryConfigs: [],
-      depositos: [], saques: [], cambistaMovements: [], registerCambistaMovement: () => {},
-      userCommissions: [], promoterCredits: []
+      depositos: [], saques: [], cambistaMovements, registerCambistaMovement,
+      userCommissions, promoterCredits
     }}>
       {children}
     </AppContext.Provider>

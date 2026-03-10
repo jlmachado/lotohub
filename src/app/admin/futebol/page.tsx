@@ -17,13 +17,15 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { formatBRL } from '@/utils/currency';
 import { ProviderStatusCard } from '@/components/admin/betting/ProviderStatusCard';
+import { cn } from '@/lib/utils';
 
 export default function AdminFutebolDashboardPage() {
   const { footballData, footballBets, syncFootballAll } = useAppContext();
 
   const stats = useMemo(() => {
     const activeLeagues = footballData.leagues.filter(l => l.active).length;
-    const openBets = footballBets.filter(b => b.status === 'OPEN');
+    const bets = footballBets || [];
+    const openBets = bets.filter(b => b.status === 'OPEN');
     const totalStaked = openBets.reduce((acc, b) => acc + b.stake, 0);
     const totalLiability = openBets.reduce((acc, b) => acc + b.potentialWin, 0);
 
