@@ -12,21 +12,18 @@ import {
   NormalizedMatch, 
   NormalizedStanding, 
   NormalizedLeague,
+  fetchBrazilianLeagues,
   syncFootballMatches as syncMatchesAction,
   syncFootballStandings as syncStandingsAction,
   getSPDate
 } from '@/services/football-sync-service';
-import { CatalogLeague } from '@/services/football/types';
-import { BRAZILIAN_LEAGUE_CATALOG } from '@/services/football/catalog';
-import { validateLeagueAvailability } from '@/services/football/validation-service';
-import { deriveCoverage } from '@/services/football/utils';
 
 export interface FootballSyncData {
   todayMatches: NormalizedMatch[];
   nextMatches: NormalizedMatch[];
   pastMatches: NormalizedMatch[];
   standings: NormalizedStanding[];
-  leagues: CatalogLeague[]; // Agora usa o catálogo profissional
+  leagues: NormalizedLeague[];
   lastSync: string | null;
   lastSuccessfulSync: string | null;
   syncStatus: 'idle' | 'syncing' | 'error' | 'partial';
@@ -42,9 +39,8 @@ interface AppContextType {
   apostas: any[];
   
   footballData: FootballSyncData;
-  updateFootballCatalog: (leagues: CatalogLeague[]) => void;
-  validateCatalogLeagues: () => Promise<void>;
   syncFootballAll: (manual?: boolean) => Promise<void>;
+  updateFootballLeagues: (leagues: NormalizedLeague[]) => void;
   
   news: any[];
   banners: any[];
@@ -83,7 +79,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const FOOTBALL_STORAGE_KEY = 'app:football:v11_catalog';
+const FOOTBALL_STORAGE_KEY = 'app:football:v7';
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
@@ -101,7 +97,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     nextMatches: [],
     pastMatches: [],
     standings: [],
-    leagues: BRAZILIAN_LEAGUE_CATALOG,
+    leagues: [],
     lastSync: null,
     lastSuccessfulSync: null,
     syncStatus: 'idle'
@@ -129,7 +125,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       try {
         setFootballData(JSON.parse(stored));
       } catch (e) {
-        console.warn("Falha carregar catálogo.");
+        console.warn("Falha carregar cache futebol.");
       }
     }
   }, []);
@@ -139,39 +135,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem(FOOTBALL_STORAGE_KEY, JSON.stringify(footballData));
   }, [footballData]);
 
-  // --- FUNÇÕES DE CATÁLOGO ---
-  const updateFootballCatalog = (leagues: CatalogLeague[]) => {
+  // --- SINCRONIZAÇÃO ---
+  const updateFootballLeagues = (leagues: NormalizedLeague[]) => {
     setFootballData(prev => ({ ...prev, leagues }));
-  };
-
-  const validateCatalogLeagues = async () => {
-    if (syncInProgress.current) return;
-    syncInProgress.current = true;
-    setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
-
-    const updatedCatalog = [...footballData.leagues];
-    toast({ title: 'Validando Catálogo', description: 'Testando disponibilidade das ligas na API...' });
-
-    for (let i = 0; i < updatedCatalog.length; i++) {
-      const result = await validateLeagueAvailability(updatedCatalog[i]);
-      updatedCatalog[i] = {
-        ...updatedCatalog[i],
-        statusValidacao: result.status,
-        statusCobertura: deriveCoverage(result.status),
-        totalJogos: result.totalGames,
-        totalTimes: result.totalTeams,
-        temTabela: result.hasTable,
-        badge: result.badge || updatedCatalog[i].badge,
-        ultimaValidacao: new Date().toISOString(),
-        erroValidacao: result.error
-      };
-      // Atualização parcial para feedback visual
-      setFootballData(prev => ({ ...prev, leagues: [...updatedCatalog] }));
-    }
-
-    setFootballData(prev => ({ ...prev, syncStatus: 'idle' }));
-    syncInProgress.current = false;
-    toast({ title: 'Validação Concluída' });
   };
 
   const syncFootballAll = useCallback(async (manual = false) => {
@@ -180,14 +146,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
 
     try {
-      const activeIds = footballData.leagues
-        .filter(l => l.ativa && l.idLeague)
-        .map(l => l.idLeague!);
+      // 1. Garantir que temos ligas se estiver vazio
+      let currentLeagues = footballData.leagues;
+      if (currentLeagues.length === 0) {
+        currentLeagues = await fetchBrazilianLeagues();
+      }
 
+      const activeIds = currentLeagues.filter(l => l.importar).map(l => l.id);
+      
       if (activeIds.length === 0) {
-        setFootballData(prev => ({ ...prev, syncStatus: 'idle' }));
+        setFootballData(prev => ({ ...prev, leagues: currentLeagues, syncStatus: 'idle' }));
         syncInProgress.current = false;
-        if (manual) toast({ variant: 'destructive', title: 'Nenhuma liga ativa' });
         return;
       }
 
@@ -196,10 +165,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         syncStandingsAction(activeIds)
       ]);
 
-      const hasNewData = matches.today.length > 0 || matches.next.length > 0 || matches.past.length > 0 || standings.length > 0;
+      const hasNewData = matches.today.length > 0 || matches.next.length > 0 || standings.length > 0;
 
       setFootballData(prev => ({
         ...prev,
+        leagues: currentLeagues,
         todayMatches: matches.today.length > 0 ? matches.today : prev.todayMatches,
         nextMatches: matches.next.length > 0 ? matches.next : prev.nextMatches,
         pastMatches: matches.past.length > 0 ? matches.past : prev.pastMatches,
@@ -209,10 +179,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         syncStatus: hasNewData ? 'idle' : 'partial'
       }));
 
-      if (manual) toast({ title: hasNewData ? 'Sincronizado!' : 'Sem atualizações' });
+      if (manual) toast({ title: hasNewData ? 'Futebol Sincronizado!' : 'Sem novos dados no momento' });
     } catch (e: any) {
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
-      if (manual) toast({ variant: 'destructive', title: 'Erro Sync', description: e.message });
+      if (manual) toast({ variant: 'destructive', title: 'Erro na Sincronização', description: e.message });
     } finally {
       syncInProgress.current = false;
     }
@@ -232,25 +202,39 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const runAutoSync = () => {
       if (syncInProgress.current || !window.navigator.onLine) return;
+      
       const spHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }).format(new Date()), 10);
-      const interval = (spHour >= 8 && spHour <= 23) ? 15 : 60;
+      const isWorkHours = spHour >= 8 && spHour <= 23;
+      const interval = isWorkHours ? 15 : 60;
+
       const last = footballData.lastSync ? new Date(footballData.lastSync) : new Date(0);
-      const diff = (Date.now() - last.getTime()) / (60000);
-      if (diff >= interval) syncFootballAll();
+      const diffMinutes = (Date.now() - last.getTime()) / (1000 * 60);
+
+      if (diffMinutes >= interval) {
+        syncFootballAll();
+      }
     };
 
-    const timer = setTimeout(runAutoSync, 5000);
-    const interval = setInterval(runAutoSync, 300000);
-    return () => { clearTimeout(timer); clearInterval(interval); };
-  }, [syncFootballAll, footballData.lastSync]);
+    // Bootstrap inicial após 3s (para garantir que o Next.js registrou as rotas de API)
+    const bootTimer = setTimeout(() => {
+      if (footballData.leagues.length === 0) syncFootballAll();
+      else runAutoSync();
+    }, 3000);
+
+    const interval = setInterval(runAutoSync, 300000); // Tenta a cada 5 min
+
+    return () => {
+      clearTimeout(bootTimer);
+      clearInterval(interval);
+    };
+  }, [syncFootballAll, footballData.lastSync, footballData.leagues.length]);
 
   const value: AppContextType = {
     user, balance, bonus, terminal, logout: () => { logout(); setUser(null); router.push('/'); },
     apostas,
     footballData, 
-    updateFootballCatalog,
-    validateCatalogLeagues,
-    syncFootballAll,
+    syncFootballAll, 
+    updateFootballLeagues,
     news, banners, popups, jdbLoterias, postedResults, genericLotteryConfigs,
     handleFinalizarAposta: (aposta) => { const id = `p-${Date.now()}`; setApostas([aposta, ...apostas]); return id; },
     activeBancaId: 'default',
