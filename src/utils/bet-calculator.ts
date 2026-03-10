@@ -10,7 +10,6 @@ export interface BetSlipItem {
   selection: string;
   pickLabel: string;
   odd: number;
-  match?: any;
 }
 
 /**
@@ -19,7 +18,9 @@ export interface BetSlipItem {
  */
 export function calculateTotalOdds(items: BetSlipItem[]): number {
   if (items.length === 0) return 0;
-  return items.reduce((acc, item) => acc * item.odd, 1);
+  // Multiplica as odds das seleções
+  const total = items.reduce((acc, item) => acc * (item.odd || 1), 1);
+  return parseFloat(total.toFixed(2));
 }
 
 /**
@@ -27,5 +28,5 @@ export function calculateTotalOdds(items: BetSlipItem[]): number {
  */
 export function calculatePotentialWin(stake: number, totalOdds: number): number {
   if (stake <= 0 || totalOdds <= 0) return 0;
-  return stake * totalOdds;
+  return parseFloat((stake * totalOdds).toFixed(2));
 }

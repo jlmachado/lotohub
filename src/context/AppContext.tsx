@@ -1,6 +1,6 @@
 /**
  * @fileOverview Contexto global gerenciando a arquitetura híbrida de Futebol e Apostas.
- * Integra ESPN (Estrutura) e Live Score API (Mercado/Live).
+ * Integra ESPN (Estrutura) e Live Score API (Mercado/Live) com lógica de sportsbook.
  */
 
 'use client';
@@ -17,13 +17,13 @@ import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catal
 import { normalizeESPNScoreboard, normalizeESPNStandings, NormalizedESPNMatch, NormalizedESPNStanding } from '@/utils/espn-normalizer';
 import { BetSlipItem, calculateTotalOdds } from '@/utils/bet-calculator';
 import { MatchMapperService, MatchModel } from '@/services/match-mapper-service';
+import { RiskManagementService } from '@/services/risk-management-service';
 
 export interface FootballSyncData {
   matches: NormalizedESPNMatch[];
-  unifiedMatches: MatchModel[]; // Versão processada com odds
+  unifiedMatches: MatchModel[];
   standings: Record<string, NormalizedESPNStanding[]>;
   leagues: ESPNLeagueConfig[];
-  liveMatches: LiveScoreMatch[];
   lastSync: string | null;
   syncStatus: 'idle' | 'syncing' | 'error' | 'partial';
 }
@@ -41,10 +41,6 @@ export interface FootballBet {
   bancaId: string;
 }
 
-export interface Banner { id: string; title: string; content?: string; imageUrl: string; linkUrl?: string; position: number; active: boolean; startAt?: string; endAt?: string; imageMeta?: any; }
-export interface Popup { id: string; title: string; description?: string; imageUrl?: string; linkUrl?: string; buttonText?: string; active: boolean; priority: number; startAt?: string; endAt?: string; imageMeta?: any; }
-export interface NewsMessage { id: string; text: string; order: number; active: boolean; }
-
 interface AppContextType {
   user: any;
   balance: number;
@@ -52,14 +48,15 @@ interface AppContextType {
   terminal: string;
   logout: () => void;
 
-  banners: Banner[];
-  popups: Popup[];
-  news: NewsMessage[];
+  // Imagens e CMS
+  banners: any[];
+  popups: any[];
+  news: any[];
   liveMiniPlayerConfig: any;
-  updateLiveMiniPlayerConfig: (config: any) => void;
   isFullscreen: boolean;
   toggleFullscreen: () => void;
 
+  // Football & Betting
   footballBets: FootballBet[];
   betSlip: BetSlipItem[];
   addBetToSlip: (bet: BetSlipItem) => void;
@@ -70,7 +67,7 @@ interface AppContextType {
   syncFootballAll: (manual?: boolean) => Promise<void>;
   updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
   
-  // Stubs
+  // Stubs para outros módulos
   bingoSettings: any;
   bingoDraws: any[];
   bingoTickets: any[];
@@ -119,16 +116,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     unifiedMatches: [],
     standings: {},
     leagues: ESPN_LEAGUE_CATALOG,
-    liveMatches: [],
     lastSync: null,
     syncStatus: 'idle'
   });
 
-  const [banners, setBanners] = useState<Banner[]>([]);
-  const [popups, setPopups] = useState<Popup[]>([]);
-  const [news, setNews] = useState<NewsMessage[]>([]);
-  const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<any>(null);
+  const [banners, setBanners] = useState([]);
+  const [popups, setPopups] = useState([]);
+  const [news, setNews] = useState([]);
+  const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState(null);
 
+  // Inicialização e Carregamento de Dados Persistidos
   useEffect(() => {
     const currentUser = getCurrentUser();
     if (currentUser) {
@@ -145,13 +142,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (savedFootballBets) setFootballBets(JSON.parse(savedFootballBets));
 
     const savedBanners = localStorage.getItem('app:banners:v1');
-    if (savedBanners) setBanners(JSON.parse(savedBanners));
+    if (savedBanners) setBanners(JSON.parse(savedBanners) || []);
 
     const savedPopups = localStorage.getItem('app:popups:v1');
-    if (savedPopups) setPopups(JSON.parse(savedPopups));
+    if (savedPopups) setPopups(JSON.parse(savedPopups) || []);
 
     const savedNews = localStorage.getItem('news_messages');
-    if (savedNews) setNews(JSON.parse(savedNews));
+    if (savedNews) setNews(JSON.parse(savedNews) || []);
 
     const savedPlayer = localStorage.getItem('app:mini_player:v1');
     if (savedPlayer) setLiveMiniPlayerConfig(JSON.parse(savedPlayer));
@@ -169,7 +166,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       let allEspnMatches: NormalizedESPNMatch[] = [];
       const allStandings: Record<string, NormalizedESPNStanding[]> = {};
 
-      // 1. Carregar Dados Estruturais (ESPN)
+      // 1. Carregar Estrutura ESPN
       for (const league of activeLeagues) {
         const scoreboard = await espnService.getScoreboard(league.slug);
         if (scoreboard) {
@@ -181,28 +178,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // 2. Carregar Mercado e Live (LiveScore)
+      // 2. Carregar Mercado LiveScore
       const live = await liveScoreService.getLiveMatches();
-      const fixturesToday = await liveScoreService.getFixtures();
-      
-      const allLiveScoreFixtures = [...(live || []), ...(fixturesToday || [])];
+      const history = await liveScoreService.getFixtures(); // Fixtures do dia
+      const allLiveScore = [...(live || []), ...(history || [])];
 
-      // 3. Unificar usando o Mapper
-      const unified = MatchMapperService.mapEspnWithLiveScore(allEspnMatches, allLiveScoreFixtures);
+      // 3. Unificar via Matching Engine
+      const unified = MatchMapperService.mapEspnWithLiveScore(allEspnMatches, allLiveScore);
 
       setFootballData(prev => ({
         ...prev,
         matches: allEspnMatches,
         unifiedMatches: unified,
         standings: allStandings,
-        liveMatches: live || [],
         lastSync: new Date().toISOString(),
         syncStatus: 'idle'
       }));
 
-      if (manual) toast({ title: 'Dados Atualizados' });
+      if (manual) toast({ title: 'Mercado Atualizado', description: 'Dados de jogos e odds sincronizados.' });
     } catch (e: any) {
-      console.error("[Football Sync Error]", e);
+      console.error("[Sportsbook Sync Error]", e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
     } finally {
       syncInProgress.current = false;
@@ -217,12 +212,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  // --- Lógica de Apostas ---
+
   const addBetToSlip = (bet: BetSlipItem) => {
     setBetSlip(prev => {
+      // Regra de Conflito: Remove seleção anterior do mesmo jogo para evitar apostas conflitantes (ex: 1 e X no mesmo jogo)
       const filtered = prev.filter(item => item.matchId !== bet.matchId);
       return [...filtered, bet];
     });
-    toast({ title: 'Adicionado!', description: `${bet.matchName}: ${bet.selection}` });
+    
+    // Feedback visual opcional
+    const totalOdds = calculateTotalOdds([...betSlip.filter(i => i.matchId !== bet.matchId), bet]);
+    toast({ 
+      title: 'Seleção Adicionada', 
+      description: `${bet.matchName}: ${bet.selection} (@${bet.odd.toFixed(2)})` 
+    });
   };
 
   const removeBetFromSlip = (id: string) => setBetSlip(prev => prev.filter(item => item.id !== id));
@@ -230,10 +234,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const placeFootballBet = (stake: number): boolean => {
     if (!user) { router.push('/login'); return false; }
-    if (balance < stake) { toast({ variant: 'destructive', title: 'Saldo Insuficiente' }); return false; }
-
+    
     const totalOdds = calculateTotalOdds(betSlip);
-    const potentialWin = stake * totalOdds;
+    
+    // Validação de Risco e Saldo
+    const riskCheck = RiskManagementService.validateBet(stake, totalOdds, balance);
+    if (!riskCheck.allowed) {
+      toast({ variant: 'destructive', title: 'Aposta Recusada', description: riskCheck.reason });
+      return false;
+    }
+
+    const potentialWin = calculatePotentialWin(stake, totalOdds);
 
     const newBet: FootballBet = {
       id: `bet-fb-${Date.now()}`,
@@ -248,30 +259,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       bancaId: user.bancaId || 'default'
     };
 
+    // Registrar aposta
     const updatedBets = [newBet, ...footballBets];
     setFootballBets(updatedBets);
     localStorage.setItem('app:football_bets:v12', JSON.stringify(updatedBets));
 
+    // Debitar saldo
     const newBalance = balance - stake;
     setBalance(newBalance);
     upsertUser({ terminal: user.terminal, saldo: newBalance });
 
     clearBetSlip();
-    toast({ title: 'Bilhete Confirmado!', description: `Pule: ${newBet.id.substring(7, 15)}` });
+    toast({ 
+      title: 'Bilhete Confirmado! ⚽', 
+      description: `Pule: ${newBet.id.substring(7, 15)} | Retorno: R$ ${potentialWin.toFixed(2)}` 
+    });
+    
     return true;
   };
 
   const logout = () => { authLogout(); setUser(null); setBalance(0); setTerminal(''); router.push('/'); };
-  const updateLiveMiniPlayerConfig = (config: any) => { setLiveMiniPlayerConfig(config); localStorage.setItem('app:mini_player:v1', JSON.stringify(config)); };
   const toggleFullscreen = () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); setIsFullscreen(true); } else { document.exitFullscreen(); setIsFullscreen(false); } };
 
   return (
     <AppContext.Provider value={{
       user, balance, bonus, terminal, logout,
-      banners, popups, news, liveMiniPlayerConfig, updateLiveMiniPlayerConfig,
+      banners, popups, news, liveMiniPlayerConfig,
       isFullscreen, toggleFullscreen,
       footballBets, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
       footballData, syncFootballAll, updateLeagueConfig,
+      
+      // Stubs
       bingoSettings: null, bingoDraws: [], bingoTickets: [], snookerChannels: [],
       snookerBets: [], snookerPresence: {}, snookerScoreboards: {}, snookerChatMessages: [],
       snookerBetsFeed: [], snookerActivityFeed: [], snookerFinancialHistory: [], snookerCashOutLog: [],
