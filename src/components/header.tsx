@@ -27,7 +27,7 @@ import {
 import { SinucaSidebar } from './sinuca/SinucaSidebar';
 import { AdminSidebar } from './admin/AdminSidebar';
 import { Logo } from './Logo';
-import Link from 'next/link';
+import { getCurrentUser } from '@/utils/auth';
 
 const AnimatedNumber = ({ value, isCurrency = true, className }: { value: number; isCurrency?: boolean, className?: string }) => {
   const elRef = useRef<HTMLParagraphElement>(null);
@@ -81,12 +81,24 @@ export function Header() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const { balance, bonus, terminal, user, logout } = useAppContext();
   
-  const isAdminRoute = pathname.startsWith('/admin');
-  const canSeeAdmin = user?.tipoUsuario === 'ADMIN' || user?.tipoUsuario === 'SUPER_ADMIN';
+  // Local user state to prevent "Login" button flicker if context is still hydrating
+  const [hydratedUser, setHydratedUser] = useState<any>(null);
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    if (!user) {
+      const u = getCurrentUser();
+      if (u) setHydratedUser(u);
+    }
+  }, [user]);
+
+  const isAdminRoute = pathname.startsWith('/admin');
+  const activeUser = user || hydratedUser;
+  const canSeeAdmin = activeUser?.tipoUsuario === 'ADMIN' || activeUser?.tipoUsuario === 'SUPER_ADMIN';
+  
+  const displayBalance = user ? balance : (hydratedUser?.saldo || 0);
+  const displayBonus = user ? bonus : (hydratedUser?.bonus || 0);
+  const displayTerminal = user ? terminal : (hydratedUser?.terminal || '');
 
   const menuContent = useMemo(() => {
     if (!mounted) return null;
@@ -134,11 +146,11 @@ export function Header() {
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
-              {user ? (
+              {activeUser ? (
                 <div className="flex items-center gap-1">
                   <div className="hidden lg:flex flex-col items-end mr-1">
-                    <span className="text-[8px] font-bold uppercase text-muted-foreground leading-none">{user.nome}</span>
-                    <span className="text-[7px] font-mono text-primary leading-none mt-0.5">{user.terminal}</span>
+                    <span className="text-[8px] font-bold uppercase text-muted-foreground leading-none">{activeUser.nome}</span>
+                    <span className="text-[7px] font-mono text-primary leading-none mt-0.5">{activeUser.terminal}</span>
                   </div>
                   <Button variant="ghost" size="icon" onClick={handleLogout} className="h-7 w-7 text-destructive hover:bg-destructive/10">
                     <LogOut className="h-3.5 w-3.5" />
@@ -156,25 +168,25 @@ export function Header() {
             </div>
           </div>
           
-          {user && (
+          {activeUser && (
             <div className="grid grid-cols-2 items-center gap-x-2 pb-1 md:grid-cols-3 md:pb-0.5">
               <div className="flex items-center justify-start gap-1">
                 <Wallet className="h-3 w-3 text-muted-foreground" />
                 <div>
                   <p className="text-[8px] uppercase text-muted-foreground font-bold leading-tight">Saldo</p>
-                  <AnimatedNumber value={balance} className="leading-tight text-[11px] md:text-xs" />
+                  <AnimatedNumber value={displayBalance} className="leading-tight text-[11px] md:text-xs" />
                 </div>
               </div>
               <div className="flex items-center justify-start gap-1">
                 <Gift className="h-3 w-3 text-muted-foreground" />
                 <div>
                   <p className="text-[8px] uppercase text-muted-foreground font-bold leading-tight">Bônus</p>
-                  <AnimatedNumber value={bonus} className="text-green-500 leading-tight text-[11px] md:text-xs" />
+                  <AnimatedNumber value={displayBonus} className="text-green-500 leading-tight text-[11px] md:text-xs" />
                 </div>
               </div>
               <div className="col-span-2 flex justify-center pt-1 md:col-span-1 md:justify-end md:pt-0">
                   <Button variant="secondary" className="h-6 rounded-md px-2 font-bold bg-amber-400 text-black hover:bg-amber-500 text-[9px] uppercase italic">
-                    Terminal {terminal}
+                    Terminal {displayTerminal}
                   </Button>
               </div>
             </div>

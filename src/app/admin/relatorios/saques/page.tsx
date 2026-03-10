@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Header } from '@/components/header';
-import { AdminContextBar } from '@/components/admin/AdminContextBar';
 import { useAppContext } from '@/context/AppContext';
 import { getActiveContext } from '@/utils/bancaContext';
 import { ReportFilters } from '@/components/admin/reports/ReportFilters';
@@ -100,55 +98,51 @@ export default function RelatorioSaquesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AdminContextBar />
-      <Header />
-      <main className="p-4 md:p-8">
-        <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Saques</h1>
-        
-        <ReportKpis totalValue={totalValue} count={filtered.length} label="Saques" />
-        
-        <ReportFilters 
-          dateStart={dateStart}
-          dateEnd={dateEnd}
-          searchTerm={searchTerm}
-          activeRange={quickRange}
-          onDateStartChange={setDateStart}
-          onDateEndChange={setDateEnd}
-          onSearchChange={setSearchTerm}
-          onQuickRangeChange={(v) => setQuickRange(v)}
-          onClear={handleClear}
-          onExport={() => {}}
-          restored={restored}
-        />
+    <main className="p-4 md:p-8">
+      <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Saques</h1>
+      
+      <ReportKpis totalValue={totalValue} count={filtered.length} label="Saques" />
+      
+      <ReportFilters 
+        dateStart={dateStart}
+        dateEnd={dateEnd}
+        searchTerm={searchTerm}
+        activeRange={quickRange}
+        onDateStartChange={setDateStart}
+        onDateEndChange={setDateEnd}
+        onSearchChange={setSearchTerm}
+        onQuickRangeChange={(v) => setQuickRange(v)}
+        onClear={handleClear}
+        onExport={() => {}}
+        restored={restored}
+      />
 
-        <div className="bg-card border border-white/5 rounded-2xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-white/5">
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Data/Hora</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Terminal</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Status</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground text-right">Valor</TableHead>
+      <div className="bg-card border border-white/5 rounded-2xl overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-white/5">
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Data/Hora</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Terminal</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Status</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground text-right">Valor</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((r) => (
+              <TableRow key={r.id} className="border-white/5">
+                <TableCell className="text-[11px] font-medium text-muted-foreground">{r.at}</TableCell>
+                <TableCell className="font-mono font-bold text-white">{r.terminal}</TableCell>
+                <TableCell>
+                  <Badge variant={r.status === 'Concluído' ? 'default' : 'destructive'} className="text-[9px] uppercase">
+                    {r.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right font-black text-red-400">{formatBRL(r.valor)}</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((r) => (
-                <TableRow key={r.id} className="border-white/5">
-                  <TableCell className="text-[11px] font-medium text-muted-foreground">{r.at}</TableCell>
-                  <TableCell className="font-mono font-bold text-white">{r.terminal}</TableCell>
-                  <TableCell>
-                    <Badge variant={r.status === 'Concluído' ? 'default' : 'destructive'} className="text-[9px] uppercase">
-                      {r.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right font-black text-red-400">{formatBRL(r.valor)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </main>
-    </div>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </main>
   );
 }

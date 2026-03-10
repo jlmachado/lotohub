@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Header } from '@/components/header';
-import { AdminContextBar } from '@/components/admin/AdminContextBar';
 import { useAppContext } from '@/context/AppContext';
 import { normalizeBets } from '@/utils/normalizeRecords';
 import { getActiveContext } from '@/utils/bancaContext';
@@ -169,84 +167,80 @@ export default function RelatorioApostasPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AdminContextBar />
-      <Header />
-      <main className="p-4 md:p-8">
-        <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Apostas</h1>
-        
-        <ReportKpis totalValue={totalValue} count={filtered.length} label="Apostas" />
-        
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
-          <div className="lg:col-span-4 h-full">
-            <ReportFilters 
-              dateStart={dateStart}
-              dateEnd={dateEnd}
-              searchTerm={searchTerm}
-              activeRange={quickRange}
-              onDateStartChange={(v) => { setDateStart(v); setCurrentPage(1); }}
-              onDateEndChange={(v) => { setDateEnd(v); setCurrentPage(1); }}
-              onSearchChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
-              onQuickRangeChange={(v) => setQuickRange(v)}
-              onClear={handleClear}
-              onExport={handleExport}
-              restored={restored}
-            />
-          </div>
-          <div className="lg:col-span-8">
-            <LineChartDaily 
-              data={chartData} 
-              title="Volume de Apostas" 
-              description="Evolução financeira diária no período selecionado" 
-            />
-          </div>
+    <main className="p-4 md:p-8">
+      <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Apostas</h1>
+      
+      <ReportKpis totalValue={totalValue} count={filtered.length} label="Apostas" />
+      
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+        <div className="lg:col-span-4 h-full">
+          <ReportFilters 
+            dateStart={dateStart}
+            dateEnd={dateEnd}
+            searchTerm={searchTerm}
+            activeRange={quickRange}
+            onDateStartChange={(v) => { setDateStart(v); setCurrentPage(1); }}
+            onDateEndChange={(v) => { setDateEnd(v); setCurrentPage(1); }}
+            onSearchChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
+            onQuickRangeChange={(v) => setQuickRange(v)}
+            onClear={handleClear}
+            onExport={handleExport}
+            restored={restored}
+          />
         </div>
+        <div className="lg:col-span-8">
+          <LineChartDaily 
+            data={chartData} 
+            title="Volume de Apostas" 
+            description="Evolução financeira diária no período selecionado" 
+          />
+        </div>
+      </div>
 
-        <div className="bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="p-4 bg-white/5 border-b border-white/5 flex items-center justify-between">
-            <h3 className="text-sm font-black uppercase italic tracking-widest text-white">Registros Detalhados</h3>
-            <Badge variant="outline" className="text-[10px] border-white/10">{filtered.length} encontrados</Badge>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-white/5">
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Data/Hora</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Terminal</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Módulo</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Descrição</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground text-right">Valor</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginated.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum registro encontrado no período.</TableCell>
-                </TableRow>
-              ) : (
-                paginated.map((r) => (
-                  <TableRow key={r.id} className="border-white/5 hover:bg-white/5 transition-colors">
-                    <TableCell className="text-[11px] font-medium text-muted-foreground">{new Date(r.at).toLocaleString('pt-BR')}</TableCell>
-                    <TableCell className="font-mono font-bold text-primary">{r.terminal}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[9px] uppercase border-white/10 bg-slate-900">{r.modulo}</Badge></TableCell>
-                    <TableCell className="text-xs font-bold text-white max-w-[200px] truncate">{r.descricao}</TableCell>
-                    <TableCell className="text-right font-black text-white">{formatBRL(r.valor)}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-          
-          {totalPages > 1 && (
-            <div className="p-4 flex items-center justify-between border-t border-white/5 bg-slate-950/50">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase">Página {currentPage} de {totalPages}</p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="h-8 border-white/10"><ChevronLeft className="h-4 w-4" /></Button>
-                <Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="h-8 border-white/10"><ChevronRight className="h-4 w-4" /></Button>
-              </div>
-            </div>
-          )}
+      <div className="bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+        <div className="p-4 bg-white/5 border-b border-white/5 flex items-center justify-between">
+          <h3 className="text-sm font-black uppercase italic tracking-widest text-white">Registros Detalhados</h3>
+          <Badge variant="outline" className="text-[10px] border-white/10">{filtered.length} encontrados</Badge>
         </div>
-      </main>
-    </div>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-white/5">
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Data/Hora</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Terminal</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Módulo</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Descrição</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground text-right">Valor</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginated.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum registro encontrado no período.</TableCell>
+              </TableRow>
+            ) : (
+              paginated.map((r) => (
+                <TableRow key={r.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                  <TableCell className="text-[11px] font-medium text-muted-foreground">{new Date(r.at).toLocaleString('pt-BR')}</TableCell>
+                  <TableCell className="font-mono font-bold text-primary">{r.terminal}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-[9px] uppercase border-white/10 bg-slate-900">{r.modulo}</Badge></TableCell>
+                  <TableCell className="text-xs font-bold text-white max-w-[200px] truncate">{r.descricao}</TableCell>
+                  <TableCell className="text-right font-black text-white">{formatBRL(r.valor)}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        
+        {totalPages > 1 && (
+          <div className="p-4 flex items-center justify-between border-t border-white/5 bg-slate-950/50">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase">Página {currentPage} de {totalPages}</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="h-8 border-white/10"><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="h-8 border-white/10"><ChevronRight className="h-4 w-4" /></Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }

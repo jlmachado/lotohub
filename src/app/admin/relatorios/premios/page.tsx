@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Header } from '@/components/header';
-import { AdminContextBar } from '@/components/admin/AdminContextBar';
 import { useAppContext } from '@/context/AppContext';
 import { normalizePayouts } from '@/utils/normalizeRecords';
 import { getActiveContext } from '@/utils/bancaContext';
@@ -160,81 +158,77 @@ export default function RelatorioPremiosPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AdminContextBar />
-      <Header />
-      <main className="p-4 md:p-8">
-        <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Prêmios Pagos</h1>
-        
-        <ReportKpis totalValue={totalValue} count={filtered.length} label="Prêmios" />
-        
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
-          <div className="lg:col-span-4">
-            <ReportFilters 
-              dateStart={dateStart}
-              dateEnd={dateEnd}
-              searchTerm={searchTerm}
-              activeRange={quickRange}
-              onDateStartChange={(v) => { setDateStart(v); setCurrentPage(1); }}
-              onDateEndChange={(v) => { setDateEnd(v); setCurrentPage(1); }}
-              onSearchChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
-              onQuickRangeChange={(v) => setQuickRange(v)}
-              onClear={handleClear}
-              onExport={handleExport}
-              restored={restored}
-            />
-          </div>
-          <div className="lg:col-span-8">
-            <LineChartDaily 
-              data={chartData} 
-              title="Prêmios Pagos Diários" 
-              description="Evolução financeira dos prêmios no período"
-              color="#10b981" // Green for prizes/payouts
-            />
-          </div>
+    <main className="p-4 md:p-8">
+      <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Prêmios Pagos</h1>
+      
+      <ReportKpis totalValue={totalValue} count={filtered.length} label="Prêmios" />
+      
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+        <div className="lg:col-span-4">
+          <ReportFilters 
+            dateStart={dateStart}
+            dateEnd={dateEnd}
+            searchTerm={searchTerm}
+            activeRange={quickRange}
+            onDateStartChange={(v) => { setDateStart(v); setCurrentPage(1); }}
+            onDateEndChange={(v) => { setDateEnd(v); setCurrentPage(1); }}
+            onSearchChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
+            onQuickRangeChange={(v) => setQuickRange(v)}
+            onClear={handleClear}
+            onExport={handleExport}
+            restored={restored}
+          />
         </div>
+        <div className="lg:col-span-8">
+          <LineChartDaily 
+            data={chartData} 
+            title="Prêmios Pagos Diários" 
+            description="Evolução financeira dos prêmios no período"
+            color="#10b981" // Green for prizes/payouts
+          />
+        </div>
+      </div>
 
-        <div className="bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-white/5">
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Data/Hora</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Terminal</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Módulo</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Descrição</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground text-right">Prêmio Pago</TableHead>
+      <div className="bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-white/5">
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Data/Hora</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Terminal</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Módulo</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Descrição</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground text-right">Prêmio Pago</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginated.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum prêmio encontrado no período.</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginated.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum prêmio encontrado no período.</TableCell>
+            ) : (
+              paginated.map((r) => (
+                <TableRow key={r.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                  <TableCell className="text-[11px] font-medium text-muted-foreground">{new Date(r.at).toLocaleString('pt-BR')}</TableCell>
+                  <TableCell className="font-mono font-bold text-green-400">{r.terminal}</TableCell>
+                  <TableCell><Badge variant="secondary" className="text-[9px] uppercase bg-green-500/10 text-green-400 border-green-500/20">{r.modulo}</Badge></TableCell>
+                  <TableCell className="text-xs font-bold text-white">{r.descricao}</TableCell>
+                  <TableCell className="text-right font-black text-green-400">{formatBRL(r.valor)}</TableCell>
                 </TableRow>
-              ) : (
-                paginated.map((r) => (
-                  <TableRow key={r.id} className="border-white/5 hover:bg-white/5 transition-colors">
-                    <TableCell className="text-[11px] font-medium text-muted-foreground">{new Date(r.at).toLocaleString('pt-BR')}</TableCell>
-                    <TableCell className="font-mono font-bold text-green-400">{r.terminal}</TableCell>
-                    <TableCell><Badge variant="secondary" className="text-[9px] uppercase bg-green-500/10 text-green-400 border-green-500/20">{r.modulo}</Badge></TableCell>
-                    <TableCell className="text-xs font-bold text-white">{r.descricao}</TableCell>
-                    <TableCell className="text-right font-black text-green-400">{formatBRL(r.valor)}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-          
-          {totalPages > 1 && (
-            <div className="p-4 flex items-center justify-between border-t border-white/5">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase">Página {currentPage} de {totalPages}</p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="h-8 border-white/10"><ChevronLeft className="h-4 w-4" /></Button>
-                <Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="h-8 border-white/10"><ChevronRight className="h-4 w-4" /></Button>
-              </div>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        
+        {totalPages > 1 && (
+          <div className="p-4 flex items-center justify-between border-t border-white/5">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase">Página {currentPage} de {totalPages}</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="h-8 border-white/10"><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="h-8 border-white/10"><ChevronRight className="h-4 w-4" /></Button>
             </div>
-          )}
-        </div>
-      </main>
-    </div>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }

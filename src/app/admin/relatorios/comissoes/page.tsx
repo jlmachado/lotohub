@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Header } from '@/components/header';
-import { AdminContextBar } from '@/components/admin/AdminContextBar';
 import { useAppContext } from '@/context/AppContext';
 import { getActiveContext } from '@/utils/bancaContext';
 import { ReportFilters } from '@/components/admin/reports/ReportFilters';
@@ -143,57 +141,53 @@ export default function RelatorioComissoesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AdminContextBar />
-      <Header />
-      <main className="p-4 md:p-8">
-        <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Comissões (House Share)</h1>
-        
-        <ReportKpis totalValue={totalValue} count={filtered.length} label="Comissões" />
-        
-        <ReportFilters 
-          dateStart={dateStart}
-          dateEnd={dateEnd}
-          searchTerm={searchTerm}
-          activeRange={quickRange}
-          onDateStartChange={(v) => { setDateStart(v); setCurrentPage(1); }}
-          onDateEndChange={(v) => { setDateEnd(v); setCurrentPage(1); }}
-          onSearchChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
-          onQuickRangeChange={(v) => setQuickRange(v)}
-          onClear={handleClear}
-          onExport={handleExport}
-          restored={restored}
-        />
+    <main className="p-4 md:p-8">
+      <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Comissões (House Share)</h1>
+      
+      <ReportKpis totalValue={totalValue} count={filtered.length} label="Comissões" />
+      
+      <ReportFilters 
+        dateStart={dateStart}
+        dateEnd={dateEnd}
+        searchTerm={searchTerm}
+        activeRange={quickRange}
+        onDateStartChange={(v) => { setDateStart(v); setCurrentPage(1); }}
+        onDateEndChange={(v) => { setDateEnd(v); setCurrentPage(1); }}
+        onSearchChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
+        onQuickRangeChange={(v) => setQuickRange(v)}
+        onClear={handleClear}
+        onExport={handleExport}
+        restored={restored}
+      />
 
-        <div className="bg-card border border-white/5 rounded-2xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-white/5">
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Data/Hora</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Módulo</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Descrição</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold text-muted-foreground text-right">Comissão</TableHead>
+      <div className="bg-card border border-white/5 rounded-2xl overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-white/5">
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Data/Hora</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Módulo</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Descrição</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold text-muted-foreground text-right">Comissão</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginated.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="text-center py-20 text-muted-foreground italic">Nenhuma comissão encontrada no período.</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginated.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-20 text-muted-foreground italic">Nenhuma comissão encontrada no período.</TableCell>
+            ) : (
+              paginated.map((r) => (
+                <TableRow key={r.id} className="border-white/5 hover:bg-white/5">
+                  <TableCell className="text-[11px] font-medium text-muted-foreground">{new Date(r.at).toLocaleString('pt-BR')}</TableCell>
+                  <TableCell className="text-xs font-bold text-blue-400">{r.modulo}</TableCell>
+                  <TableCell className="text-xs font-bold text-white">{r.descricao}</TableCell>
+                  <TableCell className="text-right font-black text-blue-400">{formatBRL(r.valor)}</TableCell>
                 </TableRow>
-              ) : (
-                paginated.map((r) => (
-                  <TableRow key={r.id} className="border-white/5 hover:bg-white/5">
-                    <TableCell className="text-[11px] font-medium text-muted-foreground">{new Date(r.at).toLocaleString('pt-BR')}</TableCell>
-                    <TableCell className="text-xs font-bold text-blue-400">{r.modulo}</TableCell>
-                    <TableCell className="text-xs font-bold text-white">{r.descricao}</TableCell>
-                    <TableCell className="text-right font-black text-blue-400">{formatBRL(r.valor)}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </main>
-    </div>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </main>
   );
 }
