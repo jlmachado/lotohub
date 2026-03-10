@@ -11,6 +11,7 @@ import { Logo } from '@/components/Logo';
 import { login, getSession } from '@/utils/auth';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn, ArrowLeft, Loader2 } from 'lucide-react';
+import { getBancas, setBancaContextBanca } from '@/utils/bancasStorage';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,6 +49,16 @@ export default function LoginPage() {
         toast({ title: 'Acesso autorizado!', description: result.message });
         
         const user = result.user;
+
+        // AUTO-SET BANCA CONTEXT
+        if (user?.bancaId) {
+          const bancas = getBancas();
+          const targetBanca = bancas.find(b => b.id === user.bancaId);
+          if (targetBanca) {
+            setBancaContextBanca(targetBanca);
+          }
+        }
+
         if (user?.tipoUsuario === 'ADMIN' || user?.tipoUsuario === 'SUPER_ADMIN') {
           router.push('/admin');
         } else if (user?.tipoUsuario === 'CAMBISTA') {

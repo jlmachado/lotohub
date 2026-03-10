@@ -27,7 +27,7 @@ import {
 import Link from 'next/link';
 
 export default function RelatorioComissaoPage() {
-  const { user, userCommissions, promoterCredits, apostas } = useAppContext();
+  const { user, isLoading, userCommissions, promoterCredits, apostas } = useAppContext();
   
   const [moduloFilter, setModuloFilter] = useState('all');
   const [tipoFilter, setTipoFilter] = useState('all');
@@ -42,7 +42,7 @@ export default function RelatorioComissaoPage() {
     const events: any[] = [];
 
     // Comissões e Apostas vinculadas
-    userCommissions.forEach(c => {
+    (userCommissions || []).forEach(c => {
       events.push({
         id: c.id,
         at: c.createdAt,
@@ -56,7 +56,7 @@ export default function RelatorioComissaoPage() {
     });
 
     // Créditos Admin
-    promoterCredits.filter(pc => pc.userId === user.id).forEach(pc => {
+    (promoterCredits || []).filter(pc => pc.userId === user.id).forEach(pc => {
       events.push({
         id: pc.id,
         at: pc.createdAt,
@@ -71,7 +71,7 @@ export default function RelatorioComissaoPage() {
     });
 
     // Prêmios vinculados (Apostas premiadas do usuário)
-    apostas.filter(a => a.userId === user.id && (a.status === 'premiado' || a.status === 'won')).forEach(a => {
+    (apostas || []).filter(a => a.userId === user.id && (a.status === 'premiado' || a.status === 'won')).forEach(a => {
       const winAmount = Array.isArray(a.detalhes) 
         ? a.detalhes.reduce((acc: number, d: any) => acc + (d.retornoPossivel || 0), 0)
         : 0;
@@ -112,17 +112,17 @@ export default function RelatorioComissaoPage() {
 
   const stats = useMemo(() => {
     return {
-      totalApostado: userCommissions.reduce((acc, curr) => acc + curr.valorAposta, 0),
-      totalComissao: userCommissions.reduce((acc, curr) => acc + curr.valorComissao, 0),
-      totalCreditos: promoterCredits.filter(pc => pc.userId === user?.id).reduce((acc, curr) => acc + curr.valor, 0),
-      totalBilhetes: userCommissions.length,
+      totalApostado: (userCommissions || []).reduce((acc, curr) => acc + curr.valorAposta, 0),
+      totalComissao: (userCommissions || []).reduce((acc, curr) => acc + curr.valorComissao, 0),
+      totalCreditos: (promoterCredits || []).filter(pc => pc.userId === user?.id).reduce((acc, curr) => acc + curr.valor, 0),
+      totalBilhetes: (userCommissions || []).length,
       totalPremios: allEvents.filter(e => e.tipo === 'PREMIO').reduce((acc, curr) => acc + (curr.valorPremio || 0), 0)
     };
   }, [user, userCommissions, promoterCredits, allEvents]);
 
   const moduleSummary = useMemo(() => {
     const summary: Record<string, { apostado: number, comissao: number }> = {};
-    userCommissions.forEach(c => {
+    (userCommissions || []).forEach(c => {
       if (!summary[c.modulo]) summary[c.modulo] = { apostado: 0, comissao: 0 };
       summary[c.modulo].apostado += c.valorAposta;
       summary[c.modulo].comissao += c.valorComissao;
@@ -147,12 +147,20 @@ export default function RelatorioComissaoPage() {
     );
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
   if (!user || (user.tipoUsuario !== 'PROMOTOR' && user.tipoUsuario !== 'CAMBISTA')) {
     return (
       <div className='min-h-screen bg-background flex items-center justify-center p-4'>
         <Card className='max-w-md w-full text-center p-8 border-white/10'>
-          <h2 className='text-xl font-bold mb-4'>Acesso não permitido</h2>
-          <p className='text-muted-foreground mb-6'>Você não possui permissões de Promotor ou Cambista.</p>
+          <h2 className='text-xl font-bold mb-4'>Acesso Restrito</h2>
+          <p className='text-muted-foreground mb-6'>Esta página é exclusiva para promotores ou cambistas.</p>
           <Link href="/"><Button className='w-full'>Voltar para Home</Button></Link>
         </Card>
       </div>

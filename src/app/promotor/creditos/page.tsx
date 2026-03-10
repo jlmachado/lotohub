@@ -12,11 +12,11 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
 export default function PromoterCreditsPage() {
-  const { user, promoterCredits } = useAppContext();
+  const { user, isLoading, promoterCredits } = useAppContext();
 
   const userCredits = useMemo(() => {
     if (!user) return [];
-    return promoterCredits
+    return (promoterCredits || [])
       .filter(c => c.userId === user.id)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [user, promoterCredits]);
@@ -26,6 +26,14 @@ export default function PromoterCreditsPage() {
     const last = userCredits[0]?.valor || 0;
     return { total, last };
   }, [userCredits]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   if (!user || (user.tipoUsuario !== 'PROMOTOR' && user.tipoUsuario !== 'CAMBISTA')) {
     return (
@@ -73,8 +81,7 @@ export default function PromoterCreditsPage() {
             <CardContent className="p-4 pt-0">
               <p className="text-3xl font-black text-white italic">{formatBRL(stats.last)}</p>
             </CardContent>
-          </Card>
-        </div>
+          </div>
 
         <Card className="border-white/5 overflow-hidden shadow-2xl">
           <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">

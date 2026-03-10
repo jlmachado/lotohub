@@ -53,6 +53,7 @@ export interface FootballSyncData {
 
 interface AppContextType {
   user: any;
+  isLoading: boolean;
   balance: number;
   bonus: number;
   terminal: string;
@@ -113,6 +114,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const syncInProgress = useRef(false);
 
   const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [balance, setBalance] = useState(0);
   const [bonus, setBonus] = useState(0);
   const [terminal, setTerminal] = useState('');
@@ -171,6 +173,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (savedMovements) setCambistaMovements(JSON.parse(savedMovements) || []);
 
     syncFootballAll();
+    setIsLoading(false);
   }, []);
 
   const syncFootballAll = useCallback(async (manual = false) => {
@@ -310,7 +313,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AppContext.Provider value={{
-      user, balance, bonus, terminal, logout,
+      user, isLoading, balance, bonus, terminal, logout,
       footballData, footballBets, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
       syncFootballAll, updateLeagueConfig,
       banners, popups, news, liveMiniPlayerConfig, isFullscreen, toggleFullscreen,

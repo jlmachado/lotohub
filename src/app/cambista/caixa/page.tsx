@@ -35,9 +35,10 @@ import {
   Minimize2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
 
 export default function CambistaCaixaPage() {
-  const { user, cambistaMovements, registerCambistaMovement, userCommissions, isFullscreen, toggleFullscreen } = useAppContext();
+  const { user, isLoading, cambistaMovements, registerCambistaMovement, userCommissions, isFullscreen, toggleFullscreen } = useAppContext();
   const { toast } = useToast();
 
   const [dialogOpen, setWalletDialogOpen] = useState(false);
@@ -62,9 +63,9 @@ export default function CambistaCaixaPage() {
   const allEvents = useMemo(() => {
     if (!user) return [];
     
-    const events: any[] = [...cambistaMovements.filter(m => m.userId === user.id)];
+    const events: any[] = [...(cambistaMovements || []).filter(m => m.userId === user.id)];
     
-    userCommissions.forEach(c => {
+    (userCommissions || []).forEach(c => {
       events.push({
         id: `comm-${c.id}`,
         userId: user.id,
@@ -164,8 +165,24 @@ export default function CambistaCaixaPage() {
     );
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
   if (!user || user.tipoUsuario !== 'CAMBISTA') {
-    return <div className='p-8 text-center text-muted-foreground'>Acesso restrito para cambistas autorizados.</div>;
+    return (
+      <div className='min-h-screen bg-background flex items-center justify-center p-4'>
+        <Card className='max-w-md w-full text-center p-8 border-white/10'>
+          <h2 className='text-xl font-bold mb-4'>Acesso Restrito</h2>
+          <p className='text-muted-foreground mb-6'>Esta página é exclusiva para cambistas autorizados.</p>
+          <Link href="/"><Button className='w-full'>Voltar para Home</Button></Link>
+        </Card>
+      </div>
+    );
   }
 
   return (

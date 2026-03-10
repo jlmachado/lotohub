@@ -169,6 +169,7 @@ export const ensureDefaultUsers = () => {
       terminal: "10001",
       password: "123456",
       tipoUsuario: "USUARIO",
+      bancaId: "default"
     },
     {
       id: "promoter-default",
@@ -177,6 +178,7 @@ export const ensureDefaultUsers = () => {
       terminal: "20001",
       password: "123456",
       tipoUsuario: "PROMOTOR",
+      bancaId: "default",
       promotorConfig: { porcentagemComissao: 10 }
     },
     {
@@ -186,6 +188,7 @@ export const ensureDefaultUsers = () => {
       terminal: "30001",
       password: "123456",
       tipoUsuario: "CAMBISTA",
+      bancaId: "default",
       promotorConfig: { porcentagemComissao: 10 },
       cambistaConfig: { loginFechamento: "cambista", senhaFechamento: "123456" }
     },
@@ -196,6 +199,7 @@ export const ensureDefaultUsers = () => {
       terminal: "99999",
       password: "123456",
       tipoUsuario: "SUPER_ADMIN",
+      bancaId: "default"
     }
   ];
 
