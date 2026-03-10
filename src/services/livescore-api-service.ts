@@ -1,22 +1,8 @@
 /**
- * @fileOverview Serviço para integração com a Live Score API (Jogos ao vivo e Odds).
- * Consome exclusivamente as rotas internas /api/livescore/* para segurança.
+ * @fileOverview Serviço para integração com a Live Score API via proxy interno.
  */
 
-export interface LiveScoreMatch {
-  id: string;
-  home_name: string;
-  away_name: string;
-  score: string;
-  time: string;
-  league_name: string;
-  status: 'LIVE' | 'FINISHED' | 'SCHEDULED';
-  odds?: {
-    '1': number;
-    'X': number;
-    '2': number;
-  };
-}
+import { LiveScoreMatch, normalizeLiveScoreMatch } from '@/utils/livescore-normalizer';
 
 class LiveScoreApiService {
   private async request(resource: string, params: Record<string, string> = {}) {
@@ -26,45 +12,40 @@ class LiveScoreApiService {
       const url = new URL(`${window.location.origin}/api/livescore/${resource}`);
       Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
 
-      const response = await fetch(url.toString());
-      if (!response.ok) return null;
+      const response = await fetch(url.toString(), { cache: 'no-store' });
+      if (!response.ok) {
+        console.warn(`[LiveScore Service] Erro HTTP ${response.status} em ${resource}`);
+        return null;
+      }
 
       const result = await response.json();
-      return result.data;
+      return result.ok ? result.data : null;
     } catch (e) {
       console.error(`[LiveScore Service] Falha na requisição ${resource}:`, e);
       return null;
     }
   }
 
-  /**
-   * Busca jogos que estão ocorrendo no momento.
-   * A API free retorna um subset de jogos.
-   */
   async getLiveMatches(): Promise<LiveScoreMatch[]> {
     const data = await this.request('scores/live.json');
-    if (!data?.success || !data.data?.match) return [];
-    
-    // Mapeia os dados da API para o formato interno
-    return data.data.match.map((m: any) => ({
-      id: String(m.id),
-      home_name: m.home_name,
-      away_name: m.away_name,
-      score: m.score,
-      time: m.time,
-      league_name: m.league_name,
-      status: 'LIVE'
-    }));
+    if (!data?.match) return [];
+    return data.match.map(normalizeLiveScoreMatch);
   }
 
-  /**
-   * Busca odds para uma partida específica.
-   * Nota: Na API free, as odds podem estar limitadas.
-   */
+  async getFixtures(date?: string): Promise<LiveScoreMatch[]> {
+    const params: any = {};
+    if (date) params.date = date;
+    const data = await this.request('scores/history.json', params);
+    if (!data?.match) return [];
+    return data.match.map(normalizeLiveScoreMatch);
+  }
+
   async getMatchOdds(matchId: string) {
-    const data = await this.request('matches/odds.json', { match_id: matchId });
-    if (!data?.success) return null;
-    return data.data?.odds || null;
+    return this.request('matches/odds.json', { match_id: matchId });
+  }
+
+  async getMatchEvents(matchId: string) {
+    return this.request('scores/events.json', { id: matchId });
   }
 }
 
