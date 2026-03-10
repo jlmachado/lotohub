@@ -1,5 +1,6 @@
 /**
  * @fileOverview Motor de sincronização e normalização EXCLUSIVO para TheSportsDB V1.
+ * Implementa throttling para respeitar o Rate Limit (429) da API Free.
  */
 
 import { theSportsDB, ApiMatch, ApiStanding, ApiLeague } from './thesportsdb-service';
@@ -45,6 +46,11 @@ export interface NormalizedLeague extends ApiLeague {
   lastSync?: string;
   error?: string;
 }
+
+/**
+ * Utilitário para pausa entre requisições (Throttling)
+ */
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Retorna a data atual formatada como YYYY-MM-DD no fuso de São Paulo
@@ -130,13 +136,6 @@ export async function fetchBrazilianLeagues(): Promise<NormalizedLeague[]> {
       };
     });
 
-    // Se nenhuma liga foi ativada automaticamente, ativa as 5 primeiras como garantia
-    if (mapped.length > 0 && !mapped.some(l => l.importar)) {
-      for (let i = 0; i < Math.min(5, mapped.length); i++) {
-        mapped[i].importar = true;
-      }
-    }
-
     return mapped;
   } catch (e) {
     console.error("[Football Sync] Erro ligas:", e);
@@ -155,7 +154,7 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
 
   const todayStr = getSPDate();
 
-  // 1. Tentar buscar jogos do dia globalmente para economizar chamadas
+  // 1. Tentar buscar jogos do dia globalmente (1 chamada)
   try {
     const dailyEvents = await theSportsDB.getMatchesByDate(todayStr);
     if (dailyEvents && Array.isArray(dailyEvents)) {
@@ -164,31 +163,43 @@ export async function syncFootballMatches(leagueIds: string[]): Promise<{
         .filter(m => activeSet.has(m.idLeague))
         .map(normalizeMatch);
     }
-  } catch (e) {
-    console.warn("[Football Sync] Aviso eventsday:", e);
+  } catch (e: any) {
+    console.warn("[Football Sync] Aviso eventsday:", e.message);
   }
 
-  // 2. Buscar específicos por liga (Next e Past)
+  // Pequena pausa após a primeira chamada
+  await sleep(1000);
+
+  // 2. Buscar específicos por liga (Next e Past) com throttling
   for (const id of leagueIds) {
     try {
+      // Throttling: Aguarda 1.5s entre ligas para não estourar 429
+      await sleep(1500);
+
       const [nextApi, pastApi] = await Promise.all([
         theSportsDB.getNextMatches(id),
         theSportsDB.getPastMatches(id)
       ]);
+
+      if (nextApi === null || pastApi === null) {
+        // Se retornar null (provavelmente 429), paramos o loop para poupar a chave
+        console.error(`[Football Sync] Interrupção por erro na liga ${id}. Possível Rate Limit.`);
+        break;
+      }
 
       const normalizedNext = (nextApi || []).map(normalizeMatch);
       const normalizedPast = (pastApi || []).map(normalizeMatch);
 
       allNext = [...allNext, ...normalizedNext.filter(m => m.date > todayStr)];
       
-      // Complementar today se não veio no eventsday
       const todayFromNext = normalizedNext.filter(m => m.date === todayStr);
       const todayFromPast = normalizedPast.filter(m => m.date === todayStr);
       allToday = [...allToday, ...todayFromNext, ...todayFromPast];
       
       allPast = [...allPast, ...normalizedPast.filter(m => m.date < todayStr)];
-    } catch (e) {
-      console.error(`[Football Sync] Erro liga ${id}:`, e);
+    } catch (e: any) {
+      console.error(`[Football Sync] Erro liga ${id}:`, e.message);
+      if (e.message?.includes('429')) break;
     }
   }
 
@@ -214,11 +225,19 @@ export async function syncFootballStandings(leagueIds: string[]): Promise<Normal
 
   for (const id of leagueIds) {
     try {
-      // Tentar ano atual
+      // Throttling: Aguarda 1.5s entre chamadas de tabela
+      await sleep(1500);
+
       let table = await theSportsDB.getStandings(id, String(currentYear));
       
-      // Fallback para ano anterior se atual vier vazio (comum em jan/fev)
+      if (table === null) {
+        console.error(`[Football Sync] Interrupção Standings por erro na liga ${id}.`);
+        break;
+      }
+
+      // Fallback para ano anterior se atual vier vazio
       if (!table || !Array.isArray(table) || table.length === 0) {
+        await sleep(1000);
         table = await theSportsDB.getStandings(id, String(currentYear - 1));
       }
 
@@ -238,8 +257,9 @@ export async function syncFootballStandings(leagueIds: string[]): Promise<Normal
         }));
         allStandings = [...allStandings, ...normalized];
       }
-    } catch (e) {
-      console.warn(`[Football Sync] Tabela liga ${id}:`, e);
+    } catch (e: any) {
+      console.warn(`[Football Sync] Tabela liga ${id}:`, e.message);
+      if (e.message?.includes('429')) break;
     }
   }
 
