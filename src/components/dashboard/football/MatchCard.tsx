@@ -8,7 +8,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Radio, Calendar, Info } from 'lucide-react';
+import { Radio, Calendar, Info, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MatchModel } from '@/services/match-mapper-service';
 
@@ -46,9 +46,16 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
             </>
           )}
         </div>
-        <Badge variant="outline" className="border-white/10 text-slate-500 text-[7px] uppercase font-black h-4 max-w-[100px] truncate">
-          {match.league}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {match.oddsSource === 'AUTO' && !match.isFinished && (
+            <Badge variant="outline" className="border-amber-500/30 text-amber-500 text-[7px] font-black h-4 px-1 gap-0.5 bg-amber-500/5">
+              <Sparkles size={8} /> AUTO ODDS
+            </Badge>
+          )}
+          <Badge variant="outline" className="border-white/10 text-slate-500 text-[7px] uppercase font-black h-4 max-w-[80px] truncate">
+            {match.league}
+          </Badge>
+        </div>
       </div>
       
       <CardContent className="p-4 space-y-5">
@@ -80,7 +87,7 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
         </div>
 
         {/* Painel de Odds */}
-        {!disabled && match.hasOdds ? (
+        {!disabled && match.marketStatus === 'OPEN' ? (
           <div className="grid grid-cols-3 gap-1.5">
             <OddButton 
               label="1" 
@@ -105,7 +112,7 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           <div className="text-center py-2.5 bg-black/20 rounded-xl border border-dashed border-white/5">
             <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic flex items-center justify-center gap-1.5">
               <Info size={10} />
-              {disabled ? 'VISUALIZAÇÃO' : 'MERCADO FECHADO'}
+              {match.isFinished ? 'FINALIZADO' : 'MERCADO SUSPENSO'}
             </p>
           </div>
         )}

@@ -5,20 +5,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Header } from '@/components/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { ShieldCheck, Save, Info, AlertTriangle, Coins, TrendingUp } from 'lucide-react';
+import { ShieldCheck, Save, Info, AlertTriangle, Coins, TrendingUp, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { loadBettingLimits, saveBettingLimits, BettingLimits } from '@/utils/bettingConfigStorage';
 import { formatBRL } from '@/utils/currency';
 
 export default function AdminBettingLimitsPage() {
   const { toast } = useToast();
-  const [limits, setLimits] = useState<BettingLimits | null>(null);
+  const [limits, setLimits] = useState<BettingLimits & { enableAutoOdds?: boolean } | null>(null);
 
   useEffect(() => {
     setLimits(loadBettingLimits());
@@ -73,6 +73,45 @@ export default function AdminBettingLimitsPage() {
           <Card className="border-white/10 bg-card/50">
             <CardHeader>
               <CardTitle className="text-sm font-black uppercase italic tracking-widest flex items-center gap-2">
+                <Sparkles size={16} className="text-amber-500" /> Odds Automáticas
+              </CardTitle>
+              <CardDescription className="text-[10px] uppercase font-bold">Geração de cotações para jogos sem dados de mercado.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-bold">Habilitar Auto Odds</Label>
+                  <p className="text-[10px] text-muted-foreground">Gera odds 1X2 automaticamente quando não houver na API.</p>
+                </div>
+                <Switch 
+                  checked={limits.enableAutoOdds !== false} 
+                  onCheckedChange={(v) => setLimits({...limits, enableAutoOdds: v})} 
+                />
+              </div>
+              
+              <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                <p className="text-[10px] text-primary font-black uppercase mb-2">Modelo de Odds Padrão (1X2)</p>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-[9px] text-muted-foreground uppercase">Casa</p>
+                    <p className="font-bold text-white">2.20</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-muted-foreground uppercase">Empate</p>
+                    <p className="font-bold text-white">3.20</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-muted-foreground uppercase">Fora</p>
+                    <p className="font-bold text-white">2.90</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-white/10 bg-card/50">
+            <CardHeader>
+              <CardTitle className="text-sm font-black uppercase italic tracking-widest flex items-center gap-2">
                 <TrendingUp size={16} className="text-green-500" /> Prêmios e Odds
               </CardTitle>
               <CardDescription className="text-[10px] uppercase font-bold">Teto de pagamento e cotações permitidas.</CardDescription>
@@ -96,33 +135,7 @@ export default function AdminBettingLimitsPage() {
                   className="bg-black/20 border-white/5 h-11 text-lg font-black text-primary"
                 />
               </div>
-              <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground">Máximo de Seleções (Múltipla)</Label>
-                <Input 
-                  type="number" 
-                  value={limits.maxSelections} 
-                  onChange={e => setLimits({...limits, maxSelections: parseInt(e.target.value) || 0})}
-                  className="bg-black/20 border-white/5 h-11 text-lg font-black"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground">Margem da Casa (Overround %)</Label>
-                <Input 
-                  type="number" 
-                  value={limits.houseMargin} 
-                  onChange={e => setLimits({...limits, houseMargin: parseFloat(e.target.value) || 0})}
-                  className="bg-black/20 border-white/5 h-11 text-lg font-black"
-                />
-              </div>
             </CardContent>
-            <CardFooter className="bg-primary/5 p-4 border-t border-primary/10">
-              <div className="flex gap-3">
-                <Info className="h-5 w-5 text-primary shrink-0" />
-                <p className="text-[10px] text-muted-foreground font-bold leading-tight uppercase">
-                  A margem da casa é aplicada sobre as odds brutas recebidas da LiveScore API para garantir a lucratividade operacional da banca.
-                </p>
-              </div>
-            </CardFooter>
           </Card>
         </div>
 
@@ -142,7 +155,7 @@ export default function AdminBettingLimitsPage() {
                   <AlertTriangle size={12} /> Aviso de Segurança
                 </p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed font-bold uppercase">
-                  Alterações nestes limites afetam imediatamente a aceitação de novas apostas no frontend. Bilhetes já confirmados mantêm as regras da data de criação.
+                  Alterações nestes limites afetam imediatamente a aceitação de novas apostas no frontend.
                 </p>
               </div>
             </CardContent>

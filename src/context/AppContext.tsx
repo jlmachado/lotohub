@@ -166,7 +166,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // Listeners para mudanças de autenticação
     const handleAuthChange = () => {
-      console.log("[AppContext] Detectada mudança de autenticação");
       refreshUser();
     };
 
@@ -228,6 +227,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
+      // LiveScore data
       const live = await liveScoreService.getLiveMatches();
       const history = await liveScoreService.getFixtures();
       const allLiveScore = [...(live || []), ...(history || [])];
@@ -273,6 +273,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const placeFootballBet = async (stake: number): Promise<boolean> => {
     if (!user) { router.push('/login'); return false; }
     if (stake > balance) { toast({ variant: 'destructive', title: 'Saldo insuficiente' }); return false; }
+
+    // Re-validação final de horário pré-confirmação
+    const now = new Date();
+    for (const item of betSlip) {
+      const match = footballData.unifiedMatches.find(m => m.id === item.matchId);
+      if (match) {
+        const kickoff = new Date(match.kickoff);
+        if (now >= kickoff && !match.isLive) {
+          toast({ variant: 'destructive', title: 'Aposta Recusada', description: `O jogo ${match.homeTeam} já começou.` });
+          return false;
+        }
+        if (match.isFinished) {
+          toast({ variant: 'destructive', title: 'Aposta Recusada', description: `O jogo ${match.homeTeam} já terminou.` });
+          return false;
+        }
+      }
+    }
 
     try {
       const response = await fetch('/api/betting/place-bet', {

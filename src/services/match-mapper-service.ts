@@ -6,6 +6,7 @@
 import { NormalizedESPNMatch } from '@/utils/espn-normalizer';
 import { LiveScoreMatch } from '@/utils/livescore-normalizer';
 import { areTeamsSimilar } from '@/utils/team-name-normalizer';
+import { generateDefaultOdds } from '@/utils/odds-generator';
 
 export interface MatchModel {
   id: string;
@@ -24,6 +25,7 @@ export interface MatchModel {
   scoreHome: number;
   scoreAway: number;
   hasOdds: boolean;
+  oddsSource: 'API' | 'AUTO';
   odds: {
     home: number;
     draw: number;
@@ -45,6 +47,7 @@ export class MatchMapperService {
     liveMatches: LiveScoreMatch[]
   ): MatchModel[] {
     const mapped: MatchModel[] = [];
+    const now = new Date();
 
     espnMatches.forEach(espn => {
       // Tenta encontrar correspondente no LiveScore
@@ -61,19 +64,31 @@ export class MatchMapperService {
 
       const isLive = espn.status === 'LIVE' || liveMatch?.status === 'LIVE';
       const isFinished = espn.status === 'FINISHED' || liveMatch?.status === 'FINISHED';
+      const kickoffDate = new Date(espn.date);
+      const hasStarted = now >= kickoffDate;
       
-      const odds = liveMatch?.odds || { home: 0, draw: 0, away: 0 };
+      let odds = liveMatch?.odds || { home: 0, draw: 0, away: 0 };
+      let oddsSource: 'API' | 'AUTO' = 'API';
+
+      // Se não tem odds da API, gera automáticas para jogos futuros
+      if (!isFinished && (!odds || odds.home <= 1)) {
+        odds = generateDefaultOdds();
+        oddsSource = 'AUTO';
+      }
+
       const hasOdds = odds.home > 1;
 
-      // Regra de Fechamento Automático:
-      // Se o jogo começou na ESPN e não temos odds ao vivo confiáveis, suspendemos.
+      // Regra de Apostabilidade Profissional
       let marketStatus: 'OPEN' | 'SUSPENDED' | 'CLOSED' = 'CLOSED';
-      if (!isFinished && !isLive && hasOdds) {
-        marketStatus = 'OPEN';
-      } else if (isLive && hasOdds) {
-        marketStatus = 'OPEN';
-      } else if (isLive && !hasOdds) {
-        marketStatus = 'SUSPENDED';
+      
+      if (isFinished) {
+        marketStatus = 'CLOSED';
+      } else if (isLive) {
+        // No momento, permitimos live apenas se tiver odds da API. 
+        // Odds automáticas em live requerem motor de cálculo complexo.
+        marketStatus = (oddsSource === 'API' && hasOdds) ? 'OPEN' : 'SUSPENDED';
+      } else if (!hasStarted) {
+        marketStatus = hasOdds ? 'OPEN' : 'CLOSED';
       }
 
       mapped.push({
@@ -93,6 +108,7 @@ export class MatchMapperService {
         scoreHome: isLive ? (liveMatch?.homeScore ?? espn.homeTeam.score) : espn.homeTeam.score,
         scoreAway: isLive ? (liveMatch?.awayScore ?? espn.awayTeam.score) : espn.awayTeam.score,
         hasOdds,
+        oddsSource,
         odds,
         isLive,
         isFinished,
