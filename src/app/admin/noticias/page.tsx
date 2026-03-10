@@ -46,10 +46,11 @@ export default function AdminNoticiasPage() {
     }
 
     if (editingId) {
-      updateNews({ ...currentMsg, id: editingId });
+      updateNews({ ...currentMsg, id: editingId } as NewsMessage);
       toast({ title: 'Notícia atualizada!' });
     } else {
-      addNews(currentMsg);
+      const id = `news-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      addNews({ ...currentMsg, id });
       toast({ title: 'Notícia criada!' });
     }
     setIsDialogOpen(false);
@@ -108,7 +109,7 @@ export default function AdminNoticiasPage() {
                 </TableRow>
               ))}
               {news.length === 0 && (
-                <TableRow>
+                <TableRow key="empty-news">
                   <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Nenhuma notícia cadastrada.</TableCell>
                 </TableRow>
               )}

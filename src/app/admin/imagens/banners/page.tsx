@@ -91,7 +91,8 @@ export default function AdminStatusPage() {
       updateBanner({ ...currentBanner, id: editingId } as Banner);
       toast({ title: 'Status atualizado com sucesso!' });
     } else {
-      addBanner(currentBanner);
+      const id = `banner-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      addBanner({ ...currentBanner, id });
       toast({ title: 'Status criado com sucesso!' });
     }
 
@@ -199,6 +200,11 @@ export default function AdminStatusPage() {
                   </TableCell>
                 </TableRow>
               ))}
+              {banners.length === 0 && (
+                <TableRow key="empty-banners">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Nenhum status cadastrado.</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

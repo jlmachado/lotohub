@@ -92,7 +92,8 @@ export default function AdminPopupsPage() {
       updatePopup({ ...currentPopup, id: editingId } as Popup);
       toast({ title: 'Pop-up atualizado com sucesso!' });
     } else {
-      addPopup(currentPopup);
+      const id = `popup-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      addPopup({ ...currentPopup, id });
       toast({ title: 'Pop-up criado com sucesso!' });
     }
 
@@ -182,6 +183,11 @@ export default function AdminPopupsPage() {
                   </TableCell>
                 </TableRow>
               ))}
+              {popups.length === 0 && (
+                <TableRow key="empty-popups">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Nenhum pop-up cadastrado.</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
