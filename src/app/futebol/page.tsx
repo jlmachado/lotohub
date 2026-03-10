@@ -1,221 +1,158 @@
-/**
- * @fileOverview Dashboard Pública de Futebol (Visual LiveScore API Style).
- */
-
 'use client';
 
 import { useAppContext } from '@/context/AppContext';
 import { Header } from '@/components/header';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Clock, AlertCircle, Calendar, History, Radio, MapPin } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Goal, Radio, TrendingUp, History, Trophy, Calendar } from 'lucide-react';
+import { useMemo } from 'react';
+import { BetSlip } from '@/components/betting/BetSlip';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-export default function FutebolDashboardPage() {
-  const { footballData, syncFootballAll } = useAppContext();
-  const [selectedLeagueSlug, setSelectedLeagueSlug] = useState<string | null>(null);
+export default function FootballDashboard() {
+  const { footballData, addBetToSlip } = useAppContext();
 
-  const activeLeagues = useMemo(() => 
-    footballData.leagues.filter(l => l.active), 
-  [footballData.leagues]);
-
-  const activeLeague = useMemo(() => {
-    if (selectedLeagueSlug) return activeLeagues.find(l => l.slug === selectedLeagueSlug);
-    return activeLeagues[0];
-  }, [activeLeagues, selectedLeagueSlug]);
-
-  const matchesForActiveLeague = useMemo(() => 
-    footballData.matches.filter(m => !activeLeague || m.leagueSlug === activeLeague.slug), 
-  [footballData.matches, activeLeague]);
-
-  const standings = useMemo(() => 
-    activeLeague ? (footballData.standings[activeLeague.slug] || []) : [], 
-  [footballData.standings, activeLeague]);
-
-  const matchesToday = matchesForActiveLeague.filter(m => m.status === 'LIVE' || m.status === 'SCHEDULED');
-  const matchesFinished = matchesForActiveLeague.filter(m => m.status === 'FINISHED');
+  const stats = useMemo(() => ({
+    live: footballData.liveMatches.length,
+    today: footballData.matches.length,
+    leagues: footballData.leagues.filter(l => l.active).length
+  }), [footballData]);
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-slate-950 pb-24">
       <Header />
       
-      <main className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
-        
-        {/* STATS STRIP */}
+      <main className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
+        {/* RESUMO TOP */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatMiniCard label="Ao Vivo" value={footballData.matches.filter(m => m.status === 'LIVE').length} color="text-red-500" />
-          <StatMiniCard label="Hoje" value={matchesToday.length} color="text-primary" />
-          <StatMiniCard label="Campeonatos" value={activeLeagues.length} color="text-blue-400" />
-          <StatMiniCard label="Total Jogos" value={footballData.matches.length} color="text-slate-400" />
+          <StatCard label="Ao Vivo" value={stats.live} icon={Radio} color="text-red-500" />
+          <StatCard label="Jogos Hoje" value={stats.today} icon={Calendar} color="text-primary" />
+          <StatCard label="Ligas Ativas" value={stats.leagues} icon={Trophy} color="text-blue-400" />
+          <StatCard label="Total Partidas" value={stats.live + stats.today} icon={Goal} color="text-green-400" />
         </div>
 
-        {/* LEAGUE SELECTOR BAR */}
-        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-2 border-b border-white/5">
-          <button 
-            onClick={() => setSelectedLeagueSlug(null)}
-            className={cn(
-              "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border",
-              !selectedLeagueSlug ? "bg-primary text-black border-primary" : "bg-slate-900 text-slate-400 border-white/5"
-            )}
-          >
-            Todos
-          </button>
-          {activeLeagues.map(l => (
-            <button 
-              key={l.id} 
-              onClick={() => setSelectedLeagueSlug(l.slug)}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border",
-                selectedLeagueSlug === l.slug ? "bg-primary text-black border-primary" : "bg-slate-900 text-slate-400 border-white/5"
-              )}
-            >
-              {l.name}
-            </button>
-          ))}
-        </div>
-
-        <Tabs defaultValue="matches" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6 bg-slate-900 h-12 p-1 rounded-xl border border-white/5">
-            <TabsTrigger value="matches" className="gap-2 uppercase text-[10px] font-bold"><Calendar size={12} /> Partidas</TabsTrigger>
-            <TabsTrigger value="standings" className="gap-2 uppercase text-[10px] font-bold"><Trophy size={12} /> Tabela</TabsTrigger>
-            <TabsTrigger value="results" className="gap-2 uppercase text-[10px] font-bold"><History size={12} /> Resultados</TabsTrigger>
+        <Tabs defaultValue="live" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 mb-8 bg-slate-900 h-12 p-1 rounded-xl border border-white/5">
+            <TabsTrigger value="live" className="gap-2 uppercase text-[10px] font-black italic"><Radio size={14} /> Ao Vivo</TabsTrigger>
+            <TabsTrigger value="today" className="gap-2 uppercase text-[10px] font-black italic"><Calendar size={14} /> Calendário</TabsTrigger>
+            <TabsTrigger value="markets" className="gap-2 uppercase text-[10px] font-black italic"><TrendingUp size={14} /> Mercados</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="matches" className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              {matchesToday.length === 0 ? (
-                <EmptyState msg="Sem partidas agendadas para o momento." />
-              ) : (
-                matchesToday.map(m => <MatchCard key={m.id} match={m} />)
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="standings">
-            {standings.length === 0 ? (
-              <EmptyState msg="Classificação indisponível para esta competição." />
+          <TabsContent value="live" className="space-y-4">
+            {footballData.liveMatches.length === 0 ? (
+              <EmptyState msg="Nenhum jogo ocorrendo no momento." />
             ) : (
-              <Card className="border-white/5 bg-slate-900/50 shadow-2xl overflow-hidden rounded-2xl">
-                <Table>
-                  <TableHeader className="bg-slate-950">
-                    <TableRow className="border-white/5 h-10">
-                      <TableHead className="w-[50px] text-center font-black uppercase text-[9px]">Pos</TableHead>
-                      <TableHead className="font-black uppercase text-[9px]">Clube</TableHead>
-                      <TableHead className="text-center font-black uppercase text-[9px]">P</TableHead>
-                      <TableHead className="text-center font-black uppercase text-[9px]">J</TableHead>
-                      <TableHead className="text-center font-black uppercase text-[9px]">V</TableHead>
-                      <TableHead className="text-center font-black uppercase text-[9px]">SG</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {standings.map((team) => (
-                      <TableRow key={team.teamId} className="border-white/5 hover:bg-white/5 transition-colors h-12">
-                        <TableCell className="text-center font-bold text-slate-500 text-xs">{team.position}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <img src={team.logo} alt="" className="w-5 h-5 object-contain" />
-                            <span className="font-bold text-white text-xs uppercase tracking-tight truncate">{team.teamName}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center font-black text-primary">{team.stats.points}</TableCell>
-                        <TableCell className="text-center text-xs text-slate-400">{team.stats.played}</TableCell>
-                        <TableCell className="text-center text-xs text-green-500">{team.stats.wins}</TableCell>
-                        <TableCell className="text-center font-bold text-xs text-slate-500">{team.stats.goalsDiff}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Card>
+              <div className="grid gap-4 md:grid-cols-2">
+                {footballData.liveMatches.map(m => (
+                  <LiveMatchCard key={m.id} match={m} onSelectOdd={(selection, odd) => {
+                    addBetToSlip({
+                      id: `${m.id}-1X2`,
+                      matchId: m.id,
+                      matchName: `${m.home_name} vs ${m.away_name}`,
+                      market: 'Vencedor (1X2)',
+                      selection,
+                      odd
+                    });
+                  }} />
+                ))}
+              </div>
             )}
           </TabsContent>
 
-          <TabsContent value="results" className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              {matchesFinished.length === 0 ? (
-                <EmptyState msg="Nenhum resultado recente registrado." />
-              ) : (
-                matchesFinished.map(m => <MatchCard key={m.id} match={m} />)
-              )}
-            </div>
+          <TabsContent value="today">
+             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {footballData.matches.map(m => (
+                  <Card key={m.id} className="bg-slate-900 border-white/5 overflow-hidden">
+                    <div className="p-3 bg-white/5 flex justify-between items-center">
+                      <Badge variant="outline" className="text-[8px] h-4 uppercase border-white/10">{m.leagueName}</Badge>
+                      <span className="text-[9px] font-mono text-slate-500">{new Date(m.date).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</span>
+                    </div>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-center flex-1">
+                          <img src={m.homeTeam.logo} className="w-8 h-8 mx-auto mb-1 object-contain" />
+                          <p className="text-[10px] font-bold truncate">{m.homeTeam.name}</p>
+                        </div>
+                        <div className="px-4 text-xl font-black italic text-primary">VS</div>
+                        <div className="text-center flex-1">
+                          <img src={m.awayTeam.logo} className="w-8 h-8 mx-auto mb-1 object-contain" />
+                          <p className="text-[10px] font-bold truncate">{m.awayTeam.name}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+             </div>
           </TabsContent>
         </Tabs>
       </main>
+
+      <BetSlip />
     </div>
   );
 }
 
-function StatMiniCard({ label, value, color }: { label: string, value: number, color: string }) {
+function StatCard({ label, value, icon: Icon, color }: any) {
   return (
-    <div className="bg-slate-900/50 border border-white/5 p-3 rounded-xl flex justify-between items-center shadow-lg">
-      <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{label}</span>
-      <span className={cn("text-lg font-black italic", color)}>{value}</span>
-    </div>
-  );
-}
-
-function MatchCard({ match }: { match: any }) {
-  const isLive = match.status === 'LIVE';
-
-  return (
-    <Card className="bg-slate-900 border-white/5 hover:border-primary/20 transition-all group overflow-hidden rounded-xl shadow-xl">
-      <div className="p-3 bg-white/5 border-b border-white/5 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-[8px] h-4 uppercase font-black border-white/10 bg-black/20">{match.leagueName}</Badge>
-          {isLive && <Badge className="bg-red-600 text-white text-[8px] h-4 animate-pulse">AO VIVO</Badge>}
-        </div>
-        <span className="text-[9px] font-mono text-slate-500">
-          {new Date(match.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} • {new Date(match.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-        </span>
-      </div>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between gap-2">
-          {/* TEAM A */}
-          <div className="flex flex-col items-center flex-1 text-center min-w-0">
-            <img src={match.homeTeam.logo} alt="" className="w-10 h-10 object-contain mb-2" />
-            <span className="font-black text-[10px] text-white uppercase tracking-tighter truncate w-full">{match.homeTeam.name}</span>
-          </div>
-
-          {/* SCORE / TIME */}
-          <div className="flex flex-col items-center justify-center gap-1">
-            <div className="text-2xl font-black italic tracking-tighter text-white tabular-nums flex items-center gap-3">
-              <span className={cn(match.homeTeam.winner && "text-primary")}>{match.homeTeam.score}</span>
-              <span className="text-white/20">-</span>
-              <span className={cn(match.awayTeam.winner && "text-primary")}>{match.awayTeam.score}</span>
-            </div>
-            {isLive ? (
-              <span className="text-[9px] font-black text-red-500 uppercase flex items-center gap-1">
-                <Radio size={10} /> {match.clock || 'LIVE'}
-              </span>
-            ) : (
-              <span className="text-[8px] font-bold text-slate-500 uppercase">{match.statusDetail}</span>
-            )}
-          </div>
-
-          {/* TEAM B */}
-          <div className="flex flex-col items-center flex-1 text-center min-w-0">
-            <img src={match.awayTeam.logo} alt="" className="w-10 h-10 object-contain mb-2" />
-            <span className="font-black text-[10px] text-white uppercase tracking-tighter truncate w-full">{match.awayTeam.name}</span>
-          </div>
-        </div>
-        
-        {match.venue && (
-          <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-center gap-1 text-[8px] font-bold text-slate-600 uppercase">
-            <MapPin size={8} /> {match.venue}
-          </div>
-        )}
+    <Card className="bg-slate-900 border-white/5">
+      <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+        <Icon className={cn("h-5 w-5 mb-2", color)} />
+        <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{label}</p>
+        <p className="text-2xl font-black text-white italic">{value}</p>
       </CardContent>
     </Card>
   );
 }
 
-function EmptyState({ msg }: { msg: string }) {
+function LiveMatchCard({ match, onSelectOdd }: { match: LiveScoreMatch, onSelectOdd: (sel: string, odd: number) => void }) {
   return (
-    <div className="col-span-full py-20 text-center border-2 border-dashed border-white/5 rounded-2xl bg-slate-900/20">
-      <AlertCircle className="h-8 w-8 mx-auto mb-3 text-slate-700" />
-      <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">{msg}</p>
+    <Card className="bg-slate-900 border-white/5 overflow-hidden group hover:border-primary/20 transition-all">
+      <div className="p-3 bg-red-600/10 border-b border-red-600/20 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <Radio size={12} className="text-red-500 animate-pulse" />
+          <span className="text-[9px] font-black uppercase text-red-500 tracking-wider">Ao Vivo • {match.time}'</span>
+        </div>
+        <Badge className="bg-slate-800 text-[8px] h-4 uppercase">{match.league_name}</Badge>
+      </div>
+      <CardContent className="p-4 space-y-6">
+        <div className="flex justify-between items-center px-4">
+          <div className="text-center flex-1">
+            <p className="text-sm font-black uppercase italic tracking-tighter">{match.home_name}</p>
+          </div>
+          <div className="bg-black/40 px-4 py-1 rounded-lg text-2xl font-black italic tracking-widest text-primary border border-white/5">
+            {match.score}
+          </div>
+          <div className="text-center flex-1">
+            <p className="text-sm font-black uppercase italic tracking-tighter">{match.away_name}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <OddButton label="1" odd={1.95} onClick={() => onSelectOdd('Casa', 1.95)} />
+          <OddButton label="X" odd={3.20} onClick={() => onSelectOdd('Empate', 3.20)} />
+          <OddButton label="2" odd={3.45} onClick={() => onSelectOdd('Fora', 3.45)} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OddButton({ label, odd, onClick }: any) {
+  return (
+    <Button variant="outline" className="flex-col h-14 bg-black/20 border-white/5 hover:bg-primary hover:text-black transition-all" onClick={onClick}>
+      <span className="text-[10px] font-black opacity-50">{label}</span>
+      <span className="text-sm font-black italic">{odd.toFixed(2)}</span>
+    </Button>
+  );
+}
+
+function EmptyState({ msg }: any) {
+  return (
+    <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-2xl bg-slate-900/20">
+      <Radio className="h-12 w-12 mx-auto mb-4 text-slate-700" />
+      <p className="text-slate-500 font-bold uppercase tracking-widest">{msg}</p>
     </div>
   );
 }
