@@ -1,6 +1,5 @@
 /**
- * @fileOverview Visualização de Jogos Sincronizados (TheSportsDB).
- * Substitui o legado de importação manual por uma auditoria do que está ativo.
+ * @fileOverview Visualização de Jogos Sincronizados via ESPN API.
  */
 
 'use client';
@@ -11,24 +10,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { ChevronLeft, Calendar, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Calendar, RefreshCw, Radio } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
+import { cn } from '@/lib/utils';
 
 export default function AdminFutebolJogosPage() {
   const { footballData, syncFootballAll } = useAppContext();
 
   const isSyncing = footballData.syncStatus === 'syncing';
 
-  // Consolidar jogos de hoje e futuros para exibição administrativa
   const allMatches = useMemo(() => {
-    return [...footballData.todayMatches, ...footballData.nextMatches]
+    return [...footballData.matches]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [footballData.todayMatches, footballData.nextMatches]);
+  }, [footballData.matches]);
 
-  const getStatusBadge = (status: string) => {
-    if (status === 'Match Finished') return <Badge variant="outline" className="text-[8px]">FINALIZADO</Badge>;
-    if (status === 'Match Postponed') return <Badge variant="destructive" className="text-[8px]">ADIADO</Badge>;
-    return <Badge className="bg-green-600 text-white text-[8px]">AGENDADO</Badge>;
+  const getStatusBadge = (status: string, detail: string) => {
+    if (status === 'FINISHED') return <Badge variant="outline" className="text-[8px] uppercase">FINALIZADO</Badge>;
+    if (status === 'LIVE') return <Badge className="bg-red-600 text-white text-[8px] animate-pulse uppercase">AO VIVO</Badge>;
+    if (status === 'POSTPONED') return <Badge variant="destructive" className="text-[8px] uppercase">ADIADO</Badge>;
+    return <Badge className="bg-blue-600 text-white text-[8px] uppercase">AGENDADO</Badge>;
   };
 
   return (
@@ -39,8 +39,8 @@ export default function AdminFutebolJogosPage() {
             <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Jogos Sincronizados</h1>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Auditoria de eventos ativos no sistema</p>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Log de Partidas (ESPN)</h1>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Auditoria de eventos monitorados em tempo real</p>
           </div>
         </div>
         <Button 
@@ -57,10 +57,10 @@ export default function AdminFutebolJogosPage() {
       <Card className="border-white/5 bg-card/50 overflow-hidden shadow-2xl">
         <CardHeader className="bg-white/5 border-b border-white/5">
           <CardTitle className="text-sm font-black uppercase flex items-center gap-2">
-            <Calendar size={16} className="text-primary" /> Log de Partidas Ativas
+            <Calendar size={16} className="text-primary" /> Eventos Carregados
           </CardTitle>
           <CardDescription className="text-[10px] uppercase font-bold">
-            Total de {allMatches.length} partidas carregadas para as ligas monitoradas.
+            Total de {allMatches.length} partidas sincronizadas nas ligas ativas.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -69,15 +69,16 @@ export default function AdminFutebolJogosPage() {
               <TableRow className="border-white/5 h-10">
                 <TableHead className="text-[9px] uppercase font-black px-4">Data/Hora</TableHead>
                 <TableHead className="text-[9px] uppercase font-black">Confronto</TableHead>
-                <TableHead className="text-[9px] uppercase font-black">Campeonato</TableHead>
+                <TableHead className="text-[9px] uppercase font-black">Placar</TableHead>
+                <TableHead className="text-[9px] uppercase font-black">Competição</TableHead>
                 <TableHead className="text-[9px] uppercase font-black text-center">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {allMatches.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-24 text-muted-foreground italic">
-                    Nenhum jogo carregado no momento. Verifique as configurações de ligas.
+                  <TableCell colSpan={5} className="text-center py-24 text-muted-foreground italic">
+                    Nenhum jogo carregado. Verifique a sincronização em "Gerenciar Ligas".
                   </TableCell>
                 </TableRow>
               ) : (
@@ -85,24 +86,35 @@ export default function AdminFutebolJogosPage() {
                   <TableRow key={match.id} className="border-white/5 hover:bg-white/5 transition-colors">
                     <TableCell className="px-4">
                       <div className="flex flex-col">
-                        <span className="text-[11px] font-bold text-white">{match.date.split('-').reverse().slice(0,2).join('/')}</span>
-                        <span className="text-[9px] text-muted-foreground">{match.time?.substring(0,5) || '--:--'}</span>
+                        <span className="text-[11px] font-bold text-white">
+                          {new Date(match.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                        </span>
+                        <span className="text-[9px] text-muted-foreground">
+                          {new Date(match.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-3 text-xs font-bold text-slate-300">
-                        <span className="truncate max-w-[100px] text-right">{match.homeTeam}</span>
-                        <span className="text-primary italic">vs</span>
-                        <span className="truncate max-w-[100px]">{match.awayTeam}</span>
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                        <img src={match.homeTeam.logo} alt="" className="w-4 h-4 object-contain" />
+                        <span className="truncate max-w-[100px]">{match.homeTeam.name}</span>
+                        <span className="text-primary/50 italic px-1">vs</span>
+                        <span className="truncate max-w-[100px]">{match.awayTeam.name}</span>
+                        <img src={match.awayTeam.logo} alt="" className="w-4 h-4 object-contain" />
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-black text-white tabular-nums">
+                        {match.homeTeam.score} - {match.awayTeam.score}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-[8px] bg-slate-800 border-0 h-4 uppercase font-black">
-                        {match.league}
+                        {match.leagueName}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
-                      {getStatusBadge(match.status)}
+                      {getStatusBadge(match.status, match.statusDetail)}
                     </TableCell>
                   </TableRow>
                 ))
