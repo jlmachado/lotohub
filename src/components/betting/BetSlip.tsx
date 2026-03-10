@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { X, Trash2, ReceiptText, Calculator, TrendingUp } from 'lucide-react';
 import { formatBRL } from '@/utils/currency';
 import { calculateTotalOdds, calculatePotentialWin } from '@/utils/bet-calculator';
+import { Badge } from '@/components/ui/badge';
 
 export function BetSlip() {
   const { betSlip, removeBetFromSlip, clearBetSlip, placeFootballBet } = useAppContext();

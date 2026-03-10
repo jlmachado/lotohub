@@ -66,6 +66,7 @@ interface AppContextType {
   placeFootballBet: (stake: number) => boolean;
   footballData: FootballSyncData;
   syncFootballAll: (manual?: boolean) => Promise<void>;
+  updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
   
   // Other modules (Bingo, Snooker, etc.)
   bingoDraws: any[];
@@ -146,6 +147,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const savedApostas = localStorage.getItem('apostas');
     if (savedApostas) setApostas(JSON.parse(savedApostas));
 
+    const savedLeagues = localStorage.getItem('app:football_leagues:v1');
+    if (savedLeagues) {
+      try {
+        const parsed = JSON.parse(savedLeagues);
+        setFootballData(prev => ({ ...prev, leagues: parsed }));
+      } catch (e) {
+        console.error("Erro ao carregar ligas salvas", e);
+      }
+    }
+
     // Iniciar sync de futebol
     syncFootballAll();
   }, []);
@@ -198,6 +209,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       syncInProgress.current = false;
     }
   }, [footballData.leagues, toast]);
+
+  const updateLeagueConfig = (id: string, config: Partial<ESPNLeagueConfig>) => {
+    setFootballData(prev => {
+      const updatedLeagues = prev.leagues.map(l => 
+        l.id === id ? { ...l, ...config } : l
+      );
+      localStorage.setItem('app:football_leagues:v1', JSON.stringify(updatedLeagues));
+      return { ...prev, leagues: updatedLeagues };
+    });
+  };
 
   // --- BETTING ACTIONS ---
   const addBetToSlip = (bet: BetSlipItem) => {
@@ -287,7 +308,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       user, balance, bonus, terminal, logout,
       banners, popups, news, liveMiniPlayerConfig,
       footballBets, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
-      footballData, syncFootballAll,
+      footballData, syncFootballAll, updateLeagueConfig,
       bingoDraws, bingoTickets, snookerChannels, snookerBets, snookerPresence, snookerScoreboards,
       celebrationTrigger, clearCelebration, soundEnabled, toggleSound,
       apostas, jdbLoterias, genericLotteryConfigs, handleFinalizarAposta
