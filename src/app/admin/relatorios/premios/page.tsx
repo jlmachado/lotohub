@@ -1,3 +1,7 @@
+/**
+ * @fileOverview Relatório consolidado de prêmios pagos.
+ */
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -16,7 +20,7 @@ import { LineChartDaily } from '@/components/admin/reports/LineChartDaily';
 import { loadReportFilters, saveReportFilters, clearReportFilters, QuickRange } from '@/utils/reportFiltersStorage';
 
 export default function RelatorioPremiosPage() {
-  const { apostas, bingoDraws, snookerFinancialHistory } = useAppContext();
+  const { apostas, bingoDraws, snookerFinancialHistory, footballBets } = useAppContext();
   const context = getActiveContext();
 
   const [dateStart, setDateStart] = useState('');
@@ -28,7 +32,6 @@ export default function RelatorioPremiosPage() {
   const [isRestoring, setIsRestoring] = useState(true);
   const itemsPerPage = 20;
 
-  // Carregar filtros salvos no mount
   useEffect(() => {
     if (context) {
       const saved = loadReportFilters(context, "premios");
@@ -56,7 +59,6 @@ export default function RelatorioPremiosPage() {
     setQuickRange('7days');
   };
 
-  // Salvar filtros quando mudarem
   useEffect(() => {
     if (!isRestoring && context) {
       saveReportFilters(context, "premios", { 
@@ -71,7 +73,7 @@ export default function RelatorioPremiosPage() {
   const filtered = useMemo(() => {
     if (isRestoring) return [];
 
-    let records = normalizePayouts(apostas, bingoDraws, snookerFinancialHistory);
+    let records = normalizePayouts(apostas, bingoDraws, snookerFinancialHistory, footballBets);
 
     if (context?.mode === 'BANCA') {
       records = records.filter(r => r.bancaId === context.bancaId);
@@ -95,9 +97,8 @@ export default function RelatorioPremiosPage() {
     }
 
     return records;
-  }, [apostas, bingoDraws, snookerFinancialHistory, context, dateStart, dateEnd, searchTerm, isRestoring]);
+  }, [apostas, bingoDraws, snookerFinancialHistory, footballBets, context, dateStart, dateEnd, searchTerm, isRestoring]);
 
-  // Dados para o Gráfico
   const chartData = useMemo(() => {
     if (isRestoring || !dateStart || !dateEnd) return [];
 
@@ -184,7 +185,7 @@ export default function RelatorioPremiosPage() {
             data={chartData} 
             title="Prêmios Pagos Diários" 
             description="Evolução financeira dos prêmios no período"
-            color="#10b981" // Green for prizes/payouts
+            color="#10b981" 
           />
         </div>
       </div>

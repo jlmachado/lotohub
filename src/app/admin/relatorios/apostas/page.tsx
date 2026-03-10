@@ -1,3 +1,7 @@
+/**
+ * @fileOverview Relatório consolidado de vendas/apostas.
+ */
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -11,12 +15,12 @@ import { Badge } from '@/components/ui/badge';
 import { formatBRL } from '@/utils/currency';
 import { downloadCSV } from '@/utils/csvUtils';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { LineChartDaily } from '@/components/admin/reports/LineChartDaily';
 import { loadReportFilters, saveReportFilters, clearReportFilters, QuickRange } from '@/utils/reportFiltersStorage';
 
 export default function RelatorioApostasPage() {
-  const { apostas, bingoTickets, snookerBets } = useAppContext();
+  const { apostas, bingoTickets, snookerBets, footballBets } = useAppContext();
   const context = getActiveContext();
 
   const [dateStart, setDateStart] = useState('');
@@ -28,7 +32,6 @@ export default function RelatorioApostasPage() {
   const [isRestoring, setIsRestoring] = useState(true);
   const itemsPerPage = 20;
 
-  // Carregar filtros salvos no mount
   useEffect(() => {
     if (context) {
       const saved = loadReportFilters(context, "apostas");
@@ -56,7 +59,6 @@ export default function RelatorioApostasPage() {
     setQuickRange('7days');
   };
 
-  // Salvar filtros quando mudarem
   useEffect(() => {
     if (!isRestoring && context) {
       saveReportFilters(context, "apostas", { 
@@ -68,18 +70,15 @@ export default function RelatorioApostasPage() {
     }
   }, [dateStart, dateEnd, searchTerm, quickRange, isRestoring, context]);
 
-  // 1. Normalizar e Filtrar por Contexto
   const filtered = useMemo(() => {
     if (isRestoring) return [];
     
-    let records = normalizeBets(apostas, bingoTickets, snookerBets);
+    let records = normalizeBets(apostas, bingoTickets, snookerBets, footballBets);
 
-    // Filtro de Banca
     if (context?.mode === 'BANCA') {
       records = records.filter(r => r.bancaId === context.bancaId);
     }
 
-    // Filtro de Data
     if (dateStart && dateEnd) {
       const start = new Date(dateStart + 'T00:00:00').getTime();
       const end = new Date(dateEnd + 'T23:59:59').getTime();
@@ -89,7 +88,6 @@ export default function RelatorioApostasPage() {
       });
     }
 
-    // Filtro de Busca
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       records = records.filter(r => 
@@ -100,15 +98,13 @@ export default function RelatorioApostasPage() {
     }
 
     return records;
-  }, [apostas, bingoTickets, snookerBets, context, dateStart, dateEnd, searchTerm, isRestoring]);
+  }, [apostas, bingoTickets, snookerBets, footballBets, context, dateStart, dateEnd, searchTerm, isRestoring]);
 
-  // 2. Dados para o Gráfico
   const chartData = useMemo(() => {
     if (isRestoring || !dateStart || !dateEnd) return [];
     
     const groups: Record<string, { total: number; count: number }> = {};
     
-    // Preencher lacunas de dias no intervalo
     let current = new Date(dateStart + 'T00:00:00');
     const end = new Date(dateEnd + 'T23:59:59');
     while (current <= end) {
@@ -117,7 +113,6 @@ export default function RelatorioApostasPage() {
       current.setDate(current.getDate() + 1);
     }
 
-    // Agregação
     filtered.forEach(r => {
       const key = new Date(r.at).toISOString().split('T')[0];
       if (groups[key]) {
@@ -134,7 +129,6 @@ export default function RelatorioApostasPage() {
     })).sort((a,b) => a.date.localeCompare(b.date));
   }, [filtered, dateStart, dateEnd, isRestoring]);
 
-  // 3. Paginação
   const paginated = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filtered.slice(start, start + itemsPerPage);

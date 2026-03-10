@@ -8,7 +8,7 @@
 import { useToast } from '@/hooks/use-toast';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import { getCurrentUser, logout as authLogout } from '@/utils/auth';
-import { upsertUser } from '@/utils/usersStorage';
+import { upsertUser, User } from '@/utils/usersStorage';
 import { useRouter } from 'next/navigation';
 import { espnService } from '@/services/espn-api-service';
 import { liveScoreService } from '@/services/livescore-api-service';
@@ -45,6 +45,17 @@ export interface FootballBet {
   items: BetSlipItem[];
   bancaId: string;
   isDescarga?: boolean;
+}
+
+export interface UserCommission {
+  id: string;
+  userId: string;
+  modulo: string;
+  valorAposta: number;
+  valorComissao: number;
+  porcentagem: number;
+  createdAt: string;
+  bancaId?: string;
 }
 
 export interface FootballSyncData {
@@ -108,7 +119,7 @@ interface AppContextType {
   saques: any[];
   cambistaMovements: any[];
   registerCambistaMovement: (m: any) => void;
-  userCommissions: any[];
+  userCommissions: UserCommission[];
   promoterCredits: any[];
 }
 
@@ -145,10 +156,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   const [cambistaMovements, setCambistaMovements] = useState<any[]>([]);
-  const [userCommissions, setUserCommissions] = useState<any[]>([]);
+  const [userCommissions, setUserCommissions] = useState<UserCommission[]>([]);
   const [promoterCredits, setPromoterCredits] = useState<any[]>([]);
 
-  // Função para atualizar os dados do usuário a partir da sessão atual
   const refreshUser = useCallback(() => {
     const currentUser = getCurrentUser();
     if (currentUser) {
@@ -165,10 +175,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    // Sincronização inicial
     refreshUser();
 
-    // Listeners para mudanças de autenticação
     const handleAuthChange = () => {
       refreshUser();
     };
@@ -178,7 +186,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (e.key === 'app:session:v1') handleAuthChange();
     });
 
-    // Carregamento de dados persistidos
     const savedLeagues = localStorage.getItem('app:football_leagues:v1');
     if (savedLeagues) setFootballData(prev => ({ ...prev, leagues: JSON.parse(savedLeagues) }));
 
@@ -200,9 +207,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const savedMovements = localStorage.getItem('app:cambista_movements:v1');
     if (savedMovements) setCambistaMovements(JSON.parse(savedMovements) || []);
 
+    const savedComms = localStorage.getItem('app:user_commissions:v1');
+    if (savedComms) setUserCommissions(JSON.parse(savedComms) || []);
+
     syncFootballAll();
-    
-    // Finaliza carregamento inicial
     setIsLoading(false);
 
     return () => {
@@ -231,7 +239,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // LiveScore data
       const live = await liveScoreService.getLiveMatches();
       const history = await liveScoreService.getFixtures();
       const allLiveScore = [...(live || []), ...(history || [])];
@@ -291,14 +298,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return false; 
     }
 
-    // 1. Validação de Permissão e Perfil (Padronização)
     const permission = BetPermissionService.validate(user.tipoUsuario, balance, bonus, stake);
     if (!permission.allowed) {
       toast({ variant: 'destructive', title: 'Aposta Bloqueada', description: permission.reason });
       return false;
     }
 
-    // 2. Re-validação final de horário pré-confirmação
     const now = new Date();
     for (const item of betSlip) {
       const match = footballData.unifiedMatches.find(m => m.id === item.matchId);
@@ -323,7 +328,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       let isDescarga = false;
 
-      // 3. Lógica de Descarga para Cambistas
       if (user.tipoUsuario === 'CAMBISTA' && currentBanca) {
         if (currentBanca.descargaConfig.ativo && potentialWin > currentBanca.descargaConfig.limitePremio) {
           isDescarga = true;
@@ -342,7 +346,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           });
         }
 
-        // Registrar movimento de caixa para o cambista (Venda)
         registerCambistaMovement({
           userId: user.id,
           terminal: user.terminal,
@@ -351,6 +354,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           modulo: 'Futebol',
           observacao: `Venda Futebol - Pule: fb-${Date.now()}`
         });
+      }
+
+      // REGISTRAR COMISSÃO DO PROMOTOR/CAMBISTA
+      if (user.tipoUsuario === 'PROMOTOR' || user.tipoUsuario === 'CAMBISTA') {
+        const commPercent = user.promotorConfig?.porcentagemComissao || 0;
+        const commValue = stake * (commPercent / 100);
+        if (commValue > 0) {
+          const newComm: UserCommission = {
+            id: `comm-fb-${Date.now()}`,
+            userId: user.id,
+            modulo: 'Futebol',
+            valorAposta: stake,
+            valorComissao: commValue,
+            porcentagem: commPercent,
+            createdAt: new Date().toISOString(),
+            bancaId
+          };
+          const updatedComms = [newComm, ...userCommissions];
+          setUserCommissions(updatedComms);
+          localStorage.setItem('app:user_commissions:v1', JSON.stringify(updatedComms));
+        }
       }
 
       const response = await fetch('/api/betting/place-bet', {
@@ -389,7 +413,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setFootballBets(updatedBets);
       localStorage.setItem('app:football_bets:v1', JSON.stringify(updatedBets));
 
-      // 4. Atualização de saldo (Apenas se não for Cambista)
       if (user.tipoUsuario !== 'CAMBISTA') {
         const newBalance = balance - stake;
         setBalance(newBalance);
@@ -427,7 +450,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       banners, popups, news, liveMiniPlayerConfig, isFullscreen, toggleFullscreen,
       celebrationTrigger, clearCelebration, soundEnabled, toggleSound,
       
-      // Módulos e stubs
       bingoSettings: null, bingoDraws: [], bingoTickets: [], snookerChannels: [],
       snookerBets: [], snookerPresence: {}, snookerScoreboards: {}, snookerChatMessages: [],
       snookerBetsFeed: [], snookerActivityFeed: [], snookerFinancialHistory: [], snookerCashOutLog: [],

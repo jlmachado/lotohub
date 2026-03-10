@@ -3,7 +3,7 @@
  * Consolida dados de Loterias, Bingo e Sinuca em formatos comuns.
  */
 
-import { Aposta, BingoTicket, BingoDraw, SnookerBet, SnookerFinancialSummary } from '@/context/AppContext';
+import { Aposta, BingoTicket, BingoDraw, SnookerBet, SnookerFinancialSummary, FootballBet } from '@/context/AppContext';
 
 export interface NormalizedRecord {
   id: string;
@@ -15,21 +15,23 @@ export interface NormalizedRecord {
   valor: number;
   extra?: any;
   bancaId?: string;
+  status?: string;
 }
 
 export function normalizeBets(
   lottery: Aposta[],
   bingo: BingoTicket[],
-  snooker: SnookerBet[]
+  snooker: SnookerBet[],
+  football: FootballBet[] = []
 ): NormalizedRecord[] {
   const lot = lottery.map(a => ({
     id: a.id,
     at: a.createdAt || new Date().toISOString(),
-    terminal: '-', // No sistema atual, terminal costuma vir no contexto, mas aqui buscamos do registro
+    terminal: '-', 
     nome: 'Usuário',
     modulo: 'LOTERIA',
     descricao: a.loteria,
-    valor: parseFloat(a.valor.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0,
+    valor: parseFloat(String(a.valor || '0').replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0,
     bancaId: a.bancaId
   }));
 
@@ -52,16 +54,29 @@ export function normalizeBets(
     modulo: 'SINUCA',
     descricao: `Aposta em ${b.pick}`,
     valor: b.amount,
-    bancaId: 'default' // Snooker bet type needs bancaId integration in next step
+    bancaId: 'default'
   }));
 
-  return [...lot, ...bin, ...sno].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  const foot = football.map(b => ({
+    id: b.id,
+    at: b.createdAt,
+    terminal: b.terminal || '-',
+    nome: 'Usuário',
+    modulo: 'FUTEBOL',
+    descricao: b.items.map(i => i.matchName).join(' | '),
+    valor: b.stake,
+    bancaId: b.bancaId,
+    status: b.status
+  }));
+
+  return [...lot, ...bin, ...sno, ...foot].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 }
 
 export function normalizePayouts(
   lottery: Aposta[],
   bingo: BingoDraw[],
-  snooker: SnookerFinancialSummary[]
+  snooker: SnookerFinancialSummary[],
+  football: FootballBet[] = []
 ): NormalizedRecord[] {
   // Loterias Premiadas
   const lot = lottery.filter(a => a.status === 'premiado' || a.status === 'won').map(a => {
@@ -80,7 +95,7 @@ export function normalizePayouts(
     };
   });
 
-  // Bingo (Extraindo ganhadores reais dos draws finalizados)
+  // Bingo
   const bin: NormalizedRecord[] = [];
   bingo.forEach(draw => {
     Object.values(draw.winnersFound).forEach(winner => {
@@ -99,7 +114,7 @@ export function normalizePayouts(
     });
   });
 
-  // Sinuca (Histórico financeiro consolidado)
+  // Sinuca
   const sno = snooker.map(h => ({
     id: `p-sno-${h.id}`,
     at: h.settledAt,
@@ -111,5 +126,17 @@ export function normalizePayouts(
     bancaId: 'default'
   }));
 
-  return [...lot, ...bin, ...sno].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  // Futebol
+  const foot = football.filter(b => b.status === 'WON').map(b => ({
+    id: `p-foot-${b.id}`,
+    at: b.createdAt,
+    terminal: b.terminal || '-',
+    nome: 'Usuário',
+    modulo: 'FUTEBOL',
+    descricao: 'Prêmio Futebol',
+    valor: b.potentialWin,
+    bancaId: b.bancaId
+  }));
+
+  return [...lot, ...bin, ...sno, ...foot].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 }
