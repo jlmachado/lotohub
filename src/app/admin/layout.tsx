@@ -1,3 +1,7 @@
+/**
+ * @fileOverview Layout administrativo com proteção de rota robusta para produção.
+ */
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -15,6 +19,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const user = getCurrentUser();
     
     if (!user || !canAccessAdmin(user)) {
@@ -23,13 +28,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
 
     setAuthorized(true);
-    setMounted(true);
 
     const ctx = getActiveContext();
-    if (!ctx && typeof window !== 'undefined' && user.tipoUsuario === 'SUPER_ADMIN') {
+    if (!ctx && user.tipoUsuario === 'SUPER_ADMIN' && pathname !== '/admin/select-banca') {
       router.push('/admin/select-banca');
     }
-  }, [router]);
+  }, [router, pathname]);
 
   if (!mounted || !authorized) {
     return (
@@ -39,22 +43,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  // The selection page doesn't need the sidebar layout
+  // A tela de seleção de banca não usa o layout padrão com sidebar
   if (pathname === '/admin/select-banca') {
-    return <>{children}</>;
+    return <div className="min-h-screen bg-slate-950">{children}</div>;
   }
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Sidebar Desktop */}
       <AdminSidebar className="hidden lg:flex w-64 sticky top-0 h-screen shrink-0" />
 
       <div className="flex-1 flex flex-col min-w-0">
         <AdminContextBar />
-        
-        {/* Header - Primarily for mobile and global wallet info */}
         <Header />
-
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>

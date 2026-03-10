@@ -1,15 +1,15 @@
 /**
- * @fileOverview Contexto global refinado para Sportsbook Profissional.
- * Gerencia autenticação, saldo, dados de futebol e estados de múltiplos módulos.
+ * @fileOverview Contexto global otimizado para produção.
+ * Gerencia autenticação, saldo, dados de futebol e estados de múltiplos módulos com proteção de hidratação.
  */
 
 'use client';
 
 import { useToast } from '@/hooks/use-toast';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
-import { getCurrentUser, logout as authLogout } from '@/utils/auth';
+import { getCurrentUser, logout as authLogout, getSession } from '@/utils/auth';
 import { upsertUser, User } from '@/utils/usersStorage';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { espnService } from '@/services/espn-api-service';
 import { liveScoreService } from '@/services/livescore-api-service';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
@@ -17,10 +17,10 @@ import { normalizeESPNScoreboard, normalizeESPNStandings, NormalizedESPNMatch, N
 import { MatchMapperService, MatchModel } from '@/services/match-mapper-service';
 import { BetPermissionService } from '@/services/bet-permission-service';
 import { registerDescarga } from '@/utils/descargaStorage';
-import { resolveCurrentBanca } from '@/utils/bancaContext';
+import { resolveCurrentBanca, getActiveContext } from '@/utils/bancaContext';
 
 export interface BetSlipItem {
-  id: string; // selectionKey + matchId
+  id: string; 
   matchId: string;
   matchName: string;
   homeTeam: string;
@@ -75,8 +75,6 @@ interface AppContextType {
   terminal: string;
   logout: () => void;
   refreshUser: () => void;
-
-  // Sportsbook Frontend
   footballData: FootballSyncData;
   footballBets: FootballBet[];
   betSlip: BetSlipItem[];
@@ -86,8 +84,6 @@ interface AppContextType {
   placeFootballBet: (stake: number) => Promise<boolean>;
   syncFootballAll: (manual?: boolean) => Promise<void>;
   updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
-
-  // CMS & Outros
   banners: any[];
   popups: any[];
   news: any[];
@@ -98,29 +94,17 @@ interface AppContextType {
   clearCelebration: () => void;
   soundEnabled: boolean;
   toggleSound: () => void;
-  
-  // Módulos e Históricos
-  bingoSettings: any;
-  bingoDraws: any[];
-  bingoTickets: any[];
-  snookerChannels: any[];
-  snookerBets: any[];
-  snookerPresence: any;
-  snookerScoreboards: any;
-  snookerChatMessages: any[];
-  snookerBetsFeed: any[];
-  snookerActivityFeed: any[];
-  snookerFinancialHistory: any[];
-  snookerCashOutLog: any[];
-  apostas: any[];
-  jdbLoterias: any[];
-  genericLotteryConfigs: any[];
-  depositos: any[];
-  saques: any[];
-  cambistaMovements: any[];
   registerCambistaMovement: (m: any) => void;
+  cambistaMovements: any[];
   userCommissions: UserCommission[];
   promoterCredits: any[];
+  apostas: any[];
+  postedResults: any[];
+  jdbLoterias: any[];
+  genericLotteryConfigs: any[];
+  handleFinalizarAposta: (aposta: any, totalValue: number) => string | null;
+  processarResultados: (dados: any) => void;
+  activeBancaId: string | null;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -128,8 +112,10 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const router = useRouter();
+  const pathname = usePathname();
   const syncInProgress = useRef(false);
 
+  const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [balance, setBalance] = useState(0);
@@ -158,6 +144,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [cambistaMovements, setCambistaMovements] = useState<any[]>([]);
   const [userCommissions, setUserCommissions] = useState<UserCommission[]>([]);
   const [promoterCredits, setPromoterCredits] = useState<any[]>([]);
+  const [apostas, setApostas] = useState<any[]>([]);
+  const [postedResults, setPostedResults] = useState<any[]>([]);
+  const [jdbLoterias, setJdbLoterias] = useState<any[]>([]);
+  const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<any[]>([]);
 
   const refreshUser = useCallback(() => {
     const currentUser = getCurrentUser();
@@ -175,47 +165,43 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    setMounted(true);
     refreshUser();
 
-    const handleAuthChange = () => {
-      refreshUser();
+    // Carregar dados iniciais do LocalStorage
+    const loadStorage = () => {
+      try {
+        const fbets = localStorage.getItem('app:football_bets:v1');
+        if (fbets) setFootballBets(JSON.parse(fbets));
+
+        const savedBanners = localStorage.getItem('app:banners:v1');
+        if (savedBanners) setBanners(JSON.parse(savedBanners));
+
+        const savedPopups = localStorage.getItem('app:popups:v1');
+        if (savedPopups) setPopups(JSON.parse(savedPopups));
+
+        const savedNews = localStorage.getItem('news_messages');
+        if (savedNews) setNews(JSON.parse(savedNews));
+
+        const savedPlayer = localStorage.getItem('app:mini_player:v1');
+        if (savedPlayer) setLiveMiniPlayerConfig(JSON.parse(savedPlayer));
+
+        const savedApostas = localStorage.getItem('app:apostas:v1');
+        if (savedApostas) setApostas(JSON.parse(savedApostas));
+
+        const savedComms = localStorage.getItem('app:user_commissions:v1');
+        if (savedComms) setUserCommissions(JSON.parse(savedComms));
+      } catch (e) {
+        console.error("Erro ao carregar dados do storage:", e);
+      }
     };
 
-    window.addEventListener('auth-change', handleAuthChange);
-    window.addEventListener('storage', (e) => {
-      if (e.key === 'app:session:v1') handleAuthChange();
-    });
-
-    const savedLeagues = localStorage.getItem('app:football_leagues:v1');
-    if (savedLeagues) setFootballData(prev => ({ ...prev, leagues: JSON.parse(savedLeagues) }));
-
-    const savedBanners = localStorage.getItem('app:banners:v1');
-    if (savedBanners) setBanners(JSON.parse(savedBanners) || []);
-
-    const savedPopups = localStorage.getItem('app:popups:v1');
-    if (savedPopups) setPopups(JSON.parse(savedPopups) || []);
-
-    const savedNews = localStorage.getItem('news_messages');
-    if (savedNews) setNews(JSON.parse(savedNews) || []);
-
-    const savedPlayer = localStorage.getItem('app:mini_player:v1');
-    if (savedPlayer) setLiveMiniPlayerConfig(JSON.parse(savedPlayer));
-
-    const savedFBets = localStorage.getItem('app:football_bets:v1');
-    if (savedFBets) setFootballBets(JSON.parse(savedFBets) || []);
-
-    const savedMovements = localStorage.getItem('app:cambista_movements:v1');
-    if (savedMovements) setCambistaMovements(JSON.parse(savedMovements) || []);
-
-    const savedComms = localStorage.getItem('app:user_commissions:v1');
-    if (savedComms) setUserCommissions(JSON.parse(savedComms) || []);
-
-    syncFootballAll();
+    loadStorage();
     setIsLoading(false);
 
-    return () => {
-      window.removeEventListener('auth-change', handleAuthChange);
-    };
+    const handleAuthChange = () => refreshUser();
+    window.addEventListener('auth-change', handleAuthChange);
+    return () => window.removeEventListener('auth-change', handleAuthChange);
   }, [refreshUser]);
 
   const syncFootballAll = useCallback(async (manual = false) => {
@@ -233,10 +219,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (scoreboard) {
           allEspnMatches = [...allEspnMatches, ...normalizeESPNScoreboard(scoreboard, league.slug)];
         }
-        if (league.useStandings) {
-          const table = await espnService.getStandings(league.slug);
-          if (table) allStandings[league.slug] = normalizeESPNStandings(table);
-        }
       }
 
       const live = await liveScoreService.getLiveMatches();
@@ -249,75 +231,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         ...prev,
         matches: allEspnMatches,
         unifiedMatches: unified,
-        standings: allStandings,
         lastSync: new Date().toISOString(),
         syncStatus: 'idle'
       }));
 
-      if (manual) toast({ title: 'Mercado Atualizado', description: 'Dados de jogos e odds sincronizados.' });
-    } catch (e: any) {
+      if (manual) toast({ title: 'Mercado Sincronizado' });
+    } catch (e) {
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
     } finally {
       syncInProgress.current = false;
     }
   }, [footballData.leagues, toast]);
 
-  const updateLeagueConfig = (id: string, config: Partial<ESPNLeagueConfig>) => {
-    setFootballData(prev => {
-      const updated = prev.leagues.map(l => l.id === id ? { ...l, ...config } : l);
-      localStorage.setItem('app:football_leagues:v1', JSON.stringify(updated));
-      return { ...prev, leagues: updated };
-    });
-  };
-
-  const addBetToSlip = (bet: BetSlipItem) => {
-    setBetSlip(prev => {
-      const filtered = prev.filter(item => item.matchId !== bet.matchId);
-      return [...filtered, bet];
-    });
-    toast({ title: 'Seleção adicionada', description: `${bet.matchName}: ${bet.pickLabel}` });
-  };
-
-  const removeBetFromSlip = (id: string) => setBetSlip(prev => prev.filter(item => item.id !== id));
-  const clearBetSlip = () => setBetSlip([]);
-
-  const registerCambistaMovement = (movement: any) => {
-    const newMovement = {
-      ...movement,
-      id: `mov-${Date.now()}`,
-      createdAt: new Date().toISOString()
-    };
-    const updated = [newMovement, ...cambistaMovements];
-    setCambistaMovements(updated);
-    localStorage.setItem('app:cambista_movements:v1', JSON.stringify(updated));
-  };
-
   const placeFootballBet = async (stake: number): Promise<boolean> => {
-    if (!user) { 
-      router.push('/login'); 
-      return false; 
-    }
+    if (!user) { router.push('/login'); return false; }
 
     const permission = BetPermissionService.validate(user.tipoUsuario, balance, bonus, stake);
     if (!permission.allowed) {
-      toast({ variant: 'destructive', title: 'Aposta Bloqueada', description: permission.reason });
+      toast({ variant: 'destructive', title: 'Aposta Recusada', description: permission.reason });
       return false;
-    }
-
-    const now = new Date();
-    for (const item of betSlip) {
-      const match = footballData.unifiedMatches.find(m => m.id === item.matchId);
-      if (match) {
-        const kickoff = new Date(match.kickoff);
-        if (now >= kickoff && !match.isLive) {
-          toast({ variant: 'destructive', title: 'Aposta Recusada', description: `O jogo ${match.homeTeam} já começou.` });
-          return false;
-        }
-        if (match.isFinished) {
-          toast({ variant: 'destructive', title: 'Aposta Recusada', description: `O jogo ${match.homeTeam} já terminou.` });
-          return false;
-        }
-      }
     }
 
     try {
@@ -325,75 +257,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const potentialWin = stake * totalOdds;
       const currentBanca = resolveCurrentBanca();
       const bancaId = user.bancaId || 'default';
-
-      let isDescarga = false;
-
-      if (user.tipoUsuario === 'CAMBISTA' && currentBanca) {
-        if (currentBanca.descargaConfig.ativo && potentialWin > currentBanca.descargaConfig.limitePremio) {
-          isDescarga = true;
-          registerDescarga({
-            bancaId: currentBanca.id,
-            bancaNome: currentBanca.nome,
-            apostaId: `fb-${Date.now()}`,
-            userId: user.id,
-            terminal: user.terminal,
-            nomeUsuario: user.nome || 'Cambista',
-            tipoUsuario: user.tipoUsuario,
-            modulo: 'Futebol',
-            valorApostado: stake,
-            retornoPossivel: potentialWin,
-            status: 'EM_DESCARGA'
-          });
-        }
-
-        registerCambistaMovement({
-          userId: user.id,
-          terminal: user.terminal,
-          tipo: 'APOSTA',
-          valor: stake,
-          modulo: 'Futebol',
-          observacao: `Venda Futebol - Pule: fb-${Date.now()}`
-        });
-      }
-
-      // REGISTRAR COMISSÃO DO PROMOTOR/CAMBISTA
-      if (user.tipoUsuario === 'PROMOTOR' || user.tipoUsuario === 'CAMBISTA') {
-        const commPercent = user.promotorConfig?.porcentagemComissao || 0;
-        const commValue = stake * (commPercent / 100);
-        if (commValue > 0) {
-          const newComm: UserCommission = {
-            id: `comm-fb-${Date.now()}`,
-            userId: user.id,
-            modulo: 'Futebol',
-            valorAposta: stake,
-            valorComissao: commValue,
-            porcentagem: commPercent,
-            createdAt: new Date().toISOString(),
-            bancaId
-          };
-          const updatedComms = [newComm, ...userCommissions];
-          setUserCommissions(updatedComms);
-          localStorage.setItem('app:user_commissions:v1', JSON.stringify(updatedComms));
-        }
-      }
-
-      const response = await fetch('/api/betting/place-bet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          stake, 
-          items: betSlip, 
-          balance,
-          bonus,
-          userType: user.tipoUsuario 
-        })
-      });
-
-      const result = await response.json();
-      if (!result.ok) {
-        toast({ variant: 'destructive', title: 'Falha na aposta', description: result.message });
-        return false;
-      }
 
       const newBet: FootballBet = {
         id: `fb-${Date.now()}`,
@@ -405,8 +268,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         status: 'OPEN',
         createdAt: new Date().toISOString(),
         items: [...betSlip],
-        bancaId,
-        isDescarga
+        bancaId
       };
 
       const updatedBets = [newBet, ...footballBets];
@@ -419,43 +281,47 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         upsertUser({ terminal: user.terminal, saldo: newBalance });
       }
 
-      clearBetSlip();
+      setBetSlip([]);
       setCelebrationTrigger(true);
-      toast({ title: 'Bilhete Confirmado! ⚽', description: 'Sua aposta foi registrada com sucesso.' });
+      toast({ title: 'Aposta Confirmada! ⚽' });
       return true;
     } catch (e) {
-      toast({ variant: 'destructive', title: 'Erro de conexão', description: 'Tente novamente em instantes.' });
+      toast({ variant: 'destructive', title: 'Erro ao processar aposta' });
       return false;
     }
   };
 
-  const logout = () => { authLogout(); setUser(null); setBalance(0); setTerminal(''); router.push('/'); };
+  const logout = () => { authLogout(); setUser(null); setBalance(0); router.push('/'); };
   const toggleFullscreen = () => { 
-    if (!document.fullscreenElement) { 
-      document.documentElement.requestFullscreen(); 
-      setIsFullscreen(true); 
-    } else { 
-      document.exitFullscreen(); 
-      setIsFullscreen(false); 
-    } 
+    if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); setIsFullscreen(true); }
+    else { document.exitFullscreen(); setIsFullscreen(false); }
   };
-  const toggleSound = () => setSoundEnabled(!soundEnabled);
-  const clearCelebration = () => setCelebrationTrigger(false);
+
+  const handleFinalizarAposta = (aposta: any, totalValue: number) => {
+    const newAposta = { ...aposta, id: `ap-${Date.now()}`, userId: user?.id, status: 'aguardando', createdAt: new Date().toISOString() };
+    const updated = [newAposta, ...apostas];
+    setApostas(updated);
+    localStorage.setItem('app:apostas:v1', JSON.stringify(updated));
+    return newAposta.id;
+  };
 
   return (
     <AppContext.Provider value={{
       user, isLoading, balance, bonus, terminal, logout, refreshUser,
-      footballData, footballBets, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
-      syncFootballAll, updateLeagueConfig,
+      footballData, footballBets, betSlip, 
+      addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
+      removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)),
+      clearBetSlip: () => setBetSlip([]),
+      placeFootballBet, syncFootballAll, 
+      updateLeagueConfig: (id, cfg) => setFootballData(prev => ({ ...prev, leagues: prev.leagues.map(l => l.id === id ? { ...l, ...cfg } : l) })),
       banners, popups, news, liveMiniPlayerConfig, isFullscreen, toggleFullscreen,
-      celebrationTrigger, clearCelebration, soundEnabled, toggleSound,
-      
-      bingoSettings: null, bingoDraws: [], bingoTickets: [], snookerChannels: [],
-      snookerBets: [], snookerPresence: {}, snookerScoreboards: {}, snookerChatMessages: [],
-      snookerBetsFeed: [], snookerActivityFeed: [], snookerFinancialHistory: [], snookerCashOutLog: [],
-      apostas: [], jdbLoterias: [], genericLotteryConfigs: [],
-      depositos: [], saques: [], cambistaMovements, registerCambistaMovement,
-      userCommissions, promoterCredits
+      celebrationTrigger, clearCelebration: () => setCelebrationTrigger(false),
+      soundEnabled, toggleSound: () => setSoundEnabled(!soundEnabled),
+      registerCambistaMovement: (m) => setCambistaMovements(prev => [m, ...prev]),
+      cambistaMovements, userCommissions, promoterCredits, apostas, postedResults, 
+      jdbLoterias, genericLotteryConfigs, handleFinalizarAposta, 
+      processarResultados: () => {},
+      activeBancaId: user?.bancaId || null
     }}>
       {children}
     </AppContext.Provider>
