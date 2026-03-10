@@ -1,51 +1,56 @@
 /**
- * @fileOverview Serviço de integração com o Proxy da ESPN.
+ * @fileOverview Serviço de integração com o Proxy Interno da ESPN.
+ * Nenhuma chamada é feita diretamente para o domínio externo da ESPN pelo browser.
  */
 
 class ESPNApiService {
-  private async request(league: string, resource: string = 'scoreboard', params: Record<string, string> = {}) {
+  private async request(resource: string, params: Record<string, string> = {}) {
     if (typeof window === 'undefined') return null;
 
     try {
-      const url = new URL(`${window.location.origin}/api/espn`);
-      url.searchParams.append('league', league);
-      url.searchParams.append('resource', resource);
+      // Monta URL para a rota interna da API
+      const url = new URL(`${window.location.origin}/api/espn/${resource}`);
       Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
 
       const response = await fetch(url.toString());
       
       if (!response.ok) {
-        console.warn(`[ESPN Service] Recurso indisponível: ${resource}/${league} (HTTP ${response.status})`);
+        const errorText = await response.text();
+        console.warn(`[ESPN Service] Erro HTTP ${response.status} em /api/espn/${resource}:`, errorText);
         return null;
       }
 
       const result = await response.json();
       if (!result.ok) {
-        console.warn(`[ESPN Service] Proxy reportou falha para ${resource}/${league}: ${result.message}`);
+        console.warn(`[ESPN Service] Proxy reportou falha para ${resource}:`, result.message);
         return null;
       }
 
       return result.data;
     } catch (e: any) {
-      console.error(`[ESPN Service] Erro na requisição ${resource}/${league}:`, e.message);
+      console.error(`[ESPN Service] Falha na requisição local para ${resource}:`, e.message);
       return null;
     }
   }
 
   async getScoreboard(league: string) {
-    return this.request(league, 'scoreboard');
+    return this.request('scoreboard', { league });
   }
 
   async getStandings(league: string) {
-    return this.request(league, 'standings');
+    return this.request('standings', { league });
   }
 
   async getTeams(league: string) {
-    return this.request(league, 'teams');
+    return this.request('teams', { league });
   }
 
   async getSummary(eventId: string, league: string = 'bra.1') {
-    return this.request(league, 'summary', { event: eventId });
+    return this.request('summary', { event: eventId, league });
+  }
+
+  async getTeamSchedule(teamId: string, league: string = 'bra.1') {
+    return this.request('schedule', { team: teamId, league });
   }
 }
 
