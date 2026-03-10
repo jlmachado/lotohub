@@ -8,19 +8,23 @@ import { BettingService } from '@/services/betting-service';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { stake, items, balance } = body;
+    const { stake, items, balance, userType, bonus } = body;
 
-    if (!stake || !items || balance === undefined) {
-      return NextResponse.json({ ok: false, message: 'Parâmetros incompletos.' }, { status: 400 });
+    if (!stake || !items || balance === undefined || !userType) {
+      return NextResponse.json({ ok: false, message: 'Parâmetros de aposta incompletos.' }, { status: 400 });
     }
 
-    const result = await BettingService.processBetIntent(stake, items, balance);
+    // Chama o serviço de aposta passando o contexto do usuário para validação de perfil
+    const result = await BettingService.processBetIntent(stake, items, {
+      tipo: userType,
+      saldo: balance,
+      bonus: bonus || 0
+    });
 
     if (!result.success) {
       return NextResponse.json({ ok: false, message: result.message }, { status: 400 });
     }
 
-    // Em produção, aqui persistiria no Firestore/DB
     return NextResponse.json({
       ok: true,
       message: 'Aposta confirmada com sucesso!',
@@ -28,6 +32,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
+    console.error('[API Place Bet Error]:', error);
     return NextResponse.json({ ok: false, message: 'Erro interno ao processar aposta.' }, { status: 500 });
   }
 }

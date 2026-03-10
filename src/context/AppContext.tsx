@@ -15,6 +15,7 @@ import { liveScoreService } from '@/services/livescore-api-service';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 import { normalizeESPNScoreboard, normalizeESPNStandings, NormalizedESPNMatch, NormalizedESPNStanding } from '@/utils/espn-normalizer';
 import { MatchMapperService, MatchModel } from '@/services/match-mapper-service';
+import { BetPermissionService } from '@/services/bet-permission-service';
 
 export interface BetSlipItem {
   id: string; // selectionKey + matchId
@@ -271,10 +272,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const clearBetSlip = () => setBetSlip([]);
 
   const placeFootballBet = async (stake: number): Promise<boolean> => {
-    if (!user) { router.push('/login'); return false; }
-    if (stake > balance) { toast({ variant: 'destructive', title: 'Saldo insuficiente' }); return false; }
+    if (!user) { 
+      router.push('/login'); 
+      return false; 
+    }
 
-    // Re-validação final de horário pré-confirmação
+    // 1. Validação de Permissão e Perfil (Padronização)
+    const permission = BetPermissionService.validate(user.tipoUsuario, balance, bonus, stake);
+    if (!permission.allowed) {
+      toast({ variant: 'destructive', title: 'Aposta Bloqueada', description: permission.reason });
+      return false;
+    }
+
+    // 2. Re-validação final de horário pré-confirmação
     const now = new Date();
     for (const item of betSlip) {
       const match = footballData.unifiedMatches.find(m => m.id === item.matchId);
@@ -295,7 +305,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const response = await fetch('/api/betting/place-bet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stake, items: betSlip, balance })
+        body: JSON.stringify({ 
+          stake, 
+          items: betSlip, 
+          balance,
+          bonus,
+          userType: user.tipoUsuario 
+        })
       });
 
       const result = await response.json();
@@ -322,9 +338,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setFootballBets(updatedBets);
       localStorage.setItem('app:football_bets:v1', JSON.stringify(updatedBets));
 
-      const newBalance = balance - stake;
-      setBalance(newBalance);
-      upsertUser({ terminal: user.terminal, saldo: newBalance });
+      // 3. Atualização de saldo (Apenas se não for Cambista)
+      if (user.tipoUsuario !== 'CAMBISTA') {
+        const newBalance = balance - stake;
+        setBalance(newBalance);
+        upsertUser({ terminal: user.terminal, saldo: newBalance });
+      }
+
       clearBetSlip();
       setCelebrationTrigger(true);
       toast({ title: 'Bilhete Confirmado! ⚽', description: 'Sua aposta foi registrada com sucesso.' });

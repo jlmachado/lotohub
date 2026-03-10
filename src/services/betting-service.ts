@@ -5,6 +5,7 @@
 
 import { BetSlipItem, calculateTotalOdds } from '@/utils/bet-calculator';
 import { RiskManagementService } from './risk-management-service';
+import { UserType } from '@/utils/usersStorage';
 
 export interface BetSlipValidation {
   valid: boolean;
@@ -25,7 +26,6 @@ export class BettingService {
     }
 
     // Regra de Conflito: Apenas uma seleção por partida em bilhetes acumulados
-    // (Standard Sportsbook Rule para evitar Bet Builders não calculados corretamente)
     items.forEach(item => {
       if (matchIds.has(item.matchId)) {
         errors.push(`Conflito: Você possui mais de uma seleção para o jogo ${item.matchName}.`);
@@ -43,37 +43,40 @@ export class BettingService {
   }
 
   /**
-   * Processa a intenção de aposta.
+   * Processa a intenção de aposta com validação completa de perfil e risco.
    */
-  static async processBetIntent(stake: number, items: BetSlipItem[], balance: number) {
-    // 1. Valida estrutura do bilhete
+  static async processBetIntent(
+    stake: number, 
+    items: BetSlipItem[], 
+    userContext: { tipo: UserType; saldo: number; bonus: number }
+  ) {
+    // 1. Valida estrutura do bilhete (Conflitos)
     const slipValidation = this.validateSlip(items);
     if (!slipValidation.valid) {
       return { success: false, message: slipValidation.errors[0] };
     }
 
-    // 2. Valida risco e limites
+    // 2. Valida Permissões por Perfil e Gestão de Risco
     const riskCheck = RiskManagementService.evaluateBet(
       stake, 
       slipValidation.totalOdds, 
       items.length, 
-      balance
+      userContext
     );
 
     if (!riskCheck.allowed) {
       return { success: false, message: riskCheck.reason };
     }
 
-    // 3. Em um cenário real, aqui haveria a revalidação de odds via API externa
-    // e o salvamento no banco de dados.
-
+    // 3. Resultado de sucesso para persistência
     return { 
       success: true, 
       data: {
         stake,
         totalOdds: slipValidation.totalOdds,
         potentialWin: stake * slipValidation.totalOdds,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        userType: userContext.tipo
       }
     };
   }
