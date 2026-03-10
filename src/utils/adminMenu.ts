@@ -12,17 +12,18 @@ import {
   Settings,
   Building2,
   ArrowDownToLine,
-  Search
+  Search,
+  Layers,
+  ShieldCheck,
+  TrendingUp
 } from 'lucide-react';
 
 export function getAdminMenuItems(user: any, context: any, modules: any) {
-  // Itens básicos comuns
   const items = [
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/usuarios", label: "Usuários", icon: Users },
   ];
 
-  // Itens baseados em módulos ativos
   if (modules && (modules.jogoDoBicho || modules.seninha || modules.quininha || modules.lotinha || modules.loteriaUruguai)) {
     items.push({ href: "/admin/loterias", label: "Loterias", icon: Ticket });
   }
@@ -31,13 +32,16 @@ export function getAdminMenuItems(user: any, context: any, modules: any) {
   if (modules?.cassino) items.push({ href: "/admin/cassino", label: "Cassino", icon: Gem });
   
   if (modules?.futebol) {
-    items.push({ href: "/admin/futebol", label: "Dashboard Futebol", icon: Goal });
-    items.push({ href: "/admin/futebol/ligas", label: "Catálogo de Ligas", icon: Search });
+    items.push({ href: "/admin/futebol", label: "Futebol: Dashboard", icon: Goal });
+    items.push({ href: "/admin/futebol/ligas", label: "Futebol: Ligas", icon: Search });
+    items.push({ href: "/admin/futebol/mercados", label: "Futebol: Mercados", icon: Layers });
+    items.push({ href: "/admin/futebol/limites", label: "Futebol: Limites", icon: ShieldCheck });
+    items.push({ href: "/admin/futebol/risco", label: "Futebol: Risco", icon: TrendingUp });
+    items.push({ href: "/admin/futebol/apostas", label: "Futebol: Auditoria", icon: FileBarChart });
   }
   
   if (modules?.sinucaAoVivo) items.push({ href: "/admin/sinuca", label: "Sinuca ao Vivo", icon: Video });
 
-  // Gestão de Unidades e Descarga (Contexto)
   if (context?.mode === 'GLOBAL') {
     items.push({ href: "/admin/bancas", label: "Gerenciar Bancas", icon: Building2 });
     items.push({ href: "/admin/descargas", label: "Descarga Global", icon: ArrowDownToLine });
@@ -45,7 +49,6 @@ export function getAdminMenuItems(user: any, context: any, modules: any) {
     items.push({ href: "/admin/descarga", label: "Configurar Descarga", icon: ArrowDownToLine });
   }
 
-  // Ferramentas administrativas comuns
   items.push(
     { href: "/admin/imagens", label: "Imagens & Banners", icon: ImageIcon },
     { href: "/admin/noticias", label: "Notícias (Ticker)", icon: Newspaper },

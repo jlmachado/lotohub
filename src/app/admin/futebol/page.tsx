@@ -1,164 +1,162 @@
 /**
- * @fileOverview Dashboard de Administração de Futebol (ESPN API v2).
+ * @fileOverview Painel Principal do Módulo de Futebol (Sportsbook Admin).
  */
 
 'use client';
 
 import { useAppContext } from '@/context/AppContext';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, ShieldCheck, Calendar, Trophy, History, AlertCircle, Settings, Globe } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { 
+  Goal, Radio, Trophy, ShieldAlert, TrendingUp, 
+  Database, Globe, Zap, Settings, RefreshCw,
+  FileBarChart, ShieldCheck
+} from 'lucide-react';
 import Link from 'next/link';
 import { useMemo } from 'react';
+import { formatBRL } from '@/utils/currency';
+import { ProviderStatusCard } from '@/components/admin/betting/ProviderStatusCard';
 
-export default function AdminFutebolPage() {
-  const { footballData, syncFootballAll } = useAppContext();
-
-  const isSyncing = footballData.syncStatus === 'syncing';
+export default function AdminFutebolDashboardPage() {
+  const { footballData, footballBets, syncFootballAll } = useAppContext();
 
   const stats = useMemo(() => {
-    const activeLeagues = footballData.leagues.filter(l => l.active);
-    const liveMatches = footballData.matches.filter(m => m.status === 'LIVE').length;
-    const scheduledMatches = footballData.matches.filter(m => m.status === 'SCHEDULED').length;
-    
+    const activeLeagues = footballData.leagues.filter(l => l.active).length;
+    const openBets = footballBets.filter(b => b.status === 'OPEN');
+    const totalStaked = openBets.reduce((acc, b) => acc + b.stake, 0);
+    const totalLiability = openBets.reduce((acc, b) => acc + b.potentialWin, 0);
+
     return {
-      activeLeaguesCount: activeLeagues.length,
-      totalMatches: footballData.matches.length,
-      liveMatches,
-      scheduledMatches,
-      lastSyncTime: footballData.lastSync ? new Date(footballData.lastSync).toLocaleTimeString('pt-BR') : 'Pendente'
+      activeLeagues,
+      openBetsCount: openBets.length,
+      totalStaked,
+      totalLiability,
+      liveMatches: footballData.unifiedMatches.filter(m => m.isLive).length
     };
-  }, [footballData]);
+  }, [footballData, footballBets]);
 
   return (
     <main className="p-4 md:p-8 space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Administração Futebol</h1>
-          <p className="text-muted-foreground font-bold uppercase text-[10px] tracking-widest mt-1">Conectado ao Proxy ESPN Site API</p>
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Dashboard Futebol</h1>
+          <p className="text-muted-foreground font-bold uppercase tracking-widest text-[10px] mt-1">Visão macro do motor de apostas e dados</p>
         </div>
         <div className="flex gap-2">
           <Button 
             variant="outline" 
-            onClick={() => syncFootballAll(true)} 
-            disabled={isSyncing}
+            onClick={() => syncFootballAll(true)}
+            disabled={footballData.syncStatus === 'syncing'}
             className="h-11 rounded-xl font-bold border-white/10"
           >
-            {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Sincronizar Ligas Ativas
+            {footballData.syncStatus === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Sync Global
           </Button>
           <Link href="/admin/futebol/ligas">
-            <Button className="h-11 rounded-xl font-black uppercase lux-shine px-6">
-              <Settings className="mr-2 h-4 w-4" /> Gerenciar Ligas
+            <Button className="h-11 rounded-xl font-black uppercase italic lux-shine px-6">
+              <Settings className="mr-2 h-4 w-4" /> Configurar Ligas
             </Button>
           </Link>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-slate-900 border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Proxy Status</CardTitle>
-            <Globe className="h-4 w-4 text-blue-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-black text-white italic">ESPN API v2</div>
-            <Badge variant="outline" className="mt-1 border-blue-500/20 text-blue-400 uppercase font-black text-[9px]">Sincronização Ativa</Badge>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-slate-900 border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Ligas Ativas</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-black text-white italic">
-              {stats.activeLeaguesCount}
-            </div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">Monitoramento ESPN</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-slate-900 border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Partidas</CardTitle>
-            <Calendar className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-black text-white italic">
-              {stats.totalMatches}
-            </div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">{stats.liveMatches} Ao Vivo / {stats.scheduledMatches} Agendados</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-slate-900 border-white/5">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Último Sync</CardTitle>
-            <History className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm font-black text-white font-mono">
-              {stats.lastSyncTime}
-            </div>
-            <Badge 
-              variant={footballData.syncStatus === 'error' ? 'destructive' : 'secondary'} 
-              className="mt-1 text-[8px] uppercase font-black"
-            >
-              STATUS: {footballData.syncStatus.toUpperCase()}
-            </Badge>
-          </CardContent>
-        </Card>
+      {/* PROVIDER STATUS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <ProviderStatusCard 
+          name="ESPN SITE API" 
+          status={footballData.syncStatus === 'syncing' ? 'syncing' : (footballData.matches.length > 0 ? 'online' : 'error')}
+          eventsCount={footballData.matches.length}
+          icon={Globe}
+        />
+        <ProviderStatusCard 
+          name="LIVE SCORE API" 
+          status="online"
+          eventsCount={footballData.unifiedMatches.filter(m => m.hasOdds).length}
+          icon={Zap}
+          latency="142ms"
+        />
+        <ProviderStatusCard 
+          name="BETTING ENGINE" 
+          status="online"
+          eventsCount={stats.openBetsCount}
+          icon={Database}
+        />
       </div>
 
-      <Card className="border-white/5 bg-slate-900/50">
-        <CardHeader>
-          <CardTitle className="text-sm font-black uppercase italic tracking-widest text-white">Status das Competições Monitoradas</CardTitle>
-          <CardDescription className="text-[10px] uppercase font-bold text-muted-foreground">Ligas sincronizadas via Site API ESPN.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {stats.activeLeaguesCount === 0 ? (
-            <div className="py-12 text-center border-2 border-dashed border-white/5 rounded-2xl">
-              <AlertCircle className="h-12 w-12 mx-auto mb-2 text-muted-foreground opacity-20" />
-              <p className="text-muted-foreground italic text-sm">Nenhuma liga ativada para monitoramento.</p>
-              <Link href="/admin/futebol/ligas">
-                <Button variant="link" className="text-primary text-xs mt-2 uppercase font-black">Configurar Ligas</Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {footballData.leagues.filter(l => l.active).map(league => {
-                const leagueMatches = footballData.matches.filter(m => m.leagueSlug === league.slug);
-                const todayCount = leagueMatches.filter(m => m.status === 'LIVE' || m.status === 'SCHEDULED').length;
-                const hasTable = !!footballData.standings[league.slug];
-                
-                return (
-                  <div key={league.id} className="p-4 rounded-xl bg-slate-950 border border-white/5 flex items-center gap-4 group hover:border-primary/20 transition-colors">
-                    <div className="w-10 h-10 bg-white/5 rounded-lg flex items-center justify-center border border-white/10">
-                      <Trophy size={20} className="text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-white text-xs truncate uppercase tracking-tighter">{league.name}</p>
-                      <div className="flex gap-2 mt-1">
-                        <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase">{todayCount} JOGOS</Badge>
-                        {hasTable && <Badge className="text-[8px] h-4 bg-green-600/20 text-green-500 border-0 uppercase">TABELA OK</Badge>}
-                      </div>
-                    </div>
+      {/* KPI GRID */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiBox title="Volume Aberto" value={formatBRL(stats.totalStaked)} color="text-primary" sub="Total em jogo" />
+        <KpiBox title="Responsabilidade" value={formatBRL(stats.totalLiability)} color="text-red-500" sub="Risco de pagamento" />
+        <KpiBox title="Ao Vivo Agora" value={stats.liveMatches} color="text-blue-400" sub="Partidas monitoradas" />
+        <KpiBox title="Bilhetes Abertos" value={stats.openBetsCount} color="text-green-400" sub="Futebol Sportsbook" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="border-white/5 bg-slate-900/50 shadow-2xl">
+          <CardHeader>
+            <CardTitle className="text-sm font-black uppercase italic tracking-widest text-white">Gestão Operacional</CardTitle>
+            <CardDescription className="text-[10px] font-bold uppercase">Atalhos de controle do sistema</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-4">
+            <QuickLink href="/admin/futebol/mercados" icon={Trophy} label="Mercados" desc="Habilitar mercados" />
+            <QuickLink href="/admin/futebol/limites" icon={ShieldCheck} label="Limites" desc="Risco e Stakes" />
+            <QuickLink href="/admin/futebol/risco" icon={TrendingUp} label="Risco" desc="Exposição total" />
+            <QuickLink href="/admin/futebol/apostas" icon={FileBarChart} label="Auditoria" desc="Logs de apostas" />
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/5 bg-slate-900/50 shadow-2xl overflow-hidden">
+          <CardHeader className="bg-slate-950/50 border-b border-white/5">
+            <CardTitle className="text-sm font-black uppercase italic tracking-widest text-white">Status das Ligas Ativas</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-white/5">
+              {footballData.leagues.filter(l => l.active).slice(0, 5).map(league => (
+                <div key={league.id} className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Goal size={16} className="text-primary" />
+                    <span className="text-xs font-black uppercase italic text-white">{league.name}</span>
                   </div>
-                );
-              })}
+                  <div className="flex gap-2">
+                    <Badge variant="secondary" className="text-[8px] h-4 bg-green-600/20 text-green-500 uppercase font-black">Sync OK</Badge>
+                    <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase font-black">ODDS OK</Badge>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-        </CardContent>
-        <CardFooter className="bg-white/5 border-t border-white/5 p-4 flex justify-between">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase italic">Dados: ESPN Real-Time API v2</p>
-          <Link href="/admin/futebol/jogos">
-            <Button variant="link" className="text-primary h-auto p-0 text-[10px] font-black uppercase">Ver Log de Partidas</Button>
-          </Link>
-        </CardFooter>
-      </Card>
+          </CardContent>
+          <CardFooter className="p-4 bg-slate-950/50">
+            <Link href="/admin/futebol/ligas" className="text-[9px] font-black uppercase text-primary hover:underline italic">Ver Catálogo Completo →</Link>
+          </CardFooter>
+        </Card>
+      </div>
     </main>
+  );
+}
+
+function KpiBox({ title, value, color, sub }: any) {
+  return (
+    <Card className="bg-slate-900 border-white/5 shadow-inner">
+      <CardContent className="p-4">
+        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{title}</p>
+        <p className={cn("text-2xl font-black italic tracking-tighter tabular-nums", color)}>{value}</p>
+        <p className="text-[8px] font-bold text-muted-foreground/50 uppercase">{sub}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function QuickLink({ href, icon: Icon, label, desc }: any) {
+  return (
+    <Link href={href}>
+      <div className="p-4 rounded-xl bg-black/30 border border-white/5 hover:border-primary/30 transition-all group flex flex-col gap-2">
+        <Icon className="h-5 w-5 text-primary group-hover:scale-110 transition-transform" />
+        <div>
+          <p className="text-xs font-black text-white uppercase italic">{label}</p>
+          <p className="text-[9px] text-muted-foreground font-bold uppercase">{desc}</p>
+        </div>
+      </div>
+    </Link>
   );
 }

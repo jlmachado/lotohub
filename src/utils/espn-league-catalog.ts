@@ -7,7 +7,7 @@ export interface ESPNLeagueConfig {
   id: string;
   name: string;
   slug: string;
-  livescoreId?: string; // ID da competição na Live Score API
+  livescoreId?: string;
   category: 'NACIONAL' | 'ESTADUAL' | 'COPA' | 'FEMININO' | 'INTERNACIONAL' | 'SELECAO';
   country?: string;
   priority: number;
@@ -15,6 +15,13 @@ export interface ESPNLeagueConfig {
   useStandings: boolean;
   useTeams: boolean;
   useNews: boolean;
+  
+  // Betting Specific Configs
+  habilitarPrematch: boolean;
+  habilitarLive: boolean;
+  lockBetMinutesBeforeKickoff: number;
+  autoCloseOnLiveStart: boolean;
+  autoSuspendWhenNoOdds: boolean;
 }
 
 export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
@@ -23,14 +30,19 @@ export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
     id: 'bra-serie-a',
     name: 'Brasileirão Série A',
     slug: 'bra.1',
-    livescoreId: '1', // Exemplo de ID
+    livescoreId: '1',
     category: 'NACIONAL',
     country: 'Brasil',
     priority: 1,
     active: true,
     useStandings: true,
     useTeams: true,
-    useNews: true
+    useNews: true,
+    habilitarPrematch: true,
+    habilitarLive: true,
+    lockBetMinutesBeforeKickoff: 0,
+    autoCloseOnLiveStart: true,
+    autoSuspendWhenNoOdds: true
   },
   {
     id: 'bra-serie-b',
@@ -43,7 +55,12 @@ export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
     active: true,
     useStandings: true,
     useTeams: true,
-    useNews: true
+    useNews: true,
+    habilitarPrematch: true,
+    habilitarLive: true,
+    lockBetMinutesBeforeKickoff: 0,
+    autoCloseOnLiveStart: true,
+    autoSuspendWhenNoOdds: true
   },
   {
     id: 'bra-copa-brasil',
@@ -56,7 +73,12 @@ export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
     active: true,
     useStandings: false,
     useTeams: true,
-    useNews: true
+    useNews: true,
+    habilitarPrematch: true,
+    habilitarLive: true,
+    lockBetMinutesBeforeKickoff: 0,
+    autoCloseOnLiveStart: true,
+    autoSuspendWhenNoOdds: true
   },
 
   // --- EUROPA PRINCIPAIS ---
@@ -71,7 +93,12 @@ export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
     active: true,
     useStandings: true,
     useTeams: true,
-    useNews: true
+    useNews: true,
+    habilitarPrematch: true,
+    habilitarLive: true,
+    lockBetMinutesBeforeKickoff: 0,
+    autoCloseOnLiveStart: true,
+    autoSuspendWhenNoOdds: true
   },
   {
     id: 'esp-laliga',
@@ -84,7 +111,12 @@ export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
     active: true,
     useStandings: true,
     useTeams: true,
-    useNews: true
+    useNews: true,
+    habilitarPrematch: true,
+    habilitarLive: true,
+    lockBetMinutesBeforeKickoff: 0,
+    autoCloseOnLiveStart: true,
+    autoSuspendWhenNoOdds: true
   },
   {
     id: 'ita-serie-a',
@@ -97,7 +129,12 @@ export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
     active: true,
     useStandings: true,
     useTeams: true,
-    useNews: true
+    useNews: true,
+    habilitarPrematch: true,
+    habilitarLive: true,
+    lockBetMinutesBeforeKickoff: 0,
+    autoCloseOnLiveStart: true,
+    autoSuspendWhenNoOdds: true
   },
   {
     id: 'ger-bundesliga',
@@ -110,7 +147,12 @@ export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
     active: true,
     useStandings: true,
     useTeams: true,
-    useNews: true
+    useNews: true,
+    habilitarPrematch: true,
+    habilitarLive: true,
+    lockBetMinutesBeforeKickoff: 0,
+    autoCloseOnLiveStart: true,
+    autoSuspendWhenNoOdds: true
   },
   {
     id: 'fra-ligue1',
@@ -123,74 +165,11 @@ export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
     active: true,
     useStandings: true,
     useTeams: true,
-    useNews: true
-  },
-
-  // --- COMPETIÇÕES CONTINENTAIS ---
-  {
-    id: 'uefa-cl',
-    name: 'UEFA Champions League',
-    slug: 'uefa.champions',
-    livescoreId: '100',
-    category: 'INTERNACIONAL',
-    priority: 3,
-    active: true,
-    useStandings: true,
-    useTeams: true,
-    useNews: true
-  },
-  {
-    id: 'conmebol-lib',
-    name: 'Copa Libertadores',
-    slug: 'conmebol.libertadores',
-    livescoreId: '101',
-    category: 'INTERNACIONAL',
-    priority: 3,
-    active: true,
-    useStandings: true,
-    useTeams: true,
-    useNews: true
-  },
-
-  // --- ESTADUAIS ---
-  {
-    id: 'est-paulista',
-    name: 'Campeonato Paulista',
-    slug: 'bra.campeonato_paulista',
-    livescoreId: '15',
-    category: 'ESTADUAL',
-    country: 'Brasil',
-    priority: 10,
-    active: true,
-    useStandings: true,
-    useTeams: true,
-    useNews: false
-  },
-  {
-    id: 'est-carioca',
-    name: 'Campeonato Carioca',
-    slug: 'bra.carioca',
-    livescoreId: '16',
-    category: 'ESTADUAL',
-    country: 'Brasil',
-    priority: 11,
-    active: true,
-    useStandings: true,
-    useTeams: true,
-    useNews: false
-  },
-
-  // --- SELEÇÕES ---
-  {
-    id: 'fifa-wc',
-    name: 'Copa do Mundo FIFA',
-    slug: 'fifa.world',
-    livescoreId: '500',
-    category: 'SELECAO',
-    priority: 1,
-    active: true,
-    useStandings: true,
-    useTeams: true,
-    useNews: true
+    useNews: true,
+    habilitarPrematch: true,
+    habilitarLive: true,
+    lockBetMinutesBeforeKickoff: 0,
+    autoCloseOnLiveStart: true,
+    autoSuspendWhenNoOdds: true
   }
 ];
