@@ -1,21 +1,21 @@
 /**
- * @fileOverview Dashboard Pública de Futebol (ESPN Integration).
+ * @fileOverview Dashboard Pública de Futebol (Visual LiveScore API Style).
  */
 
 'use client';
 
 import { useAppContext } from '@/context/AppContext';
 import { Header } from '@/components/header';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Clock, Flag, AlertCircle, Calendar, History, List, Radio } from 'lucide-react';
+import { Trophy, Clock, AlertCircle, Calendar, History, Radio, MapPin } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export default function FutebolDashboardPage() {
-  const { footballData } = useAppContext();
+  const { footballData, syncFootballAll } = useAppContext();
   const [selectedLeagueSlug, setSelectedLeagueSlug] = useState<string | null>(null);
 
   const activeLeagues = useMemo(() => 
@@ -39,59 +39,55 @@ export default function FutebolDashboardPage() {
   const matchesFinished = matchesForActiveLeague.filter(m => m.status === 'FINISHED');
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-950">
       <Header />
-      <main className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
+      
+      <main className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
         
-        {/* LEAGUE SELECTOR */}
-        <div className="flex flex-col gap-6 bg-slate-900/50 p-6 rounded-3xl border border-white/5 shadow-2xl">
-          <div className="flex items-center gap-6">
-            <div className="relative w-16 h-16 md:w-20 md:h-20 bg-white/5 rounded-2xl p-3 border border-white/10 flex items-center justify-center">
-              <Trophy size={32} className="text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter text-white leading-none">
-                {activeLeague?.name || "Dashboard Futebol"}
-              </h1>
-              <p className="text-primary font-black uppercase tracking-widest text-[10px] mt-2 flex items-center gap-2">
-                <Radio size={12} className="animate-pulse" /> ESPN REAL-TIME DATA • {activeLeague?.category}
-              </p>
-            </div>
-          </div>
+        {/* STATS STRIP */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatMiniCard label="Ao Vivo" value={footballData.matches.filter(m => m.status === 'LIVE').length} color="text-red-500" />
+          <StatMiniCard label="Hoje" value={matchesToday.length} color="text-primary" />
+          <StatMiniCard label="Campeonatos" value={activeLeagues.length} color="text-blue-400" />
+          <StatMiniCard label="Total Jogos" value={footballData.matches.length} color="text-slate-400" />
+        </div>
 
-          <div className="flex flex-wrap gap-2">
-            {activeLeagues.map(l => (
-              <button 
-                key={l.id} 
-                onClick={() => setSelectedLeagueSlug(l.slug)}
-                className={cn(
-                  "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
-                  (selectedLeagueSlug === l.slug || (!selectedLeagueSlug && activeLeagues[0]?.slug === l.slug))
-                    ? "bg-primary text-black border-primary shadow-lg shadow-primary/20"
-                    : "bg-slate-950 text-muted-foreground border-white/5 hover:border-primary/30"
-                )}
-              >
-                {l.name}
-              </button>
-            ))}
-          </div>
+        {/* LEAGUE SELECTOR BAR */}
+        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-2 border-b border-white/5">
+          <button 
+            onClick={() => setSelectedLeagueSlug(null)}
+            className={cn(
+              "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border",
+              !selectedLeagueSlug ? "bg-primary text-black border-primary" : "bg-slate-900 text-slate-400 border-white/5"
+            )}
+          >
+            Todos
+          </button>
+          {activeLeagues.map(l => (
+            <button 
+              key={l.id} 
+              onClick={() => setSelectedLeagueSlug(l.slug)}
+              className={cn(
+                "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border",
+                selectedLeagueSlug === l.slug ? "bg-primary text-black border-primary" : "bg-slate-900 text-slate-400 border-white/5"
+              )}
+            >
+              {l.name}
+            </button>
+          ))}
         </div>
 
         <Tabs defaultValue="matches" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8 bg-slate-900 h-14 p-1.5 rounded-2xl border border-white/5">
-            <TabsTrigger value="matches" className="gap-2 font-black uppercase text-[10px]"><Calendar size={14} /> Jogos</TabsTrigger>
-            <TabsTrigger value="standings" className="gap-2 font-black uppercase text-[10px]"><Trophy size={14} /> Tabela</TabsTrigger>
-            <TabsTrigger value="results" className="gap-2 font-black uppercase text-[10px]"><History size={14} /> Resultados</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 mb-6 bg-slate-900 h-12 p-1 rounded-xl border border-white/5">
+            <TabsTrigger value="matches" className="gap-2 uppercase text-[10px] font-bold"><Calendar size={12} /> Partidas</TabsTrigger>
+            <TabsTrigger value="standings" className="gap-2 uppercase text-[10px] font-bold"><Trophy size={12} /> Tabela</TabsTrigger>
+            <TabsTrigger value="results" className="gap-2 uppercase text-[10px] font-bold"><History size={12} /> Resultados</TabsTrigger>
           </TabsList>
 
           <TabsContent value="matches" className="space-y-6">
-            <div className="flex items-center justify-between px-2">
-              <h2 className="text-xl font-black uppercase italic text-white">Partidas</h2>
-              <Badge variant="outline" className="border-white/10 uppercase text-[9px] font-bold">Hoje e Próximos</Badge>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               {matchesToday.length === 0 ? (
-                <EmptyState msg="Nenhuma partida programada para agora." />
+                <EmptyState msg="Sem partidas agendadas para o momento." />
               ) : (
                 matchesToday.map(m => <MatchCard key={m.id} match={m} />)
               )}
@@ -100,36 +96,34 @@ export default function FutebolDashboardPage() {
 
           <TabsContent value="standings">
             {standings.length === 0 ? (
-              <EmptyState msg="Classificação indisponível para esta liga ou em fase de mata-mata." />
+              <EmptyState msg="Classificação indisponível para esta competição." />
             ) : (
-              <Card className="border-0 bg-slate-900/50 shadow-2xl overflow-hidden rounded-3xl">
+              <Card className="border-white/5 bg-slate-900/50 shadow-2xl overflow-hidden rounded-2xl">
                 <Table>
                   <TableHeader className="bg-slate-950">
-                    <TableRow className="border-white/5 h-12">
-                      <TableHead className="w-[60px] text-center font-black uppercase text-[10px]">#</TableHead>
-                      <TableHead className="font-black uppercase text-[10px]">Clube</TableHead>
-                      <TableHead className="text-center font-black uppercase text-[10px]">Pts</TableHead>
-                      <TableHead className="text-center font-black uppercase text-[10px]">J</TableHead>
-                      <TableHead className="text-center font-black uppercase text-[10px]">V</TableHead>
-                      <TableHead className="text-center font-black uppercase text-[10px]">SG</TableHead>
+                    <TableRow className="border-white/5 h-10">
+                      <TableHead className="w-[50px] text-center font-black uppercase text-[9px]">Pos</TableHead>
+                      <TableHead className="font-black uppercase text-[9px]">Clube</TableHead>
+                      <TableHead className="text-center font-black uppercase text-[9px]">P</TableHead>
+                      <TableHead className="text-center font-black uppercase text-[9px]">J</TableHead>
+                      <TableHead className="text-center font-black uppercase text-[9px]">V</TableHead>
+                      <TableHead className="text-center font-black uppercase text-[9px]">SG</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {standings.map((team) => (
-                      <TableRow key={team.teamId} className="border-white/5 hover:bg-white/5 transition-colors h-14">
-                        <TableCell className="text-center font-black text-slate-400">{team.position}</TableCell>
+                      <TableRow key={team.teamId} className="border-white/5 hover:bg-white/5 transition-colors h-12">
+                        <TableCell className="text-center font-bold text-slate-500 text-xs">{team.position}</TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-3">
-                            <img src={team.logo} alt="" className="w-6 h-6 object-contain" />
-                            <span className="font-bold text-white text-xs md:text-sm uppercase tracking-tight truncate max-w-[120px]">{team.teamName}</span>
+                          <div className="flex items-center gap-2">
+                            <img src={team.logo} alt="" className="w-5 h-5 object-contain" />
+                            <span className="font-bold text-white text-xs uppercase tracking-tight truncate">{team.teamName}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-center font-black text-primary text-base">{team.stats.points}</TableCell>
-                        <TableCell className="text-center text-xs font-bold text-slate-300">{team.stats.played}</TableCell>
-                        <TableCell className="text-center text-xs font-bold text-green-500">{team.stats.wins}</TableCell>
-                        <TableCell className="text-center font-bold text-xs text-slate-400">
-                          {team.stats.goalsDiff > 0 ? `+${team.stats.goalsDiff}` : team.stats.goalsDiff}
-                        </TableCell>
+                        <TableCell className="text-center font-black text-primary">{team.stats.points}</TableCell>
+                        <TableCell className="text-center text-xs text-slate-400">{team.stats.played}</TableCell>
+                        <TableCell className="text-center text-xs text-green-500">{team.stats.wins}</TableCell>
+                        <TableCell className="text-center font-bold text-xs text-slate-500">{team.stats.goalsDiff}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -139,10 +133,9 @@ export default function FutebolDashboardPage() {
           </TabsContent>
 
           <TabsContent value="results" className="space-y-6">
-            <h2 className="text-xl font-black uppercase italic text-white px-2">Resultados Recentes</h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               {matchesFinished.length === 0 ? (
-                <EmptyState msg="Nenhum resultado registrado nas últimas 24h." />
+                <EmptyState msg="Nenhum resultado recente registrado." />
               ) : (
                 matchesFinished.map(m => <MatchCard key={m.id} match={m} />)
               )}
@@ -154,49 +147,65 @@ export default function FutebolDashboardPage() {
   );
 }
 
+function StatMiniCard({ label, value, color }: { label: string, value: number, color: string }) {
+  return (
+    <div className="bg-slate-900/50 border border-white/5 p-3 rounded-xl flex justify-between items-center shadow-lg">
+      <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{label}</span>
+      <span className={cn("text-lg font-black italic", color)}>{value}</span>
+    </div>
+  );
+}
+
 function MatchCard({ match }: { match: any }) {
   const isLive = match.status === 'LIVE';
 
   return (
-    <Card className="bg-card border-white/5 hover:border-primary/30 transition-all group shadow-xl overflow-hidden rounded-3xl">
-      <CardHeader className="p-4 bg-white/5 border-b border-white/5">
-        <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-muted-foreground">
-          <span className={cn("flex items-center gap-1.5", isLive ? "text-red-500" : "text-primary")}>
-            {isLive ? <Radio size={10} className="animate-pulse" /> : <Clock size={10} />}
-            {isLive ? match.clock : new Date(match.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <Badge variant="outline" className="text-[8px] border-white/10 h-5 px-2 rounded-lg">
-            {new Date(match.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-          </Badge>
+    <Card className="bg-slate-900 border-white/5 hover:border-primary/20 transition-all group overflow-hidden rounded-xl shadow-xl">
+      <div className="p-3 bg-white/5 border-b border-white/5 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-[8px] h-4 uppercase font-black border-white/10 bg-black/20">{match.leagueName}</Badge>
+          {isLive && <Badge className="bg-red-600 text-white text-[8px] h-4 animate-pulse">AO VIVO</Badge>}
         </div>
-      </CardHeader>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex flex-col items-center flex-1 text-center space-y-3 min-w-0">
-            <div className="relative w-12 h-12 bg-white/5 rounded-xl p-2 border border-white/5 group-hover:scale-110 transition-transform">
-              <img src={match.homeTeam.logo} alt="" className="w-full h-full object-contain" />
-            </div>
-            <span className="font-black text-[9px] leading-tight text-white uppercase tracking-tighter h-8 flex items-center truncate w-full justify-center">{match.homeTeam.name}</span>
+        <span className="text-[9px] font-mono text-slate-500">
+          {new Date(match.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} • {new Date(match.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-2">
+          {/* TEAM A */}
+          <div className="flex flex-col items-center flex-1 text-center min-w-0">
+            <img src={match.homeTeam.logo} alt="" className="w-10 h-10 object-contain mb-2" />
+            <span className="font-black text-[10px] text-white uppercase tracking-tighter truncate w-full">{match.homeTeam.name}</span>
           </div>
 
-          <div className="flex flex-col items-center gap-2">
-            <div className="text-3xl font-black italic tracking-tighter text-white tabular-nums flex gap-2">
-              <span>{match.homeTeam.score}</span>
-              <span className="text-primary/30">-</span>
-              <span>{match.awayTeam.score}</span>
+          {/* SCORE / TIME */}
+          <div className="flex flex-col items-center justify-center gap-1">
+            <div className="text-2xl font-black italic tracking-tighter text-white tabular-nums flex items-center gap-3">
+              <span className={cn(match.homeTeam.winner && "text-primary")}>{match.homeTeam.score}</span>
+              <span className="text-white/20">-</span>
+              <span className={cn(match.awayTeam.winner && "text-primary")}>{match.awayTeam.score}</span>
             </div>
-            <Badge variant="secondary" className={cn("text-[7px] uppercase font-black py-0 h-4 px-2", isLive && "bg-red-600 text-white")}>
-              {match.statusDetail}
-            </Badge>
+            {isLive ? (
+              <span className="text-[9px] font-black text-red-500 uppercase flex items-center gap-1">
+                <Radio size={10} /> {match.clock || 'LIVE'}
+              </span>
+            ) : (
+              <span className="text-[8px] font-bold text-slate-500 uppercase">{match.statusDetail}</span>
+            )}
           </div>
 
-          <div className="flex flex-col items-center flex-1 text-center space-y-3 min-w-0">
-            <div className="relative w-12 h-12 bg-white/5 rounded-xl p-2 border border-white/5 group-hover:scale-110 transition-transform">
-              <img src={match.awayTeam.logo} alt="" className="w-full h-full object-contain" />
-            </div>
-            <span className="font-black text-[9px] leading-tight text-white uppercase tracking-tighter h-8 flex items-center truncate w-full justify-center">{match.awayTeam.name}</span>
+          {/* TEAM B */}
+          <div className="flex flex-col items-center flex-1 text-center min-w-0">
+            <img src={match.awayTeam.logo} alt="" className="w-10 h-10 object-contain mb-2" />
+            <span className="font-black text-[10px] text-white uppercase tracking-tighter truncate w-full">{match.awayTeam.name}</span>
           </div>
         </div>
+        
+        {match.venue && (
+          <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-center gap-1 text-[8px] font-bold text-slate-600 uppercase">
+            <MapPin size={8} /> {match.venue}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -204,9 +213,9 @@ function MatchCard({ match }: { match: any }) {
 
 function EmptyState({ msg }: { msg: string }) {
   return (
-    <div className="col-span-full py-32 text-center border-2 border-dashed border-white/5 rounded-[40px] bg-slate-900/20">
-      <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-20" />
-      <p className="text-muted-foreground font-black uppercase italic tracking-widest text-xs">{msg}</p>
+    <div className="col-span-full py-20 text-center border-2 border-dashed border-white/5 rounded-2xl bg-slate-900/20">
+      <AlertCircle className="h-8 w-8 mx-auto mb-3 text-slate-700" />
+      <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">{msg}</p>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * @fileOverview Normalizador de dados da ESPN API para o formato interno.
+ * @fileOverview Normalizador de dados da ESPN API para o formato interno estável.
  */
 
 export interface NormalizedESPNMatch {

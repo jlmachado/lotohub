@@ -1,5 +1,5 @@
 /**
- * @fileOverview Contexto global sincronizado via ESPN API.
+ * @fileOverview Contexto global gerenciando dados de futebol ESPN.
  */
 
 'use client';
@@ -10,7 +10,7 @@ import { getCurrentUser, logout as authLogout } from '@/utils/auth';
 import { useRouter } from 'next/navigation';
 import { espnService } from '@/services/espn-api-service';
 import { 
-  ESPN_BRAZILIAN_LEAGUES, 
+  ESPN_LEAGUE_CATALOG, 
   ESPNLeagueConfig 
 } from '@/utils/espn-league-catalog';
 import { 
@@ -78,8 +78,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Versão v12 para maior resiliência na ESPN
-const FOOTBALL_STORAGE_KEY = 'app:football:v12_espn';
+const FOOTBALL_STORAGE_KEY = 'app:football:v15_espn';
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
@@ -95,7 +94,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [footballData, setFootballData] = useState<FootballSyncData>({
     matches: [],
     standings: {},
-    leagues: ESPN_BRAZILIAN_LEAGUES,
+    leagues: ESPN_LEAGUE_CATALOG,
     lastSync: null,
     syncStatus: 'idle'
   });
@@ -123,7 +122,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const parsed = JSON.parse(stored);
         setFootballData(prev => ({
           ...parsed,
-          leagues: parsed.leagues?.length ? parsed.leagues : ESPN_BRAZILIAN_LEAGUES
+          leagues: parsed.leagues?.length ? parsed.leagues : ESPN_LEAGUE_CATALOG
         }));
       } catch (e) {
         console.warn("Falha carregar cache futebol.");
@@ -136,7 +135,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem(FOOTBALL_STORAGE_KEY, JSON.stringify(footballData));
   }, [footballData]);
 
-  // --- LOGICA DE SINCRONIZAÇÃO ESPN ---
+  // --- SINCRONIZAÇÃO ESPN ---
   const updateLeagueConfig = (id: string, config: Partial<ESPNLeagueConfig>) => {
     setFootballData(prev => ({
       ...prev,
@@ -162,14 +161,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const allStandings: Record<string, NormalizedESPNStanding[]> = { ...footballData.standings };
 
       for (const league of activeLeagues) {
-        // 1. Scoreboard (Jogos)
         const scoreboardData = await espnService.getScoreboard(league.slug);
         if (scoreboardData) {
           const normalized = normalizeESPNScoreboard(scoreboardData, league.slug);
           allMatches = [...allMatches, ...normalized];
         }
 
-        // 2. Standings (Tabela) - Apenas se habilitado
         if (league.useStandings) {
           const standingsData = await espnService.getStandings(league.slug);
           if (standingsData) {
@@ -177,8 +174,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           }
         }
         
-        // Pequeno delay entre ligas para não sobrecarregar
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 300));
       }
 
       setFootballData(prev => ({
@@ -214,7 +210,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (navigator.onLine) {
         syncFootballAll();
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearTimeout(bootTimer);
   }, [syncFootballAll]);

@@ -11,8 +11,6 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const league = searchParams.get('league') || 'bra.1';
 
-  console.log(`[ESPN API Route] GET scoreboard ${league}`);
-
   const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard`;
 
   try {
@@ -32,16 +30,13 @@ export async function GET(request: Request) {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.error(`[ESPN API Route] HTTP ${response.status} scoreboard ${league}`);
       return NextResponse.json({ ok: false, message: `ESPN retornou status ${response.status}` }, { status: response.status });
     }
 
     const data = await response.json();
-    console.log(`[ESPN API Route] HTTP 200 scoreboard ${league}`);
     return NextResponse.json({ ok: true, data });
   } catch (error: any) {
     const isTimeout = error.name === 'AbortError';
-    console.error(`[ESPN API Route] Erro scoreboard ${league}:`, error.message);
     return NextResponse.json({ 
       ok: false, 
       message: isTimeout ? 'Tempo esgotado' : 'Falha na conexão com servidor ESPN' 

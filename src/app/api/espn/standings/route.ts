@@ -15,8 +15,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, message: 'League slug é obrigatório' }, { status: 400 });
   }
 
-  console.log(`[ESPN API Route] GET standings ${league}`);
-
   const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/standings`;
 
   try {
@@ -37,7 +35,6 @@ export async function GET(request: Request) {
     }
 
     const data = await response.json();
-    console.log(`[ESPN API Route] HTTP 200 standings ${league}`);
     return NextResponse.json({ ok: true, data });
   } catch (error: any) {
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });

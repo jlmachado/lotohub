@@ -1,12 +1,12 @@
 /**
- * @fileOverview Catálogo manual de ligas brasileiras suportadas pela ESPN API.
+ * @fileOverview Catálogo manual de ligas brasileiras e internacionais suportadas pela ESPN API.
  */
 
 export interface ESPNLeagueConfig {
   id: string;
   name: string;
   slug: string;
-  category: 'NACIONAL' | 'ESTADUAL' | 'COPA' | 'FEMININO';
+  category: 'NACIONAL' | 'ESTADUAL' | 'COPA' | 'FEMININO' | 'INTERNACIONAL';
   priority: number;
   active: boolean;
   useStandings: boolean;
@@ -14,7 +14,7 @@ export interface ESPNLeagueConfig {
   useNews: boolean;
 }
 
-export const ESPN_BRAZILIAN_LEAGUES: ESPNLeagueConfig[] = [
+export const ESPN_LEAGUE_CATALOG: ESPNLeagueConfig[] = [
   {
     id: 'bra-serie-a',
     name: 'Brasileirão Série A',
@@ -109,6 +109,17 @@ export const ESPN_BRAZILIAN_LEAGUES: ESPNLeagueConfig[] = [
     slug: 'bra.mineiro',
     category: 'ESTADUAL',
     priority: 13,
+    active: false,
+    useStandings: true,
+    useTeams: true,
+    useNews: false
+  },
+  {
+    id: 'bra-feminino',
+    name: 'Brasileirão Feminino',
+    slug: 'bra.women.1',
+    category: 'FEMININO',
+    priority: 20,
     active: false,
     useStandings: true,
     useTeams: true,
