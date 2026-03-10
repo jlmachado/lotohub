@@ -1,5 +1,6 @@
 /**
  * @fileOverview Contexto global refinado para Sportsbook Profissional.
+ * Gerencia autenticação, saldo, dados de futebol e estados de múltiplos módulos.
  */
 
 'use client';
@@ -58,6 +59,7 @@ interface AppContextType {
   bonus: number;
   terminal: string;
   logout: () => void;
+  refreshUser: () => void;
 
   // Sportsbook Frontend
   footballData: FootballSyncData;
@@ -70,7 +72,7 @@ interface AppContextType {
   syncFootballAll: (manual?: boolean) => Promise<void>;
   updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
 
-  // CMS & Outros (Restauração)
+  // CMS & Outros
   banners: any[];
   popups: any[];
   news: any[];
@@ -82,7 +84,7 @@ interface AppContextType {
   soundEnabled: boolean;
   toggleSound: () => void;
   
-  // Stubs preservados
+  // Módulos e Históricos
   bingoSettings: any;
   bingoDraws: any[];
   bingoTickets: any[];
@@ -131,9 +133,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     syncStatus: 'idle'
   });
 
-  const [banners, setBanners] = useState([]);
-  const [popups, setPopups] = useState([]);
-  const [news, setNews] = useState([]);
+  const [banners, setBanners] = useState<any[]>([]);
+  const [popups, setPopups] = useState<any[]>([]);
+  const [news, setNews] = useState<any[]>([]);
   const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState(null);
   const [celebrationTrigger, setCelebrationTrigger] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -142,15 +144,38 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [userCommissions, setUserCommissions] = useState<any[]>([]);
   const [promoterCredits, setPromoterCredits] = useState<any[]>([]);
 
-  useEffect(() => {
+  // Função para atualizar os dados do usuário a partir da sessão atual
+  const refreshUser = useCallback(() => {
     const currentUser = getCurrentUser();
     if (currentUser) {
       setUser(currentUser);
       setBalance(currentUser.saldo || 0);
       setBonus(currentUser.bonus || 0);
       setTerminal(currentUser.terminal || '');
+    } else {
+      setUser(null);
+      setBalance(0);
+      setBonus(0);
+      setTerminal('');
     }
+  }, []);
 
+  useEffect(() => {
+    // Sincronização inicial
+    refreshUser();
+
+    // Listeners para mudanças de autenticação
+    const handleAuthChange = () => {
+      console.log("[AppContext] Detectada mudança de autenticação");
+      refreshUser();
+    };
+
+    window.addEventListener('auth-change', handleAuthChange);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'app:session:v1') handleAuthChange();
+    });
+
+    // Carregamento de dados persistidos
     const savedLeagues = localStorage.getItem('app:football_leagues:v1');
     if (savedLeagues) setFootballData(prev => ({ ...prev, leagues: JSON.parse(savedLeagues) }));
 
@@ -173,8 +198,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (savedMovements) setCambistaMovements(JSON.parse(savedMovements) || []);
 
     syncFootballAll();
+    
+    // Finaliza carregamento inicial
     setIsLoading(false);
-  }, []);
+
+    return () => {
+      window.removeEventListener('auth-change', handleAuthChange);
+    };
+  }, [refreshUser]);
 
   const syncFootballAll = useCallback(async (manual = false) => {
     if (syncInProgress.current) return;
@@ -313,13 +344,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AppContext.Provider value={{
-      user, isLoading, balance, bonus, terminal, logout,
+      user, isLoading, balance, bonus, terminal, logout, refreshUser,
       footballData, footballBets, betSlip, addBetToSlip, removeBetFromSlip, clearBetSlip, placeFootballBet,
       syncFootballAll, updateLeagueConfig,
       banners, popups, news, liveMiniPlayerConfig, isFullscreen, toggleFullscreen,
       celebrationTrigger, clearCelebration, soundEnabled, toggleSound,
       
-      // Stubs
+      // Módulos e stubs
       bingoSettings: null, bingoDraws: [], bingoTickets: [], snookerChannels: [],
       snookerBets: [], snookerPresence: {}, snookerScoreboards: {}, snookerChatMessages: [],
       snookerBetsFeed: [], snookerActivityFeed: [], snookerFinancialHistory: [], snookerCashOutLog: [],

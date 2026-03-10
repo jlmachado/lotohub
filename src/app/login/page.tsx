@@ -12,10 +12,13 @@ import { login, getSession } from '@/utils/auth';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn, ArrowLeft, Loader2 } from 'lucide-react';
 import { getBancas, setBancaContextBanca } from '@/utils/bancasStorage';
+import { useAppContext } from '@/context/AppContext';
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { refreshUser } = useAppContext();
+  
   const [terminal, setTerminal] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,6 +29,10 @@ export default function LoginPage() {
     if (session) {
       if (['ADMIN', 'SUPER_ADMIN'].includes(session.tipoUsuario)) {
         router.push('/admin');
+      } else if (session.tipoUsuario === 'CAMBISTA') {
+        router.push('/cambista/caixa');
+      } else if (session.tipoUsuario === 'PROMOTOR') {
+        router.push('/promotor/comissao');
       } else {
         router.push('/');
       }
@@ -46,11 +53,9 @@ export default function LoginPage() {
       const result = login(terminal, password);
 
       if (result.success) {
-        toast({ title: 'Acesso autorizado!', description: result.message });
-        
         const user = result.user;
 
-        // AUTO-SET BANCA CONTEXT
+        // 1. AUTO-SET BANCA CONTEXT
         if (user?.bancaId) {
           const bancas = getBancas();
           const targetBanca = bancas.find(b => b.id === user.bancaId);
@@ -59,6 +64,12 @@ export default function LoginPage() {
           }
         }
 
+        // 2. Notificar AppContext para atualizar o estado do usuário imediatamente
+        refreshUser();
+
+        toast({ title: 'Acesso autorizado!', description: `Bem-vindo, ${user?.nome}` });
+
+        // 3. Redirect com base no perfil
         if (user?.tipoUsuario === 'ADMIN' || user?.tipoUsuario === 'SUPER_ADMIN') {
           router.push('/admin');
         } else if (user?.tipoUsuario === 'CAMBISTA') {
@@ -96,7 +107,7 @@ export default function LoginPage() {
               <Label htmlFor="terminal" className="text-white/70 font-bold uppercase text-[10px] tracking-widest ml-1">Terminal ou Usuário</Label>
               <Input 
                 id="terminal" 
-                placeholder="Ex: 10001" 
+                placeholder="Ex: 10001 ou email" 
                 value={terminal} 
                 onChange={(e) => setTerminal(e.target.value)}
                 className="bg-black/40 border-white/10 h-12 text-white text-lg focus:border-primary/50 transition-all rounded-xl"

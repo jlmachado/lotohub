@@ -204,6 +204,7 @@ export const ensureDefaultUsers = () => {
   ];
 
   defaults.forEach(def => {
+    // Verifica por email ou terminal para evitar duplicatas de perfis diferentes
     if (!users.some(u => u.email === def.email || u.terminal === def.terminal)) {
       const type = def.tipoUsuario as UserType;
       const newUser: User = {
