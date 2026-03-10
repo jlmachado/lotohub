@@ -1,31 +1,30 @@
 /**
- * @fileOverview Contexto global com bootstrap automático e sincronização robusta.
+ * @fileOverview Contexto global sincronizado via ESPN API.
  */
 
 'use client';
 
 import { useToast } from '@/hooks/use-toast';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
-import { getCurrentUser, logout } from '@/utils/auth';
+import { getCurrentUser, logout as authLogout } from '@/utils/auth';
 import { useRouter } from 'next/navigation';
+import { espnService } from '@/services/espn-api-service';
 import { 
-  NormalizedMatch, 
-  NormalizedStanding, 
-  NormalizedLeague,
-  fetchBrazilianLeagues,
-  syncFootballMatches as syncMatchesAction,
-  syncFootballStandings as syncStandingsAction,
-  getSPDate
-} from '@/services/football-sync-service';
+  ESPN_BRAZILIAN_LEAGUES, 
+  ESPNLeagueConfig 
+} from '@/utils/espn-league-catalog';
+import { 
+  normalizeESPNScoreboard, 
+  normalizeESPNStandings, 
+  NormalizedESPNMatch, 
+  NormalizedESPNStanding 
+} from '@/utils/espn-normalizer';
 
 export interface FootballSyncData {
-  todayMatches: NormalizedMatch[];
-  nextMatches: NormalizedMatch[];
-  pastMatches: NormalizedMatch[];
-  standings: NormalizedStanding[];
-  leagues: NormalizedLeague[];
+  matches: NormalizedESPNMatch[];
+  standings: Record<string, NormalizedESPNStanding[]>;
+  leagues: ESPNLeagueConfig[];
   lastSync: string | null;
-  lastSuccessfulSync: string | null;
   syncStatus: 'idle' | 'syncing' | 'error' | 'partial';
 }
 
@@ -40,7 +39,7 @@ interface AppContextType {
   
   footballData: FootballSyncData;
   syncFootballAll: (manual?: boolean) => Promise<void>;
-  updateFootballLeagues: (leagues: NormalizedLeague[]) => void;
+  updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
   
   news: any[];
   banners: any[];
@@ -79,7 +78,8 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const FOOTBALL_STORAGE_KEY = 'app:football:v7';
+// Versão v11 para ESPN
+const FOOTBALL_STORAGE_KEY = 'app:football:v11_espn';
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
@@ -93,13 +93,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   const [footballData, setFootballData] = useState<FootballSyncData>({
-    todayMatches: [],
-    nextMatches: [],
-    pastMatches: [],
-    standings: [],
-    leagues: [],
+    matches: [],
+    standings: {},
+    leagues: ESPN_BRAZILIAN_LEAGUES,
     lastSync: null,
-    lastSuccessfulSync: null,
     syncStatus: 'idle'
   });
 
@@ -123,7 +120,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const stored = localStorage.getItem(FOOTBALL_STORAGE_KEY);
     if (stored) {
       try {
-        setFootballData(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        setFootballData(prev => ({
+          ...parsed,
+          leagues: parsed.leagues?.length ? parsed.leagues : ESPN_BRAZILIAN_LEAGUES
+        }));
       } catch (e) {
         console.warn("Falha carregar cache futebol.");
       }
@@ -135,9 +136,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem(FOOTBALL_STORAGE_KEY, JSON.stringify(footballData));
   }, [footballData]);
 
-  // --- SINCRONIZAÇÃO ---
-  const updateFootballLeagues = (leagues: NormalizedLeague[]) => {
-    setFootballData(prev => ({ ...prev, leagues }));
+  // --- LOGICA DE SINCRONIZAÇÃO ESPN ---
+  const updateLeagueConfig = (id: string, config: Partial<ESPNLeagueConfig>) => {
+    setFootballData(prev => ({
+      ...prev,
+      leagues: prev.leagues.map(l => l.id === id ? { ...l, ...config } : l)
+    }));
   };
 
   const syncFootballAll = useCallback(async (manual = false) => {
@@ -145,50 +149,56 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     syncInProgress.current = true;
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
 
+    const activeLeagues = footballData.leagues.filter(l => l.active);
+    
+    if (activeLeagues.length === 0) {
+      setFootballData(prev => ({ ...prev, syncStatus: 'idle' }));
+      syncInProgress.current = false;
+      return;
+    }
+
     try {
-      // 1. Garantir que temos ligas se estiver vazio
-      let currentLeagues = footballData.leagues;
-      if (currentLeagues.length === 0) {
-        currentLeagues = await fetchBrazilianLeagues();
+      let allMatches: NormalizedESPNMatch[] = [];
+      const allStandings: Record<string, NormalizedESPNStanding[]> = { ...footballData.standings };
+
+      for (const league of activeLeagues) {
+        // 1. Scoreboard (Jogos)
+        const scoreboardData = await espnService.getScoreboard(league.slug);
+        if (scoreboardData) {
+          const normalized = normalizeESPNScoreboard(scoreboardData, league.slug);
+          allMatches = [...allMatches, ...normalized];
+        }
+
+        // 2. Standings (Tabela) - Apenas se habilitado
+        if (league.useStandings) {
+          const standingsData = await espnService.getStandings(league.slug);
+          if (standingsData) {
+            allStandings[league.slug] = normalizeESPNStandings(standingsData);
+          }
+        }
+        
+        // Pequeno delay entre ligas para não sobrecarregar
+        await new Promise(r => setTimeout(r, 200));
       }
-
-      const activeIds = currentLeagues.filter(l => l.importar).map(l => l.id);
-      
-      if (activeIds.length === 0) {
-        setFootballData(prev => ({ ...prev, leagues: currentLeagues, syncStatus: 'idle' }));
-        syncInProgress.current = false;
-        return;
-      }
-
-      const [matches, standings] = await Promise.all([
-        syncMatchesAction(activeIds),
-        syncStandingsAction(activeIds)
-      ]);
-
-      const hasNewData = matches.today.length > 0 || matches.next.length > 0 || standings.length > 0;
 
       setFootballData(prev => ({
         ...prev,
-        leagues: currentLeagues,
-        todayMatches: matches.today.length > 0 ? matches.today : prev.todayMatches,
-        nextMatches: matches.next.length > 0 ? matches.next : prev.nextMatches,
-        pastMatches: matches.past.length > 0 ? matches.past : prev.pastMatches,
-        standings: standings.length > 0 ? standings : prev.standings,
+        matches: allMatches.length ? allMatches : prev.matches,
+        standings: allStandings,
         lastSync: new Date().toISOString(),
-        lastSuccessfulSync: hasNewData ? new Date().toISOString() : prev.lastSuccessfulSync,
-        syncStatus: hasNewData ? 'idle' : 'partial'
+        syncStatus: 'idle'
       }));
 
-      if (manual) toast({ title: hasNewData ? 'Futebol Sincronizado!' : 'Sem novos dados no momento' });
+      if (manual) toast({ title: 'Futebol ESPN Atualizado!' });
     } catch (e: any) {
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
-      if (manual) toast({ variant: 'destructive', title: 'Erro na Sincronização', description: e.message });
+      if (manual) toast({ variant: 'destructive', title: 'Erro na Sincronização ESPN', description: e.message });
     } finally {
       syncInProgress.current = false;
     }
-  }, [footballData.leagues, toast]);
+  }, [footballData.leagues, footballData.standings, toast]);
 
-  // --- BOOTSTRAP E AUTO SYNC ---
+  // --- BOOTSTRAP ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
@@ -200,41 +210,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setTerminal(currentUser.terminal || '');
     }
 
-    const runAutoSync = () => {
-      if (syncInProgress.current || !window.navigator.onLine) return;
-      
-      const spHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }).format(new Date()), 10);
-      const isWorkHours = spHour >= 8 && spHour <= 23;
-      const interval = isWorkHours ? 15 : 60;
-
-      const last = footballData.lastSync ? new Date(footballData.lastSync) : new Date(0);
-      const diffMinutes = (Date.now() - last.getTime()) / (1000 * 60);
-
-      if (diffMinutes >= interval) {
-        syncFootballAll();
-      }
-    };
-
-    // Bootstrap inicial após 3s (para garantir que o Next.js registrou as rotas de API)
     const bootTimer = setTimeout(() => {
-      if (footballData.leagues.length === 0) syncFootballAll();
-      else runAutoSync();
-    }, 3000);
+      syncFootballAll();
+    }, 2000);
 
-    const interval = setInterval(runAutoSync, 300000); // Tenta a cada 5 min
-
-    return () => {
-      clearTimeout(bootTimer);
-      clearInterval(interval);
-    };
-  }, [syncFootballAll, footballData.lastSync, footballData.leagues.length]);
+    return () => clearTimeout(bootTimer);
+  }, []);
 
   const value: AppContextType = {
-    user, balance, bonus, terminal, logout: () => { logout(); setUser(null); router.push('/'); },
+    user, balance, bonus, terminal, logout: () => { authLogout(); setUser(null); router.push('/'); },
     apostas,
     footballData, 
     syncFootballAll, 
-    updateFootballLeagues,
+    updateLeagueConfig,
     news, banners, popups, jdbLoterias, postedResults, genericLotteryConfigs,
     handleFinalizarAposta: (aposta) => { const id = `p-${Date.now()}`; setApostas([aposta, ...apostas]); return id; },
     activeBancaId: 'default',
