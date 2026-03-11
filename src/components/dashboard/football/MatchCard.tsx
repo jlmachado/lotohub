@@ -1,5 +1,6 @@
 /**
  * @fileOverview Card de partida refinado para Sportsbook.
+ * Exibe odds geradas pelo motor interno do LotoHub.
  */
 
 'use client';
@@ -8,12 +9,11 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Radio, Calendar, Info, Sparkles } from 'lucide-react';
+import { Radio, Calendar, Info, Sparkles, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MatchModel } from '@/services/match-mapper-service';
 
 interface MatchCardProps {
-  match: MatchModel;
+  match: any;
   onSelectOdd?: (selection: string, odd: number) => void;
   isSelected?: (selection: string) => boolean;
   disabled?: boolean;
@@ -37,7 +37,7 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           {match.isLive ? (
             <>
               <Radio size={10} className="text-red-500 animate-pulse" />
-              <span className="text-[8px] font-black uppercase text-red-500">AO VIVO • {match.minute}'</span>
+              <span className="text-[8px] font-black uppercase text-red-500">AO VIVO • {match.minute}</span>
             </>
           ) : (
             <>
@@ -47,11 +47,9 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           )}
         </div>
         <div className="flex items-center gap-2">
-          {match.oddsSource === 'AUTO' && !match.isFinished && (
-            <Badge variant="outline" className="border-amber-500/30 text-amber-500 text-[7px] font-black h-4 px-1 gap-0.5 bg-amber-500/5">
-              <Sparkles size={8} /> AUTO ODDS
-            </Badge>
-          )}
+          <Badge variant="outline" className="border-primary/30 text-primary text-[7px] font-black h-4 px-1 gap-0.5 bg-primary/5">
+            <TrendingUp size={8} /> INTERNAL ODDS
+          </Badge>
           <Badge variant="outline" className="border-white/10 text-slate-500 text-[7px] uppercase font-black h-4 max-w-[80px] truncate">
             {match.league}
           </Badge>
@@ -86,7 +84,7 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           </div>
         </div>
 
-        {/* Painel de Odds */}
+        {/* Painel de Odds (Mercado 1X2 Principal) */}
         {!disabled && match.marketStatus === 'OPEN' ? (
           <div className="grid grid-cols-3 gap-1.5">
             <OddButton 
@@ -122,12 +120,6 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
 }
 
 function OddButton({ label, odd, onClick, active }: any) {
-  if (!odd || odd <= 1) return (
-    <div className="flex flex-col h-12 bg-black/40 border border-white/5 rounded-lg items-center justify-center opacity-30 grayscale">
-      <span className="text-[10px] font-bold text-slate-500">-</span>
-    </div>
-  );
-
   return (
     <Button 
       variant="outline"

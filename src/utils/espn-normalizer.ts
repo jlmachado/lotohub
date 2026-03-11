@@ -1,5 +1,6 @@
 /**
  * @fileOverview Normalizador de dados da ESPN API para o formato interno estável.
+ * Processa Scoreboard e Standings.
  */
 
 export interface NormalizedESPNMatch {

@@ -1,40 +1,44 @@
 /**
  * @fileOverview Dashboard de Futebol Profissional.
- * Organizada como um Sportsbook: Ao Vivo, Próximos e Outros.
+ * Exibe partidas da ESPN com odds calculadas internamente.
  */
 
 'use client';
 
 import { useAppContext } from '@/context/AppContext';
 import { Header } from '@/components/header';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Goal, Radio, Trophy, Calendar, RefreshCw, Info } from 'lucide-react';
-import { useMemo } from 'react';
+import { Goal, RefreshCw, Info, Calendar } from 'lucide-react';
+import { useMemo, useEffect } from 'react';
 import { BetSlip } from '@/components/betting/BetSlip';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { MatchModel } from '@/services/match-mapper-service';
 import { MatchCard } from '@/components/dashboard/football/MatchCard';
 import { FootballDashboardStats } from '@/components/dashboard/football/FootballDashboardStats';
 
 export default function FootballDashboard() {
   const { footballData, syncFootballAll, addBetToSlip, betSlip } = useAppContext();
 
-  // Categorização das Partidas
+  // Categorização das Partidas (UnifiedMatches já contém as odds geradas)
   const liveMatches = useMemo(() => footballData.unifiedMatches.filter(m => m.isLive), [footballData.unifiedMatches]);
-  const bettableUpcoming = useMemo(() => footballData.unifiedMatches.filter(m => !m.isLive && !m.isFinished && m.hasOdds), [footballData.unifiedMatches]);
-  const otherMatches = useMemo(() => footballData.unifiedMatches.filter(m => !m.isLive && !m.isFinished && !m.hasOdds), [footballData.unifiedMatches]);
+  const upcomingMatches = useMemo(() => footballData.unifiedMatches.filter(m => !m.isLive && !m.isFinished), [footballData.unifiedMatches]);
 
   const stats = useMemo(() => ({
     live: liveMatches.length,
-    bettable: bettableUpcoming.length,
+    bettable: footballData.unifiedMatches.filter(m => m.marketStatus === 'OPEN').length,
     total: footballData.unifiedMatches.length,
     leagues: footballData.leagues.filter(l => l.active).length,
-    noOdds: otherMatches.length
-  }), [liveMatches, bettableUpcoming, otherMatches, footballData]);
+    noOdds: footballData.unifiedMatches.filter(m => !m.hasOdds).length
+  }), [liveMatches, footballData]);
 
-  const handleSelectOdd = (match: MatchModel, selection: string, odd: number) => {
+  // Sincronização automática inicial se estiver vazio
+  useEffect(() => {
+    if (footballData.unifiedMatches.length === 0 && footballData.syncStatus === 'idle') {
+      syncFootballAll();
+    }
+  }, [footballData.unifiedMatches.length, footballData.syncStatus, syncFootballAll]);
+
+  const handleSelectOdd = (match: any, selection: string, odd: number) => {
     addBetToSlip({
       id: `${match.id}-1X2-${selection}`,
       matchId: match.id,
@@ -57,10 +61,10 @@ export default function FootballDashboard() {
       <main className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">Sportsbook Futebol</h1>
+            <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">Futebol LotoHub</h1>
             <div className="flex items-center gap-3 mt-1">
-              <Badge className="bg-primary text-black font-black uppercase italic text-[10px] h-5">Profissional</Badge>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Integração ESPN & LiveScore</p>
+              <Badge className="bg-primary text-black font-black uppercase italic text-[10px] h-5">Sistema Interno</Badge>
+              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Odds Dinâmicas baseadas na ESPN</p>
             </div>
           </div>
           <Button 
@@ -70,7 +74,7 @@ export default function FootballDashboard() {
             className="border-white/10 bg-white/5 text-[10px] font-black uppercase italic h-11 px-6 rounded-xl lux-shine"
           >
             {footballData.syncStatus === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Sincronizar Mercado
+            Sincronizar Odds
           </Button>
         </div>
 
@@ -81,7 +85,7 @@ export default function FootballDashboard() {
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-              <h2 className="text-xl font-black uppercase italic tracking-tight text-white">Partidas Ao Vivo</h2>
+              <h2 className="text-xl font-black uppercase italic tracking-tight text-white">Ao Vivo</h2>
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {liveMatches.map(match => (
@@ -96,19 +100,19 @@ export default function FootballDashboard() {
           </section>
         )}
 
-        {/* SEÇÃO PRÓXIMOS JOGOS COM ODDS */}
+        {/* SEÇÃO PRÓXIMOS JOGOS */}
         <section className="space-y-4">
-          <div className="flex items-center gap-2 text-green-500">
-            <Goal size={18} />
-            <h2 className="text-xl font-black uppercase italic tracking-tight text-white">Próximas Partidas (Apostáveis)</h2>
+          <div className="flex items-center gap-2 text-primary">
+            <Calendar size={18} />
+            <h2 className="text-xl font-black uppercase italic tracking-tight text-white">Próximas Partidas</h2>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {bettableUpcoming.length === 0 ? (
+            {upcomingMatches.length === 0 && footballData.syncStatus !== 'syncing' ? (
               <Card className="col-span-full bg-slate-900/50 border-white/5 p-12 text-center">
-                <p className="text-muted-foreground italic font-medium">Nenhuma partida com odds disponíveis para hoje.</p>
+                <p className="text-muted-foreground italic font-medium">Nenhuma partida disponível para hoje. Tente sincronizar novamente.</p>
               </Card>
             ) : (
-              bettableUpcoming.map(match => (
+              upcomingMatches.map(match => (
                 <MatchCard 
                   key={match.id} 
                   match={match} 
@@ -119,21 +123,6 @@ export default function FootballDashboard() {
             )}
           </div>
         </section>
-
-        {/* OUTRAS PARTIDAS (SEM ODDS) */}
-        {otherMatches.length > 0 && (
-          <section className="space-y-4 pt-8">
-            <div className="flex items-center gap-2 opacity-50">
-              <Info size={18} className="text-slate-400" />
-              <h2 className="text-lg font-black uppercase italic tracking-tight text-slate-400">Outros Eventos (Sem Odds)</h2>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition-all">
-              {otherMatches.map(match => (
-                <MatchCard key={match.id} match={match} disabled />
-              ))}
-            </div>
-          </section>
-        )}
       </main>
 
       <BetSlip />

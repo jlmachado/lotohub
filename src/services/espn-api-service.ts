@@ -1,5 +1,6 @@
 /**
  * @fileOverview Serviço de integração com o Proxy Interno da ESPN.
+ * Suporta Scoreboard, Standings e Summary.
  */
 
 class ESPNApiService {
@@ -24,18 +25,31 @@ class ESPNApiService {
     }
   }
 
+  /**
+   * Busca o placar e agenda de jogos de uma liga.
+   */
   async getScoreboard(league: string) {
     return this.request('scoreboard', { league });
   }
 
+  /**
+   * Busca a classificação (Standings) de uma liga.
+   * Vital para o motor de precificação interno.
+   */
   async getStandings(league: string) {
     return this.request('standings', { league });
   }
 
+  /**
+   * Busca os times de uma liga.
+   */
   async getTeams(league: string) {
     return this.request('teams', { league });
   }
 
+  /**
+   * Busca detalhes de um evento específico.
+   */
   async getSummary(eventId: string, league: string = 'bra.1') {
     return this.request('summary', { event: eventId, league });
   }
