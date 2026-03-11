@@ -1,6 +1,5 @@
 /**
- * @fileOverview Serviço de integração com a Live Score API exclusivo via Proxy.
- * Protege as chaves de API nunca permitindo chamadas diretas do browser.
+ * @fileOverview Serviço de integração com a Live Score API via Proxy.
  */
 
 import { LiveScoreMatch, normalizeLiveScoreMatch } from '@/utils/livescore-normalizer';
@@ -17,14 +16,13 @@ class LiveScoreApiService {
       const response = await fetch(url.toString(), { cache: 'no-store' });
       
       if (!response.ok) {
-        console.warn(`[LiveScore API Error] ${resource}: ${response.status}`);
         return null;
       }
 
       const result = await response.json();
       return result.ok ? result.data : null;
     } catch (e) {
-      console.error(`[LiveScore API Error] Falha técnica na requisição ${resource}:`, e);
+      console.error(`[LiveScore API Error] Falha na requisição ${resource}:`, e);
       return null;
     }
   }
@@ -36,10 +34,8 @@ class LiveScoreApiService {
     return matches.map(normalizeLiveScoreMatch);
   }
 
-  async getFixtures(date?: string): Promise<LiveScoreMatch[]> {
-    const params: any = {};
-    if (date) params.date = date;
-    const data = await this.request('scores/history.json', params);
+  async getFixturesByCompetition(competitionId: string): Promise<LiveScoreMatch[]> {
+    const data = await this.request('scores/history.json', { competition_id: competitionId });
     if (!data?.match) return [];
     const matches = Array.isArray(data.match) ? data.match : [data.match];
     return matches.map(normalizeLiveScoreMatch);
