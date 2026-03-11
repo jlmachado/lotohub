@@ -26,7 +26,7 @@ interface ApostaItem {
 
 export default function SeninhaPage() {
   const [step, setStep] = useState(1);
-  const { handleFinalizarAposta, genericLotteryConfigs } = useAppContext();
+  const { handleFinalizarAposta, genericLotteryConfigs = [] } = useAppContext();
   const { toast } = useToast();
 
   const [apostaData, setApostaData] = useState<'hoje' | 'amanha' | undefined>();
@@ -41,7 +41,7 @@ export default function SeninhaPage() {
   const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
 
   // Busca multiplicadores do contexto (Admin)
-  const config = useMemo(() => genericLotteryConfigs.find(c => c.id === 'seninha'), [genericLotteryConfigs]);
+  const config = useMemo(() => (genericLotteryConfigs || []).find(c => c.id === 'seninha'), [genericLotteryConfigs]);
   const modalidades = useMemo(() => config?.multiplicadores.map(m => ({
     id: m.modalidade.toLowerCase().replace(/\s+/g, '-'),
     nome: m.modalidade,
