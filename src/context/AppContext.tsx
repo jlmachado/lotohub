@@ -1,36 +1,47 @@
 /**
  * @fileOverview AppContext Refatorado - Orquestrador Central de Futebol e Dados.
- * Gerencia sincronização ESPN, motor de odds interno e estado global.
  */
 
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser, logout as authLogout } from '@/utils/auth';
 import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
-import { INITIAL_GENERIC_LOTTERIES, INITIAL_JDB_LOTERIAS } from '@/constants/lottery-configs';
 import { generatePoule } from '@/utils/generatePoule';
 import { BetService } from '@/services/bet-service';
 import { LedgerService, LedgerEntry } from '@/services/ledger-service';
 import { APP_EVENTS, notifyDataChange } from '@/services/event-bus';
-import { getActiveContext } from '@/utils/bancaContext';
 import { espnService } from '@/services/espn-api-service';
-import { MatchMapperService, MatchModel } from '@/services/match-mapper-service';
+import { MatchModel } from '@/services/match-mapper-service';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
-import { normalizeESPNScoreboard, normalizeESPNStandings, NormalizedESPNStanding } from '@/utils/espn-normalizer';
+import { normalizeESPNScoreboard, normalizeESPNStandings } from '@/utils/espn-normalizer';
 import { FootballOddsEngine } from '@/services/football-odds-engine';
-import { FootballMarketsEngine, BettingMarket } from '@/services/football-markets-engine';
+import { FootballMarketsEngine } from '@/services/football-markets-engine';
+import { FootballLiveEngine } from '@/services/football-live-engine';
+import { FootballSettlementService } from '@/services/football-settlement-service';
 
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; }
 export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; }
 export interface NewsMessage { id: string; text: string; order: number; active: boolean; }
 
+export interface FootballBet {
+  id: string;
+  userId: string;
+  bancaId: string;
+  terminal: string;
+  stake: number;
+  potentialWin: number;
+  items: any[];
+  status: 'OPEN' | 'WON' | 'LOST' | 'CANCELLED';
+  createdAt: string;
+  isDescarga?: boolean;
+}
+
 export interface FootballData {
   leagues: ESPNLeagueConfig[];
-  matches: any[]; // Raw ESPN Matches
-  standings: Record<string, NormalizedESPNStanding[]>; // Classificações por Liga
+  matches: any[];
   unifiedMatches: MatchModel[];
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
   lastSyncAt: string | null;
@@ -47,6 +58,7 @@ interface AppContextType {
   popups: Popup[];
   news: NewsMessage[];
   footballData: FootballData;
+  footballBets: FootballBet[];
   betSlip: any[];
   
   refreshData: () => void;
@@ -73,11 +85,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [popups, setPopups] = useState<Popup[]>([]);
   const [news, setNews] = useState<NewsMessage[]>([]);
   const [betSlip, setBetSlip] = useState<any[]>([]);
+  const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
   
   const [footballData, setFootballData] = useState<FootballData>({
     leagues: ESPN_LEAGUE_CATALOG,
     matches: [],
-    standings: {},
     unifiedMatches: [],
     syncStatus: 'idle',
     lastSyncAt: null
@@ -85,27 +97,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const refreshData = useCallback(() => {
     if (typeof window === 'undefined') return;
-
     const currentUser = getCurrentUser();
     setUser(currentUser);
     setLedger(LedgerService.getEntries());
     setBanners(getStorageItem('app:banners:v1', []));
     setPopups(getStorageItem('app:popups:v1', []));
     setNews(getStorageItem('news_messages', []));
+    setFootballBets(getStorageItem('app:football_bets:v1', []));
     
-    // Football Reidration
     const savedLeagues = getStorageItem('app:football:leagues:v1', ESPN_LEAGUE_CATALOG);
     const savedUnified = getStorageItem('app:football:unified:v1', []);
-    const savedStandings = getStorageItem('app:football:standings:v1', {});
-    
     setFootballData(prev => ({
       ...prev,
       leagues: savedLeagues,
       unifiedMatches: savedUnified,
-      standings: savedStandings,
       lastSyncAt: getStorageItem('app:football:last_sync:v1', null)
     }));
-
     setIsLoading(false);
   }, []);
 
@@ -116,67 +123,91 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => window.removeEventListener(APP_EVENTS.DATA_CHANGED, refreshData);
   }, [refreshData]);
 
-  const updateLeagueConfig = (id: string, config: Partial<ESPNLeagueConfig>) => {
-    setFootballData(prev => {
-      const newLeagues = prev.leagues.map(l => l.id === id ? { ...l, ...config } : l);
-      setStorageItem('app:football:leagues:v1', newLeagues);
-      return { ...prev, leagues: newLeagues };
-    });
-    notifyDataChange();
-  };
+  // LIVE POLLER EFFECT
+  useEffect(() => {
+    if (!mounted || footballData.syncStatus === 'syncing') return;
 
-  /**
-   * Sincronização Global ESPN com Precificação Interna.
-   */
+    const poller = setInterval(async () => {
+      const liveMatches = footballData.unifiedMatches.filter(m => m.isLive);
+      if (liveMatches.length === 0) return;
+
+      console.log(`[Live Poller] Atualizando ${liveMatches.length} jogos...`);
+      const activeLeagues = [...new Set(liveMatches.map(m => m.leagueSlug))];
+      
+      let updatedUnified = [...footballData.unifiedMatches];
+      let hasChanges = false;
+
+      for (const slug of activeLeagues) {
+        const scoreboard = await espnService.getScoreboard(slug);
+        if (!scoreboard?.events) continue;
+
+        const normalized = normalizeESPNScoreboard(scoreboard, slug);
+        
+        normalized.forEach(newData => {
+          const idx = updatedUnified.findIndex(m => m.id === newData.id);
+          if (idx !== -1) {
+            const oldMatch = updatedUnified[idx];
+            const updatedMatch = FootballLiveEngine.processUpdate(oldMatch, newData);
+            
+            // Reabertura Automática após suspensão
+            if (updatedMatch.marketStatus === 'SUSPENDED') {
+              setTimeout(() => {
+                setFootballData(prev => ({
+                  ...prev,
+                  unifiedMatches: prev.unifiedMatches.map(m => m.id === updatedMatch.id ? { ...m, marketStatus: 'OPEN' } : m)
+                }));
+              }, 20000);
+            }
+
+            updatedUnified[idx] = updatedMatch;
+            hasChanges = true;
+          }
+        });
+      }
+
+      if (hasChanges) {
+        setFootballData(prev => ({ ...prev, unifiedMatches: updatedUnified }));
+        setStorageItem('app:football:unified:v1', updatedUnified);
+        
+        // Auto-Settlement Check
+        const finishedMatches = updatedUnified.filter(m => m.isFinished);
+        if (finishedMatches.length > 0) {
+          const currentBets = getStorageItem('app:football_bets:v1', []);
+          const settledBets = currentBets.map(b => FootballSettlementService.settleBet(b, finishedMatches));
+          setStorageItem('app:football_bets:v1', settledBets);
+          setFootballBets(settledBets);
+        }
+      }
+    }, 30000); // 30 segundos
+
+    return () => clearInterval(poller);
+  }, [mounted, footballData.unifiedMatches, footballData.syncStatus]);
+
   const syncFootballAll = async (force: boolean = false) => {
     if (footballData.syncStatus === 'syncing') return;
-
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
     
     try {
       const activeLeagues = footballData.leagues.filter(l => l.active);
       let allMatches: any[] = [];
-      const leagueStandings: Record<string, NormalizedESPNStanding[]> = {};
+      const leagueStandings: Record<string, any[]> = {};
 
-      // 1. Fetch ESPN Standings & Scoreboards
       for (const league of activeLeagues) {
-        // Classificação (Vital para as odds)
-        const standingsData = await espnService.getStandings(league.slug);
-        if (standingsData) {
-          leagueStandings[league.slug] = normalizeESPNStandings(standingsData);
-        }
+        const [standingsData, scoreboardData] = await Promise.all([
+          espnService.getStandings(league.slug),
+          espnService.getScoreboard(league.slug)
+        ]);
 
-        // Jogos
-        const scoreboardData = await espnService.getScoreboard(league.slug);
-        if (scoreboardData) {
-          const normalized = normalizeESPNScoreboard(scoreboardData, league.slug);
-          allMatches = [...allMatches, ...normalized];
-        }
+        if (standingsData) leagueStandings[league.slug] = normalizeESPNStandings(standingsData);
+        if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)];
       }
 
-      // 2. Mapeamento e Precificação Interna
       const unified: MatchModel[] = allMatches.map(match => {
-        const standings = leagueStandings[match.leagueSlug] || [];
-        
-        // Gerar Probabilidades via Odds Engine
         const probs = FootballOddsEngine.calculateMatchProbabilities(
-          match.homeTeam.id,
-          match.awayTeam.id,
-          standings
+          match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || []
         );
-
-        // Gerar Mercados via Markets Engine
         const internalMarkets = FootballMarketsEngine.generateAllMarkets(probs);
-        
-        // Extrair odd 1X2 para exibição rápida no card
         const resultMarket = internalMarkets.find(m => m.id === '1X2');
-        const odds = {
-          home: resultMarket?.selections.find(s => s.id === 'home')?.odd || 2.0,
-          draw: resultMarket?.selections.find(s => s.id === 'draw')?.odd || 3.2,
-          away: resultMarket?.selections.find(s => s.id === 'away')?.odd || 2.8
-        };
-
-        const isFinished = match.status === 'FINISHED';
 
         return {
           id: match.id,
@@ -193,69 +224,68 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           scoreHome: match.homeTeam.score,
           scoreAway: match.awayTeam.score,
           hasOdds: true,
-          odds,
+          odds: {
+            home: resultMarket?.selections.find(s => s.id === 'home')?.odd || 2.0,
+            draw: resultMarket?.selections.find(s => s.id === 'draw')?.odd || 3.2,
+            away: resultMarket?.selections.find(s => s.id === 'away')?.odd || 2.8
+          },
           markets: internalMarkets,
           isLive: match.status === 'LIVE',
-          isFinished,
-          marketStatus: isFinished ? 'CLOSED' : 'OPEN'
+          isFinished: match.status === 'FINISHED',
+          marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN'
         };
       });
 
-      // 3. Update State and Storage
       const now = new Date().toISOString();
-      setFootballData(prev => ({
-        ...prev,
-        matches: allMatches,
-        standings: leagueStandings,
-        unifiedMatches: unified,
-        syncStatus: 'success',
-        lastSyncAt: now
-      }));
-
+      setFootballData(prev => ({ ...prev, matches: allMatches, unifiedMatches: unified, syncStatus: 'success', lastSyncAt: now }));
       setStorageItem('app:football:unified:v1', unified);
-      setStorageItem('app:football:standings:v1', leagueStandings);
       setStorageItem('app:football:last_sync:v1', now);
-      
-      toast({ title: 'Sincronização Concluída', description: `${unified.length} partidas precificadas internamente.` });
       notifyDataChange();
-
+      toast({ title: 'Sync Concluído', description: 'Dados e odds atualizados.' });
     } catch (error) {
-      console.error("[Football Sync Error]", error);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
-      toast({ variant: 'destructive', title: 'Erro na Sincronização', description: 'Falha ao processar dados da ESPN.' });
+      toast({ variant: 'destructive', title: 'Erro na Sincronização' });
     }
   };
 
-  const logout = () => { authLogout(); setUser(null); router.push('/login'); };
+  const updateLeagueConfig = (id: string, config: Partial<ESPNLeagueConfig>) => {
+    setFootballData(prev => {
+      const newLeagues = prev.leagues.map(l => l.id === id ? { ...l, ...config } : l);
+      setStorageItem('app:football:leagues:v1', newLeagues);
+      return { ...prev, leagues: newLeagues };
+    });
+    notifyDataChange();
+  };
 
   const placeFootballBet = async (stake: number): Promise<string | null> => {
     if (!user) { router.push('/login'); return null; }
-    const pouleId = generatePoule();
     
-    // O cálculo de retorno agora usa as odds calculadas internamente presentes no slip
+    // Validar se alguma seleção no slip foi suspensa
+    const hasSuspended = betSlip.some(item => {
+      const match = footballData.unifiedMatches.find(m => m.id === item.matchId);
+      return match?.marketStatus === 'SUSPENDED' || match?.marketStatus === 'CLOSED';
+    });
+
+    if (hasSuspended) {
+      toast({ variant: 'destructive', title: 'Aposta Rejeitada', description: 'Um ou mais mercados foram suspensos por eventos ao vivo.' });
+      return null;
+    }
+
+    const pouleId = generatePoule();
     const totalOdds = parseFloat(betSlip.reduce((acc, item) => acc * (item.odd || 1), 1).toFixed(2));
     const potentialWin = parseFloat((stake * totalOdds).toFixed(2));
 
     const result = BetService.processBet(user, {
-      userId: user.id, 
-      modulo: 'Futebol', 
-      valor: stake, 
-      retornoPotencial: potentialWin,
+      userId: user.id, modulo: 'Futebol', valor: stake, retornoPotencial: potentialWin,
       descricao: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`,
       referenceId: pouleId
     });
 
     if (result.success) {
       const currentBets = getStorageItem('app:football_bets:v1', []);
-      const newBet = { 
-        id: pouleId, 
-        createdAt: new Date().toISOString(), 
-        stake, 
-        potentialWin, 
-        items: betSlip, 
-        status: 'OPEN',
-        bancaId: user.bancaId || 'default',
-        terminal: user.terminal
+      const newBet: FootballBet = { 
+        id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', terminal: user.terminal,
+        stake, potentialWin, items: betSlip, status: 'OPEN', createdAt: new Date().toISOString()
       };
       setStorageItem('app:football_bets:v1', [newBet, ...currentBets]);
       setBetSlip([]);
@@ -265,10 +295,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return null;
   };
 
+  const logout = () => { authLogout(); setUser(null); router.push('/login'); };
+
   return (
     <AppContext.Provider value={{
       user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
-      ledger, banners, popups, news, footballData, betSlip,
+      ledger, banners, popups, news, footballData, footballBets, betSlip,
       refreshData, logout, syncFootballAll, updateLeagueConfig,
       addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
       removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)),

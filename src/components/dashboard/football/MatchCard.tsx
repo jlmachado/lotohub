@@ -1,6 +1,5 @@
 /**
- * @fileOverview Card de partida refinado para Sportsbook.
- * Exibe odds geradas pelo motor interno do LotoHub.
+ * @fileOverview Card de partida refinado para Sportsbook Live.
  */
 
 'use client';
@@ -9,7 +8,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Radio, Calendar, Info, Sparkles, TrendingUp } from 'lucide-react';
+import { Radio, Calendar, Info, TrendingUp, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MatchCardProps {
@@ -23,21 +22,24 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
   const kickoffTime = new Date(match.kickoff).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const kickoffDate = new Date(match.kickoff).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
+  const isSuspended = match.marketStatus === 'SUSPENDED';
+  const isClosed = match.marketStatus === 'CLOSED' || match.isFinished;
+
   return (
     <Card className={cn(
       "bg-slate-900 border-white/5 overflow-hidden transition-all shadow-xl group",
-      match.isLive ? "ring-1 ring-red-500/20" : "hover:border-primary/30"
+      match.isLive ? "ring-1 ring-red-500/40" : "hover:border-primary/30"
     )}>
       {/* Header do Card */}
       <div className={cn(
         "p-2.5 border-b flex justify-between items-center",
-        match.isLive ? "bg-red-600/10" : "bg-white/5"
+        match.isLive ? "bg-red-600/20" : "bg-white/5"
       )}>
         <div className="flex items-center gap-2">
           {match.isLive ? (
             <>
               <Radio size={10} className="text-red-500 animate-pulse" />
-              <span className="text-[8px] font-black uppercase text-red-500">AO VIVO • {match.minute}</span>
+              <span className="text-[9px] font-black uppercase text-red-500 italic">AO VIVO • {match.minute}'</span>
             </>
           ) : (
             <>
@@ -47,9 +49,11 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="border-primary/30 text-primary text-[7px] font-black h-4 px-1 gap-0.5 bg-primary/5">
-            <TrendingUp size={8} /> INTERNAL ODDS
-          </Badge>
+          {isSuspended && (
+            <Badge className="bg-amber-500 text-black text-[7px] font-black h-4 px-1 gap-0.5 animate-pulse">
+              <Lock size={8} /> SUSPENSO
+            </Badge>
+          )}
           <Badge variant="outline" className="border-white/10 text-slate-500 text-[7px] uppercase font-black h-4 max-w-[80px] truncate">
             {match.league}
           </Badge>
@@ -66,9 +70,15 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
             <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{match.homeTeam}</p>
           </div>
           
-          <div className="px-3 py-1 bg-black/40 rounded-lg border border-white/5 min-w-[70px] text-center shadow-inner">
+          <div className={cn(
+            "px-3 py-1 rounded-lg border min-w-[70px] text-center shadow-inner transition-colors",
+            match.isLive ? "bg-red-600/10 border-red-500/20" : "bg-black/40 border-white/5"
+          )}>
             {match.isLive || match.isFinished ? (
-              <span className="text-xl font-black italic tracking-widest text-primary tabular-nums">
+              <span className={cn(
+                "text-xl font-black italic tracking-widest tabular-nums",
+                match.isLive ? "text-red-500" : "text-primary"
+              )}>
                 {match.scoreHome} - {match.scoreAway}
               </span>
             ) : (
@@ -84,9 +94,9 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           </div>
         </div>
 
-        {/* Painel de Odds (Mercado 1X2 Principal) */}
-        {!disabled && match.marketStatus === 'OPEN' ? (
-          <div className="grid grid-cols-3 gap-1.5">
+        {/* Painel de Odds */}
+        {!disabled && !isClosed ? (
+          <div className={cn("grid grid-cols-3 gap-1.5 transition-opacity", isSuspended && "opacity-40 pointer-events-none")}>
             <OddButton 
               label="1" 
               odd={match.odds.home} 
@@ -110,7 +120,7 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           <div className="text-center py-2.5 bg-black/20 rounded-xl border border-dashed border-white/5">
             <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic flex items-center justify-center gap-1.5">
               <Info size={10} />
-              {match.isFinished ? 'FINALIZADO' : 'MERCADO SUSPENSO'}
+              {match.isFinished ? 'FINALIZADO' : 'MERCADO ENCERRADO'}
             </p>
           </div>
         )}
