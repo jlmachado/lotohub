@@ -39,15 +39,19 @@ export default function FootballDashboard() {
   }, [footballData.unifiedMatches.length, footballData.syncStatus, syncFootballAll]);
 
   const handleSelectOdd = (match: any, selection: string, odd: number) => {
+    // Garantir que os nomes dos times sejam strings, extraindo do objeto se necessário
+    const homeName = typeof match.homeTeam === 'object' ? match.homeTeam?.name : match.homeTeam;
+    const awayName = typeof match.awayTeam === 'object' ? match.awayTeam?.name : match.awayTeam;
+
     addBetToSlip({
       id: `${match.id}-1X2-${selection}`,
       matchId: match.id,
-      matchName: `${match.homeTeam} vs ${match.awayTeam}`,
-      homeTeam: match.homeTeam,
-      awayTeam: match.awayTeam,
+      matchName: `${homeName || '---'} vs ${awayName || '---'}`,
+      homeTeam: homeName || '---',
+      awayTeam: awayName || '---',
       market: 'Vencedor 1X2',
       selection,
-      pickLabel: selection === 'Casa' ? match.homeTeam : selection === 'Fora' ? match.awayTeam : 'Empate',
+      pickLabel: selection === 'Casa' ? homeName : selection === 'Fora' ? awayName : 'Empate',
       odd,
       isLive: match.isLive,
       addedAt: Date.now()

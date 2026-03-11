@@ -73,10 +73,10 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
         <div className="flex justify-between items-center gap-2">
           <div className="text-center flex-1 min-w-0">
             <div className="w-8 h-8 mx-auto mb-1.5 relative">
-              <img src={homeLogoUrl} className="w-full h-full object-contain" alt="" />
+              <img src={homeLogoUrl || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png'} className="w-full h-full object-contain" alt="" />
             </div>
             <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">
-              {String(homeName || '---')}
+              {typeof homeName === 'string' ? homeName : (homeName?.name || '---')}
             </p>
           </div>
           
@@ -98,10 +98,10 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
 
           <div className="text-center flex-1 min-w-0">
             <div className="w-8 h-8 mx-auto mb-1.5 relative">
-              <img src={awayLogoUrl} className="w-full h-full object-contain" alt="" />
+              <img src={awayLogoUrl || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png'} className="w-full h-full object-contain" alt="" />
             </div>
             <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">
-              {String(awayName || '---')}
+              {typeof awayName === 'string' ? awayName : (awayName?.name || '---')}
             </p>
           </div>
         </div>

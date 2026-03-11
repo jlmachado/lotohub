@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -167,7 +166,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', liveMiniPlayerConfig));
 
     const savedFootball = getStorageItem('app:football:unified:v1', null);
-    if (savedFootball) setFootballData(prev => ({ ...prev, ...savedFootball }));
+    if (savedFootball && Array.isArray(savedFootball.unifiedMatches)) {
+      // Saneamento defensivo: se houver objetos complexos onde deveria haver strings, limpa o cache
+      const isCorrupted = savedFootball.unifiedMatches.some((m: any) => typeof m.homeTeam === 'object' || typeof m.awayTeam === 'object');
+      if (isCorrupted) {
+        console.warn('[AppContext] Dados de futebol corrompidos detectados. Limpando cache...');
+        localStorage.removeItem('app:football:unified:v1');
+      } else {
+        setFootballData(prev => ({ ...prev, ...savedFootball }));
+      }
+    }
   }, [liveMiniPlayerConfig]);
 
   useEffect(() => {
@@ -233,7 +241,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const baseModel = MatchMapperService.transformEspnToBettable(match);
         const markets = FootballMarketsEngine.generateAllMarkets(probs);
         return { 
-          ...baseModel, 
+          ...baseModel, // MatchModel já garante homeTeam e awayTeam como strings
           markets, hasOdds: true, isLive: match.status === 'LIVE', 
           marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN', 
           odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } 
