@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Header } from '@/components/header';
 import { useAppContext } from '@/context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -24,7 +24,6 @@ import {
   Receipt, 
   Download, 
   ShieldCheck,
-  ChevronRight,
   ArrowDownCircle,
   ArrowUpCircle,
   X,
@@ -36,13 +35,17 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
+
+type CaixaKpi = 'all' | 'apostas' | 'premios' | 'entradas' | 'recolhe';
 
 export default function CambistaCaixaPage() {
-  const { user, isLoading, cambistaMovements, registerCambistaMovement, userCommissions, isFullscreen, toggleFullscreen } = useAppContext();
+  const { user, isLoading, ledger, registerCambistaMovement, isFullscreen, toggleFullscreen, refreshData } = useAppContext();
   const { toast } = useToast();
 
+  const [activeKpi, setActiveKpi] = useState<CaixaKpi>('all');
   const [dialogOpen, setWalletDialogOpen] = useState(false);
-  const [movementType, setMovementType] = useState<any>('FECHAMENTO_CAIXA');
+  const [movementType, setMovementType] = useState<'ENTRADA_MANUAL' | 'RECOLHE' | 'FECHAMENTO_CAIXA'>('ENTRADA_MANUAL');
   
   // Auth state
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -59,58 +62,53 @@ export default function CambistaCaixaPage() {
   const [dateEnd, setDateEnd] = useState('');
   const [tipoFilter, setTipoFilter] = useState('all');
 
-  // Normalizar eventos (Movimentações de Caixa + Comissões do próprio cambista)
-  const allEvents = useMemo(() => {
+  useEffect(() => {
+    refreshData();
+  }, []);
+
+  // Ledger filtrado para o Cambista
+  const userLedger = useMemo(() => {
     if (!user) return [];
-    
-    const events: any[] = [...(cambistaMovements || []).filter(m => m.userId === user.id)];
-    
-    (userCommissions || []).forEach(c => {
-      events.push({
-        id: `comm-${c.id}`,
-        userId: user.id,
-        terminal: user.terminal,
-        tipo: 'COMISSAO',
-        modulo: c.modulo,
-        valor: c.valorComissao,
-        createdAt: c.createdAt,
-        observacao: `Ganhos ${c.porcentagem}% s/ ${formatBRL(c.valorAposta)}`
-      });
-    });
-
-    return events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [user, cambistaMovements, userCommissions]);
-
-  const filteredEvents = useMemo(() => {
-    return allEvents.filter(e => {
-      if (tipoFilter !== 'all' && e.tipo !== tipoFilter) return false;
-      const eventTime = new Date(e.createdAt).getTime();
-      if (dateStart && eventTime < new Date(dateStart + 'T00:00:00').getTime()) return false;
-      if (dateEnd && eventTime > new Date(dateEnd + 'T23:59:59').getTime()) return false;
-      return true;
-    });
-  }, [allEvents, tipoFilter, dateStart, dateEnd]);
+    return ledger.filter(e => e.userId === user.id);
+  }, [ledger, user]);
 
   const stats = useMemo(() => {
-    const totalApostado = allEvents.filter(m => m.tipo === 'APOSTA').reduce((acc, curr) => acc + curr.valor, 0);
-    const totalPremios = allEvents.filter(m => m.tipo === 'PREMIO_PAGO').reduce((acc, curr) => acc + curr.valor, 0);
-    const totalEntradas = allEvents.filter(m => m.tipo === 'ENTRADA_MANUAL').reduce((acc, curr) => acc + curr.valor, 0);
-    const totalRecolhes = allEvents.filter(m => m.tipo === 'RECOLHE').reduce((acc, curr) => acc + curr.valor, 0);
-    const totalComissao = allEvents.filter(m => m.tipo === 'COMISSAO').reduce((acc, curr) => acc + curr.valor, 0);
+    const totalApostado = userLedger.filter(e => e.type === 'BET_PLACED').reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
+    const totalPremios = userLedger.filter(e => e.type === 'BET_WIN' || e.type === 'PRIZE_PAID').reduce((acc, curr) => acc + curr.amount, 0);
+    const totalEntradas = userLedger.filter(e => e.type === 'CREDIT_RECEIVED' || e.type === 'DEPOSIT' || e.type === 'CASH_IN').reduce((acc, curr) => acc + curr.amount, 0);
+    const totalRecolhes = userLedger.filter(e => e.type === 'CASH_OUT_RECOLHE' || e.type === 'WITHDRAW').reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
+    const totalComissao = userLedger.filter(e => e.type === 'COMMISSION_EARNED').reduce((acc, curr) => acc + curr.amount, 0);
     
-    // Saldo Operacional = (Entradas + Apostas) - (Prêmios + Recolhes)
-    const saldoOperacional = (totalApostado + totalEntradas) - (totalPremios + totalRecolhes);
+    // Saldo Operacional em Mãos
+    const emMaos = (totalApostado + totalEntradas) - (totalPremios + totalRecolhes);
 
     return { 
       totalApostado, 
       totalPremios, 
       totalEntradas, 
       totalRecolhes, 
-      saldoOperacional,
+      emMaos,
       totalComissao,
-      count: allEvents.filter(e => e.tipo === 'APOSTA').length
+      bilhetesCount: userLedger.filter(e => e.type === 'BET_PLACED').length
     };
-  }, [allEvents]);
+  }, [userLedger]);
+
+  const filteredEvents = useMemo(() => {
+    return userLedger.filter(e => {
+      // Drill-down por KPI
+      if (activeKpi === 'apostas' && e.type !== 'BET_PLACED') return false;
+      if (activeKpi === 'premios' && !['BET_WIN', 'PRIZE_PAID'].includes(e.type)) return false;
+      if (activeKpi === 'entradas' && !['CREDIT_RECEIVED', 'DEPOSIT', 'CASH_IN'].includes(e.type)) return false;
+      if (activeKpi === 'recolhe' && !['CASH_OUT_RECOLHE', 'WITHDRAW'].includes(e.type)) return false;
+
+      // Filtros manuais
+      if (tipoFilter !== 'all' && e.type !== tipoFilter) return false;
+      const eventTime = new Date(e.createdAt).getTime();
+      if (dateStart && eventTime < new Date(dateStart + 'T00:00:00').getTime()) return false;
+      if (dateEnd && eventTime > new Date(dateEnd + 'T23:59:59').getTime()) return false;
+      return true;
+    });
+  }, [userLedger, activeKpi, tipoFilter, dateStart, dateEnd]);
 
   const handleOpenDialog = (type: any) => {
     setMovementType(type);
@@ -139,11 +137,9 @@ export default function CambistaCaixaPage() {
     }
 
     registerCambistaMovement({
-      userId: user!.id,
-      terminal: user!.terminal,
       tipo: movementType,
-      valor: movementType === 'FECHAMENTO_CAIXA' ? stats.saldoOperacional : value,
-      modulo: moduloFilter !== 'all' ? moduloFilter : undefined,
+      valor: movementType === 'FECHAMENTO_CAIXA' ? stats.emMaos : value,
+      modulo: moduloFilter !== 'all' ? moduloFilter : 'Caixa',
       observacao: obsInput || (movementType === 'FECHAMENTO_CAIXA' ? `Fechamento total consolidado` : '')
     });
 
@@ -156,22 +152,16 @@ export default function CambistaCaixaPage() {
       `caixa_cambista_${new Date().toISOString().split('T')[0]}.csv`,
       filteredEvents.map(e => ({
         Data: new Date(e.createdAt).toLocaleString('pt-BR'),
-        Tipo: e.tipo,
+        Tipo: e.type,
         Modulo: e.modulo || '-',
-        Valor: e.valor,
-        Observacao: e.observacao
+        Valor: e.amount,
+        Observacao: e.description
       })),
       ['Data', 'Tipo', 'Modulo', 'Valor', 'Observacao']
     );
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="p-20 text-center">Carregando caixa...</div>;
 
   if (!user || user.tipoUsuario !== 'CAMBISTA') {
     return (
@@ -217,40 +207,18 @@ export default function CambistaCaixaPage() {
           </div>
         </div>
 
-        {/* KPI GRID - Compacto */}
+        {/* KPI GRID */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
-          <Card className='bg-slate-900/50 border-white/5'>
-            <CardHeader className='p-2.5 pb-0.5'><CardTitle className='text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1'><TrendingUp size={8}/> Apostado</CardTitle></CardHeader>
-            <CardContent className='p-2.5 pt-0'><p className='text-base font-black text-white'>{formatBRL(stats.totalApostado)}</p></CardContent>
-          </Card>
-          <Card className='bg-slate-900/50 border-white/5'>
-            <CardHeader className='p-2.5 pb-0.5'><CardTitle className='text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1'><TrendingDown size={8}/> Prêmios</CardTitle></CardHeader>
-            <CardContent className='p-2.5 pt-0'><p className='text-base font-black text-red-400'>{formatBRL(stats.totalPremios)}</p></CardContent>
-          </Card>
-          <Card className='bg-slate-900/50 border-white/5'>
-            <CardHeader className='p-2.5 pb-0.5'><CardTitle className='text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1'><Banknote size={8}/> Entradas</CardTitle></CardHeader>
-            <CardContent className='p-2.5 pt-0'><p className='text-base font-black text-green-400'>{formatBRL(stats.totalEntradas)}</p></CardContent>
-          </Card>
-          <Card className='bg-slate-900/50 border-white/5'>
-            <CardHeader className='p-2.5 pb-0.5'><CardTitle className='text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1'><History size={8}/> Recolhe</CardTitle></CardHeader>
-            <CardContent className='p-2.5 pt-0'><p className='text-base font-black text-amber-400'>{formatBRL(stats.totalRecolhes)}</p></CardContent>
-          </Card>
-          <Card className='bg-primary/10 border-primary/20 shadow-lg'>
-            <CardHeader className='p-2.5 pb-0.5'><CardTitle className='text-[8px] uppercase font-black text-primary flex items-center gap-1'><Receipt size={8}/> Em Mãos</CardTitle></CardHeader>
-            <CardContent className='p-2.5 pt-0'><p className='text-base font-black text-primary italic'>{formatBRL(stats.saldoOperacional)}</p></CardContent>
-          </Card>
-          <Card className='bg-green-500/10 border-green-500/20'>
-            <CardHeader className='p-2.5 pb-0.5'><CardTitle className='text-[8px] uppercase font-black text-green-500 flex items-center gap-1'><Coins size={8}/> Ganho</CardTitle></CardHeader>
-            <CardContent className='p-2.5 pt-0'><p className='text-base font-black text-green-500'>{formatBRL(stats.totalComissao)}</p></CardContent>
-          </Card>
-          <Card className='bg-slate-900/50 border-white/5'>
-            <CardHeader className='p-2.5 pb-0.5'><CardTitle className='text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1'><Ticket size={8}/> Bilhetes</CardTitle></CardHeader>
-            <CardContent className='p-2.5 pt-0'><p className='text-base font-black text-white'>{stats.count}</p></CardContent>
-          </Card>
+          <CaixaCard title="Apostado" value={stats.totalApostado} icon={TrendingUp} active={activeKpi === 'apostas'} onClick={() => setActiveKpi('apostas')} />
+          <CaixaCard title="Prêmios" value={stats.totalPremios} icon={TrendingDown} color="text-red-400" active={activeKpi === 'premios'} onClick={() => setActiveKpi('premios')} />
+          <CaixaCard title="Entradas" value={stats.totalEntradas} icon={Banknote} color="text-green-400" active={activeKpi === 'entradas'} onClick={() => setActiveKpi('entradas')} />
+          <CaixaCard title="Recolhe" value={stats.totalRecolhes} icon={History} color="text-amber-400" active={activeKpi === 'recolhe'} onClick={() => setActiveKpi('recolhe')} />
+          <CaixaCard title="Em Mãos" value={stats.emMaos} icon={Receipt} color="text-primary" highlight active={activeKpi === 'all'} onClick={() => setActiveKpi('all')} />
+          <CaixaCard title="Ganho" value={stats.totalComissao} icon={Coins} color="text-green-500" active={activeKpi === 'all'} onClick={() => setActiveKpi('all')} />
+          <CaixaCard title="Bilhetes" value={stats.bilhetesCount} icon={Ticket} isCurrency={false} active={activeKpi === 'apostas'} onClick={() => setActiveKpi('apostas')} />
         </div>
 
         <div className='grid grid-cols-1 lg:grid-cols-4 gap-4'>
-          {/* FILTROS LATERAIS */}
           <div className='space-y-4'>
             <Card className='border-white/10 bg-card/50'>
               <CardHeader className="p-4 pb-2"><CardTitle className='text-xs font-black uppercase flex items-center gap-2'><Filter size={14} /> Filtros</CardTitle></CardHeader>
@@ -268,28 +236,26 @@ export default function CambistaCaixaPage() {
                     <SelectTrigger className='h-8 bg-background border-white/5 text-[10px]'><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todas</SelectItem>
-                      <SelectItem value="APOSTA">Aposta</SelectItem>
-                      <SelectItem value="PREMIO_PAGO">Prêmio Pago</SelectItem>
-                      <SelectItem value="COMISSAO">Comissão</SelectItem>
-                      <SelectItem value="RECOLHE">Recolhe</SelectItem>
-                      <SelectItem value="ENTRADA_MANUAL">Entrada Manual</SelectItem>
-                      <SelectItem value="FECHAMENTO_CAIXA">Fechamento</SelectItem>
+                      <SelectItem value="BET_PLACED">Aposta</SelectItem>
+                      <SelectItem value="PRIZE_PAID">Prêmio Pago</SelectItem>
+                      <SelectItem value="COMMISSION_EARNED">Comissão</SelectItem>
+                      <SelectItem value="CASH_OUT_RECOLHE">Recolhe</SelectItem>
+                      <SelectItem value="CASH_IN">Entrada Manual</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <Button variant="ghost" className="w-full text-[9px] font-black uppercase h-7" onClick={() => { setTipoFilter('all'); setDateStart(''); setDateEnd(''); }}>
+                <Button variant="ghost" className="w-full text-[9px] font-black uppercase h-7" onClick={() => { setTipoFilter('all'); setActiveKpi('all'); setDateStart(''); setDateEnd(''); }}>
                   Resetar
                 </Button>
               </CardContent>
             </Card>
           </div>
 
-          {/* LISTA PRINCIPAL */}
           <div className='lg:col-span-3'>
             <Card className='border-white/5 overflow-hidden shadow-2xl'>
               <CardHeader className='bg-slate-950/50 border-b border-white/5 p-3'>
                 <CardTitle className='text-[10px] font-black uppercase italic tracking-widest text-white flex items-center gap-2'>
-                  <History size={12} className="text-primary" /> Histórico de Lançamentos
+                  <History size={12} className="text-primary" /> Log de Movimentações: {activeKpi.toUpperCase()}
                 </CardTitle>
               </CardHeader>
               <Table>
@@ -297,13 +263,13 @@ export default function CambistaCaixaPage() {
                   <TableRow className='border-white/5 h-8'>
                     <TableHead className='text-[9px] uppercase font-black px-3'>Data</TableHead>
                     <TableHead className='text-[9px] uppercase font-black px-3'>Tipo</TableHead>
-                    <TableHead className='text-[9px] uppercase font-black px-3'>Módulo/Obs</TableHead>
+                    <TableHead className='text-[9px] uppercase font-black px-3'>Obs/ID</TableHead>
                     <TableHead className='text-[9px] uppercase font-black text-right px-3'>Valor</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredEvents.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className='text-center py-16 text-muted-foreground italic text-xs'>Sem movimentações.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4} className='text-center py-16 text-muted-foreground italic text-xs'>Sem movimentações registradas.</TableCell></TableRow>
                   ) : (
                     filteredEvents.map(m => (
                       <TableRow key={m.id} className='border-white/5 hover:bg-white/5 transition-colors'>
@@ -314,22 +280,20 @@ export default function CambistaCaixaPage() {
                           </div>
                         </TableCell>
                         <TableCell className="px-3">
-                          <Badge variant="outline" className={`text-[7px] h-3.5 uppercase font-black px-1 ${
-                            ['APOSTA', 'ENTRADA_MANUAL'].includes(m.tipo) ? 'border-green-500/20 text-green-500 bg-green-500/5' : 
-                            m.tipo === 'COMISSAO' ? 'border-blue-500/20 text-blue-400 bg-blue-500/5' :
-                            'border-red-500/20 text-red-500 bg-red-500/5'
-                          }`}>
-                            {m.tipo.replace('_', ' ')}
+                          <Badge variant="outline" className={cn("text-[7px] h-3.5 uppercase font-black px-1", 
+                            m.amount > 0 ? "border-green-500/20 text-green-500 bg-green-500/5" : "border-red-500/20 text-red-500 bg-red-500/5"
+                          )}>
+                            {m.type.replace('_', ' ')}
                           </Badge>
                         </TableCell>
                         <TableCell className="px-3">
                           <div className='flex flex-col'>
-                            <span className='text-[9px] font-black text-slate-300 uppercase italic'>{m.modulo || '-'}</span>
-                            <span className='text-[8px] text-muted-foreground truncate max-w-[120px]'>{m.observacao}</span>
+                            <span className='text-[9px] font-black text-slate-300 uppercase italic'>{m.modulo}</span>
+                            <span className='text-[8px] text-muted-foreground truncate max-w-[120px]'>{m.description}</span>
                           </div>
                         </TableCell>
-                        <TableCell className={`text-right font-black px-3 text-xs ${['APOSTA', 'ENTRADA_MANUAL', 'COMISSAO'].includes(m.tipo) ? 'text-green-500' : 'text-red-500'}`}>
-                          {['APOSTA', 'ENTRADA_MANUAL', 'COMISSAO'].includes(m.tipo) ? '+' : '-'}{formatBRL(m.valor)}
+                        <TableCell className={cn('text-right font-black px-3 text-xs', m.amount > 0 ? 'text-green-500' : 'text-red-500')}>
+                          {m.amount > 0 ? '+' : ''}{formatBRL(m.amount)}
                         </TableCell>
                       </TableRow>
                     ))
@@ -368,15 +332,15 @@ export default function CambistaCaixaPage() {
                 <div className='p-4 rounded-xl bg-primary/10 text-center border border-primary/20 space-y-3'>
                   <div>
                     <p className='text-[9px] uppercase font-black text-muted-foreground mb-0.5'>Valor total em mãos</p>
-                    <p className='text-3xl font-black text-primary italic'>{formatBRL(stats.saldoOperacional)}</p>
+                    <p className='text-3xl font-black text-primary italic'>{formatBRL(stats.emMaos)}</p>
                   </div>
                   <div className='grid grid-cols-2 gap-3 pt-3 border-t border-primary/10'>
                     <div className='text-left'>
-                      <p className='text-[7px] uppercase font-bold text-muted-foreground'>Vendas</p>
+                      <p className='text-[7px] uppercase font-bold text-muted-foreground'>Vendas (Apostas)</p>
                       <p className='text-[10px] font-black text-white'>{formatBRL(stats.totalApostado)}</p>
                     </div>
                     <div className='text-right'>
-                      <p className='text-[7px] uppercase font-bold text-muted-foreground'>Prêmios</p>
+                      <p className='text-[7px] uppercase font-bold text-muted-foreground'>Prêmios Pagos</p>
                       <p className='text-[10px] font-black text-white'>{formatBRL(stats.totalPremios)}</p>
                     </div>
                   </div>
@@ -393,9 +357,8 @@ export default function CambistaCaixaPage() {
                       <SelectTrigger className='bg-black/20 border-white/10 text-white h-9 text-xs'><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Nenhum</SelectItem>
-                        <SelectItem value="Bingo">Bingo</SelectItem>
-                        <SelectItem value="Sinuca">Sinuca</SelectItem>
                         <SelectItem value="Futebol">Futebol</SelectItem>
+                        <SelectItem value="Bingo">Bingo</SelectItem>
                         <SelectItem value="Jogo do Bicho">Jogo do Bicho</SelectItem>
                       </SelectContent>
                     </Select>
@@ -414,5 +377,21 @@ export default function CambistaCaixaPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function CaixaCard({ title, value, icon: Icon, color = 'text-white', isCurrency = true, highlight, active, onClick }: any) {
+  return (
+    <Card 
+      onClick={onClick}
+      className={cn(
+        'cursor-pointer border-white/5 transition-all duration-300',
+        active ? 'bg-primary/20 ring-1 ring-primary/50' : 'bg-slate-900/50 hover:bg-white/5',
+        highlight && !active && 'bg-primary/10 border-primary/20 shadow-lg'
+      )}
+    >
+      <CardHeader className='p-2.5 pb-0.5'><CardTitle className='text-[8px] uppercase font-black text-muted-foreground flex items-center gap-1'><Icon size={8} className={color}/> {title}</CardTitle></CardHeader>
+      <CardContent className='p-2.5 pt-0'><p className={cn('text-base font-black italic', color)}>{isCurrency ? formatBRL(value) : value}</p></CardContent>
+    </Card>
   );
 }

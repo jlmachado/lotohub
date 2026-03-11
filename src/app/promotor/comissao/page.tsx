@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Header } from '@/components/header';
 import { useAppContext } from '@/context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,147 +25,89 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
+
+type KpiFilter = 'all' | 'received' | 'volume' | 'commission' | 'prizes';
 
 export default function RelatorioComissaoPage() {
-  const { user, isLoading, userCommissions, promoterCredits, apostas } = useAppContext();
+  const { user, isLoading, ledger, refreshData } = useAppContext();
   
+  const [activeKpi, setActiveKpi] = useState<KpiFilter>('all');
   const [moduloFilter, setModuloFilter] = useState('all');
-  const [tipoFilter, setTipoFilter] = useState('all');
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Normalizar todos os eventos para uma única linha do tempo
-  const allEvents = useMemo(() => {
+  useEffect(() => {
+    refreshData();
+  }, []);
+
+  // Filtrar Ledger do Usuário Logado
+  const userLedger = useMemo(() => {
     if (!user) return [];
+    return ledger.filter(e => e.userId === user.id);
+  }, [ledger, user]);
 
-    const events: any[] = [];
-
-    // Comissões e Apostas vinculadas
-    (userCommissions || []).forEach(c => {
-      events.push({
-        id: c.id,
-        at: c.createdAt,
-        tipo: 'COMISSAO',
-        modulo: c.modulo,
-        terminal: user.terminal,
-        valorAposta: c.valorAposta,
-        valorComissao: c.valorComissao,
-        obs: `Comissão ${c.porcentagem}%`
-      });
-    });
-
-    // Créditos Admin
-    (promoterCredits || []).filter(pc => pc.userId === user.id).forEach(pc => {
-      events.push({
-        id: pc.id,
-        at: pc.createdAt,
-        tipo: 'CREDITO_ADMIN',
-        modulo: '-',
-        terminal: pc.terminal,
-        valorAposta: 0,
-        valorComissao: 0,
-        valorCredito: pc.valor,
-        obs: pc.motivo
-      });
-    });
-
-    // Prêmios vinculados (Apostas premiadas do usuário)
-    (apostas || []).filter(a => a.userId === user.id && (a.status === 'premiado' || a.status === 'won')).forEach(a => {
-      const winAmount = Array.isArray(a.detalhes) 
-        ? a.detalhes.reduce((acc: number, d: any) => acc + (d.retornoPossivel || 0), 0)
-        : 0;
-      
-      events.push({
-        id: `win-${a.id}`,
-        at: a.createdAt,
-        tipo: 'PREMIO',
-        modulo: a.loteria,
-        terminal: user.terminal,
-        valorAposta: 0,
-        valorComissao: 0,
-        valorPremio: winAmount,
-        obs: `Bilhete Premiado`
-      });
-    });
-
-    return events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [user, userCommissions, promoterCredits, apostas]);
+  const stats = useMemo(() => {
+    return {
+      totalApostado: userLedger.filter(e => e.type === 'BET_PLACED').reduce((acc, curr) => acc + Math.abs(curr.amount), 0),
+      totalComissao: userLedger.filter(e => e.type === 'COMMISSION_EARNED').reduce((acc, curr) => acc + curr.amount, 0),
+      totalRecebido: userLedger.filter(e => e.type === 'CREDIT_RECEIVED' || e.type === 'DEPOSIT' || e.type === 'CASH_IN').reduce((acc, curr) => acc + curr.amount, 0),
+      totalBilhetes: userLedger.filter(e => e.type === 'BET_PLACED').length,
+      totalPremios: userLedger.filter(e => e.type === 'BET_WIN' || e.type === 'PRIZE_PAID').reduce((acc, curr) => acc + curr.amount, 0)
+    };
+  }, [userLedger]);
 
   const filteredEvents = useMemo(() => {
-    return allEvents.filter(e => {
+    return userLedger.filter(e => {
+      // Filtro por KPI (Drill-down)
+      if (activeKpi === 'received' && !['CREDIT_RECEIVED', 'DEPOSIT', 'CASH_IN'].includes(e.type)) return false;
+      if (activeKpi === 'volume' && e.type !== 'BET_PLACED') return false;
+      if (activeKpi === 'commission' && e.type !== 'COMMISSION_EARNED') return false;
+      if (activeKpi === 'prizes' && !['BET_WIN', 'PRIZE_PAID'].includes(e.type)) return false;
+
+      // Filtros de UI
       if (moduloFilter !== 'all' && e.modulo !== moduloFilter) return false;
-      if (tipoFilter !== 'all' && e.tipo !== tipoFilter) return false;
       
-      const eventTime = new Date(e.at).getTime();
+      const eventTime = new Date(e.createdAt).getTime();
       if (dateStart && eventTime < new Date(dateStart + 'T00:00:00').getTime()) return false;
       if (dateEnd && eventTime > new Date(dateEnd + 'T23:59:59').getTime()) return false;
       
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
-        return e.terminal.toLowerCase().includes(term) || (e.obs && e.obs.toLowerCase().includes(term));
+        return e.description.toLowerCase().includes(term) || e.referenceId.toLowerCase().includes(term);
       }
 
       return true;
     });
-  }, [allEvents, moduloFilter, tipoFilter, dateStart, dateEnd, searchTerm]);
-
-  const stats = useMemo(() => {
-    return {
-      totalApostado: (userCommissions || []).reduce((acc, curr) => acc + curr.valorAposta, 0),
-      totalComissao: (userCommissions || []).reduce((acc, curr) => acc + curr.valorComissao, 0),
-      totalCreditos: (promoterCredits || []).filter(pc => pc.userId === user?.id).reduce((acc, curr) => acc + curr.valor, 0),
-      totalBilhetes: (userCommissions || []).length,
-      totalPremios: allEvents.filter(e => e.tipo === 'PREMIO').reduce((acc, curr) => acc + (curr.valorPremio || 0), 0)
-    };
-  }, [user, userCommissions, promoterCredits, allEvents]);
+  }, [userLedger, activeKpi, moduloFilter, dateStart, dateEnd, searchTerm]);
 
   const moduleSummary = useMemo(() => {
     const summary: Record<string, { apostado: number, comissao: number }> = {};
-    (userCommissions || []).forEach(c => {
-      if (!summary[c.modulo]) summary[c.modulo] = { apostado: 0, comissao: 0 };
-      summary[c.modulo].apostado += c.valorAposta;
-      summary[c.modulo].comissao += c.valorComissao;
+    userLedger.forEach(e => {
+      if (!summary[e.modulo]) summary[e.modulo] = { apostado: 0, comissao: 0 };
+      if (e.type === 'BET_PLACED') summary[e.modulo].apostado += Math.abs(e.amount);
+      if (e.type === 'COMMISSION_EARNED') summary[e.modulo].comissao += e.amount;
     });
     return Object.entries(summary).sort((a, b) => b[1].apostado - a[1].apostado);
-  }, [userCommissions]);
+  }, [userLedger]);
 
   const handleExport = () => {
     downloadCSV(
       `relatorio_promotor_${new Date().toISOString().split('T')[0]}.csv`,
       filteredEvents.map(e => ({
-        Data: new Date(e.at).toLocaleString('pt-BR'),
-        Tipo: e.tipo,
+        Data: new Date(e.createdAt).toLocaleString('pt-BR'),
+        Tipo: e.type,
         Modulo: e.modulo,
-        Terminal: e.terminal,
-        ValorAposta: e.valorAposta || 0,
-        Comissao: e.valorComissao || 0,
-        CreditoOuPremio: e.valorCredito || e.valorPremio || 0,
-        Observacao: e.obs
+        Valor: e.amount,
+        Observacao: e.description,
+        ID: e.referenceId
       })),
-      ['Data', 'Tipo', 'Modulo', 'Terminal', 'ValorAposta', 'Comissao', 'CreditoOuPremio', 'Observacao']
+      ['Data', 'Tipo', 'Modulo', 'Valor', 'Observacao', 'ID']
     );
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  if (!user || (user.tipoUsuario !== 'PROMOTOR' && user.tipoUsuario !== 'CAMBISTA')) {
-    return (
-      <div className='min-h-screen bg-background flex items-center justify-center p-4'>
-        <Card className='max-w-md w-full text-center p-8 border-white/10'>
-          <h2 className='text-xl font-bold mb-4'>Acesso Restrito</h2>
-          <p className='text-muted-foreground mb-6'>Esta página é exclusiva para promotores ou cambistas.</p>
-          <Link href="/"><Button className='w-full'>Voltar para Home</Button></Link>
-        </Card>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="p-20 text-center">Carregando dados...</div>;
 
   return (
     <div className='min-h-screen bg-background'>
@@ -177,46 +119,71 @@ export default function RelatorioComissaoPage() {
               <Button variant="outline" size="icon"><ChevronLeft size={18} /></Button>
             </Link>
             <div>
-              <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Relatório de Comissão</h1>
+              <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Minhas Comissões</h1>
               <p className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Acompanhe seu desempenho e ganhos em tempo real</p>
             </div>
           </div>
           <div className='flex gap-2'>
             <Button variant="outline" onClick={handleExport} className="h-11 rounded-xl font-bold border-white/10">
-              <Download className="mr-2 h-4 w-4" /> Exportar CSV
+              <Download className="mr-2 h-4 w-4" /> Exportar
             </Button>
             <Badge variant="outline" className='h-11 bg-primary/10 text-primary border-primary/20 px-6 text-sm font-black uppercase italic'>
-              Taxa: {user.promotorConfig?.porcentagemComissao || 0}%
+              Taxa: {user?.promotorConfig?.porcentagemComissao || 0}%
             </Badge>
           </div>
         </div>
 
-        {/* TOP CARDS */}
+        {/* KPI GRID */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-          <Card className='border-white/5 bg-slate-900/50'>
-            <CardHeader className='p-4 pb-2'><CardTitle className='text-[10px] font-black uppercase text-muted-foreground flex items-center gap-2'><Wallet size={12} className='text-primary' /> Saldo</CardTitle></CardHeader>
-            <CardContent className='p-4 pt-0'><p className='text-lg font-black text-white'>{formatBRL(user.saldo)}</p></CardContent>
-          </Card>
-          <Card className='border-white/5 bg-slate-900/50'>
-            <CardHeader className='p-4 pb-2'><CardTitle className='text-[10px] font-black uppercase text-muted-foreground flex items-center gap-2'><Download size={12} className='text-purple-400' /> Recebido</CardTitle></CardHeader>
-            <CardContent className='p-4 pt-0'><p className='text-lg font-black text-purple-400'>{formatBRL(stats.totalCreditos)}</p></CardContent>
-          </Card>
-          <Card className='border-white/5 bg-slate-900/50'>
-            <CardHeader className='p-4 pb-2'><CardTitle className='text-[10px] font-black uppercase text-muted-foreground flex items-center gap-2'><TrendingUp size={12} className='text-blue-400' /> Volume</CardTitle></CardHeader>
-            <CardContent className='p-4 pt-0'><p className='text-lg font-black text-white'>{formatBRL(stats.totalApostado)}</p></CardContent>
-          </Card>
-          <Card className='border-green-500/10 bg-green-500/5'>
-            <CardHeader className='p-4 pb-2'><CardTitle className='text-[10px] font-black uppercase text-green-600 flex items-center gap-2'><Coins size={12} /> Comissão</CardTitle></CardHeader>
-            <CardContent className='p-4 pt-0'><p className='text-lg font-black text-green-500'>{formatBRL(stats.totalComissao)}</p></CardContent>
-          </Card>
-          <Card className='border-white/5 bg-slate-900/50'>
-            <CardHeader className='p-4 pb-2'><CardTitle className='text-[10px] font-black uppercase text-muted-foreground flex items-center gap-2'><Award size={12} className='text-amber-400' /> Prêmios</CardTitle></CardHeader>
-            <CardContent className='p-4 pt-0'><p className='text-lg font-black text-white'>{formatBRL(stats.totalPremios)}</p></CardContent>
-          </Card>
-          <Card className='border-white/5 bg-slate-900/50'>
-            <CardHeader className='p-4 pb-2'><CardTitle className='text-[10px] font-black uppercase text-muted-foreground flex items-center gap-2'><Ticket size={12} className='text-slate-400' /> Bilhetes</CardTitle></CardHeader>
-            <CardContent className='p-4 pt-0'><p className='text-lg font-black text-white'>{stats.totalBilhetes}</p></CardContent>
-          </Card>
+          <KpiCard 
+            title="Saldo Atual" 
+            value={user?.saldo || 0} 
+            icon={Wallet} 
+            color="text-white" 
+            active={activeKpi === 'all'}
+            onClick={() => setActiveKpi('all')}
+          />
+          <KpiCard 
+            title="Recebido" 
+            value={stats.totalRecebido} 
+            icon={Download} 
+            color="text-purple-400" 
+            active={activeKpi === 'received'}
+            onClick={() => setActiveKpi('received')}
+          />
+          <KpiCard 
+            title="Volume" 
+            value={stats.totalApostado} 
+            icon={TrendingUp} 
+            color="text-blue-400" 
+            active={activeKpi === 'volume'}
+            onClick={() => setActiveKpi('volume')}
+          />
+          <KpiCard 
+            title="Comissão" 
+            value={stats.totalComissao} 
+            icon={Coins} 
+            color="text-green-500" 
+            active={activeKpi === 'commission'}
+            onClick={() => setActiveKpi('commission')}
+          />
+          <KpiCard 
+            title="Prêmios" 
+            value={stats.totalPremios} 
+            icon={Award} 
+            color="text-amber-400" 
+            active={activeKpi === 'prizes'}
+            onClick={() => setActiveKpi('prizes')}
+          />
+          <KpiCard 
+            title="Bilhetes" 
+            value={stats.totalBilhetes} 
+            icon={Ticket} 
+            color="text-slate-400" 
+            isCurrency={false}
+            active={activeKpi === 'volume'} // Bilhetes e volume andam juntos
+            onClick={() => setActiveKpi('volume')}
+          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -226,7 +193,7 @@ export default function RelatorioComissaoPage() {
               <CardContent className='space-y-4'>
                 <div className='space-y-1.5'>
                   <Label className='text-[10px] uppercase font-bold text-muted-foreground'>Busca</Label>
-                  <Input placeholder="Obs..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className='h-9 bg-background border-white/5' />
+                  <Input placeholder="Descrição ou ID..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className='h-9 bg-background border-white/5' />
                 </div>
                 <div className='space-y-1.5'>
                   <Label className='text-[10px] uppercase font-bold text-muted-foreground'>Período</Label>
@@ -241,29 +208,15 @@ export default function RelatorioComissaoPage() {
                     <SelectTrigger className='h-9 bg-background border-white/5 text-xs'><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="Bingo">Bingo</SelectItem>
-                      <SelectItem value="Sinuca">Sinuca</SelectItem>
                       <SelectItem value="Futebol">Futebol</SelectItem>
+                      <SelectItem value="Bingo">Bingo</SelectItem>
                       <SelectItem value="Jogo do Bicho">Jogo do Bicho</SelectItem>
                       <SelectItem value="Loteria Uruguai">Loteria Uruguai</SelectItem>
-                      <SelectItem value="Cassino">Cassino</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className='space-y-1.5'>
-                  <Label className='text-[10px] uppercase font-bold text-muted-foreground'>Tipo</Label>
-                  <Select value={tipoFilter} onValueChange={setTipoFilter}>
-                    <SelectTrigger className='h-9 bg-background border-white/5 text-xs'><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="COMISSAO">Comissão</SelectItem>
-                      <SelectItem value="CREDITO_ADMIN">Crédito Admin</SelectItem>
-                      <SelectItem value="PREMIO">Prêmio</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button variant="ghost" className="w-full text-[10px] font-black uppercase h-8" onClick={() => { setModuloFilter('all'); setTipoFilter('all'); setDateStart(''); setDateEnd(''); setSearchTerm(''); }}>
-                  Limpar
+                <Button variant="ghost" className="w-full text-[10px] font-black uppercase h-8" onClick={() => { setModuloFilter('all'); setActiveKpi('all'); setDateStart(''); setDateEnd(''); setSearchTerm(''); }}>
+                  Limpar Filtros
                 </Button>
               </CardContent>
             </Card>
@@ -297,7 +250,7 @@ export default function RelatorioComissaoPage() {
             <div className='bg-card rounded-2xl border border-white/5 overflow-hidden shadow-2xl'>
               <div className="p-4 bg-white/5 border-b border-white/5 flex items-center justify-between">
                 <h3 className="text-xs font-black uppercase italic tracking-widest text-white flex items-center gap-2">
-                  <Calendar size={14} className="text-primary" /> Extrato Detalhado
+                  <Calendar size={14} className="text-primary" /> Detalhamento: {activeKpi.toUpperCase()}
                 </h3>
                 <Badge variant="outline" className="text-[9px] font-black border-white/10 text-muted-foreground">
                   {filteredEvents.length} REGISTROS
@@ -309,49 +262,37 @@ export default function RelatorioComissaoPage() {
                     <TableHead className='text-[10px] font-black uppercase'>Data/Hora</TableHead>
                     <TableHead className='text-[10px] font-black uppercase'>Evento</TableHead>
                     <TableHead className='text-[10px] font-black uppercase'>Módulo</TableHead>
-                    <TableHead className='text-[10px] font-black uppercase text-right'>Volume</TableHead>
-                    <TableHead className='text-[10px] font-black uppercase text-right'>Ganho</TableHead>
+                    <TableHead className='text-[10px] font-black uppercase text-right'>Valor</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredEvents.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-24 text-muted-foreground italic">Nenhuma movimentação encontrada.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4} className="text-center py-24 text-muted-foreground italic">Nenhuma movimentação encontrada para este filtro.</TableCell></TableRow>
                   ) : (
                     filteredEvents.map((e) => (
                       <TableRow key={e.id} className='border-white/5 hover:bg-white/5 transition-colors group'>
                         <TableCell className='py-4'>
                           <div className='flex flex-col'>
-                            <span className='text-[11px] font-bold text-white'>{new Date(e.at).toLocaleDateString('pt-BR')}</span>
-                            <span className='text-[9px] text-muted-foreground'>{new Date(e.at).toLocaleTimeString('pt-BR')}</span>
+                            <span className='text-[11px] font-bold text-white'>{new Date(e.createdAt).toLocaleDateString('pt-BR')}</span>
+                            <span className='text-[9px] text-muted-foreground'>{new Date(e.createdAt).toLocaleTimeString('pt-BR')}</span>
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className='flex flex-col'>
-                            <Badge variant="outline" className={`text-[8px] h-4 uppercase font-black px-1.5 w-fit ${
-                              e.tipo === 'COMISSAO' ? 'border-green-500/20 bg-green-500/5 text-green-500' : 
-                              e.tipo === 'PREMIO' ? 'border-amber-500/20 bg-amber-500/5 text-amber-500' :
-                              'border-purple-500/20 bg-purple-500/5 text-purple-500'
-                            }`}>
-                              {e.tipo.replace('_', ' ')}
+                            <Badge variant="outline" className={cn("text-[8px] h-4 uppercase font-black px-1.5 w-fit mb-1", 
+                              e.amount > 0 ? "border-green-500/20 text-green-500 bg-green-500/5" : "border-red-500/20 text-red-500 bg-red-500/5"
+                            )}>
+                              {e.type.replace('_', ' ')}
                             </Badge>
-                            <span className='text-[9px] text-muted-foreground mt-1 truncate max-w-[120px]'>{e.obs}</span>
+                            <span className='text-[10px] text-muted-foreground truncate max-w-[200px]'>{e.description}</span>
                           </div>
                         </TableCell>
                         <TableCell>
                           <span className='text-[10px] font-black text-slate-400 uppercase italic'>{e.modulo}</span>
                         </TableCell>
                         <TableCell className='text-right'>
-                          <span className='text-[11px] font-bold text-white'>{e.valorAposta > 0 ? formatBRL(e.valorAposta) : '-'}</span>
-                        </TableCell>
-                        <TableCell className='text-right'>
-                          <span className={`text-[12px] font-black ${
-                            e.valorComissao > 0 ? 'text-green-500' : 
-                            e.valorCredito > 0 ? 'text-purple-400' :
-                            e.valorPremio > 0 ? 'text-amber-400' : 'text-slate-500'
-                          }`}>
-                            {e.valorComissao > 0 ? `+${formatBRL(e.valorComissao)}` : 
-                             e.valorCredito > 0 ? `+${formatBRL(e.valorCredito)}` :
-                             e.valorPremio > 0 ? `+${formatBRL(e.valorPremio)}` : '-'}
+                          <span className={cn("text-[12px] font-black", e.amount > 0 ? "text-green-500" : "text-red-500")}>
+                            {e.amount > 0 ? '+' : ''}{formatBRL(e.amount)}
                           </span>
                         </TableCell>
                       </TableRow>
@@ -364,5 +305,20 @@ export default function RelatorioComissaoPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+function KpiCard({ title, value, icon: Icon, color, isCurrency = true, active, onClick }: any) {
+  return (
+    <Card 
+      onClick={onClick}
+      className={cn(
+        'cursor-pointer transition-all duration-300 border-white/5',
+        active ? 'bg-primary/20 ring-1 ring-primary/50' : 'bg-slate-900/50 hover:bg-white/5'
+      )}
+    >
+      <CardHeader className='p-4 pb-2'><CardTitle className='text-[10px] font-black uppercase text-muted-foreground flex items-center gap-2'><Icon size={12} className={color} /> {title}</CardTitle></CardHeader>
+      <CardContent className='p-4 pt-0'><p className={cn('text-lg font-black italic', color)}>{isCurrency ? formatBRL(value) : value}</p></CardContent>
+    </Card>
   );
 }

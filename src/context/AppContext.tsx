@@ -30,12 +30,15 @@ interface AppContextType {
   bingoDraws: any[];
   jdbLoterias: any[];
   genericLotteryConfigs: any[];
+  isFullscreen: boolean;
   
   refreshData: () => void;
   logout: () => void;
+  toggleFullscreen: () => void;
   placeFootballBet: (stake: number) => Promise<string | null>;
   buyBingoTickets: (drawId: string, count: number) => boolean;
   handleFinalizarAposta: (aposta: any, totalValue: number) => string | null;
+  registerCambistaMovement: (data: any) => void;
   [key: string]: any;
 }
 
@@ -46,6 +49,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   
   // States
   const [user, setUser] = useState<any>(null);
@@ -65,23 +69,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const users = getUsers();
     
     setUser(currentUser);
-    setLedger(LedgerService.getEntries());
+    const currentLedger = LedgerService.getEntries();
+    setLedger(currentLedger);
     setApostas(getStorageItem('app:apostas:v1', []));
     setBingoDraws(getStorageItem('app:bingo_draws:v1', []));
     setJdbLoterias(getStorageItem('jogo_bicho:loterias:v1', INITIAL_JDB_LOTERIAS));
     setGenericLotteryConfigs(getStorageItem('app:generic_lotteries:v1', INITIAL_GENERIC_LOTTERIES));
 
-    // Recalcular Totais do Dashboard com base no contexto (Global ou Banca)
     const totals = getDashboardTotals({
       apostas: getStorageItem('app:apostas:v1', []),
       bingoTickets: getStorageItem('app:bingo_tickets:v1', []),
       bingoDraws: getStorageItem('app:bingo_draws:v1', []),
-      snookerBets: [], // Fallback
+      snookerBets: [],
       snookerFinancialHistory: [],
       footballBets: getStorageItem('app:football_bets:v1', []),
-      userCommissions: [], // Agora vem do Ledger
       users: users,
-      ledger: LedgerService.getEntries()
+      ledger: currentLedger
     }, {
       mode: ctx?.mode || 'GLOBAL',
       bancaId: ctx?.bancaId || null
@@ -95,7 +98,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setMounted(true);
     refreshData();
 
-    // Listeners para sincronização reativa
     window.addEventListener(APP_EVENTS.DATA_CHANGED, refreshData);
     window.addEventListener(APP_EVENTS.AUTH_CHANGED, refreshData);
     window.addEventListener('storage', refreshData);
@@ -113,7 +115,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     router.push('/login');
   };
 
-  // --- ENGINE DE APOSTAS ---
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
+  };
 
   const placeFootballBet = async (stake: number): Promise<string | null> => {
     if (!user) { router.push('/login'); return null; }
@@ -196,14 +208,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const buyBingoTickets = (drawId: string, count: number) => {
     if (!user) return false;
-    const price = 0.3; // Default
+    const price = 0.3;
     const total = count * price;
 
     const betResult = BetService.processBet(user, {
       userId: user.id,
       modulo: 'Bingo',
       valor: total,
-      retornoPotencial: 0, // No bingo o prêmio é variável
+      retornoPotencial: 0,
       descricao: `Compra de ${count} cartelas Bingo`,
       referenceId: `bin-${drawId}`
     });
@@ -223,6 +235,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return false;
   };
 
+  const registerCambistaMovement = (data: { tipo: string, valor: number, modulo?: string, observacao?: string }) => {
+    if (!user) return;
+    
+    let ledgerType: any = 'CASH_IN';
+    if (data.tipo === 'RECOLHE') ledgerType = 'CASH_OUT_RECOLHE';
+    if (data.tipo === 'FECHAMENTO_CAIXA') ledgerType = 'CASH_CLOSE';
+
+    LedgerService.addEntry({
+      bancaId: user.bancaId || 'default',
+      userId: user.id,
+      terminal: user.terminal,
+      tipoUsuario: user.tipoUsuario,
+      modulo: data.modulo || 'Caixa',
+      type: ledgerType,
+      amount: data.tipo === 'RECOLHE' ? -data.valor : data.valor,
+      balanceBefore: user.saldo + user.bonus,
+      balanceAfter: user.saldo + user.bonus, // Movimentação de caixa física não altera saldo virtual no protótipo
+      referenceId: `cash-${Date.now()}`,
+      description: data.observacao || data.tipo
+    });
+    
+    notifyDataChange();
+  };
+
   return (
     <AppContext.Provider value={{
       user, isLoading, 
@@ -230,6 +266,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       bonus: user?.bonus || 0, 
       terminal: user?.terminal || '',
       ledger, dashboardTotals, apostas, bingoDraws, jdbLoterias, genericLotteryConfigs,
+      isFullscreen, toggleFullscreen,
       refreshData, logout,
       betSlip,
       addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
@@ -238,10 +275,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       placeFootballBet,
       handleFinalizarAposta,
       buyBingoTickets,
-      footballData: { unifiedMatches: [], leagues: [], syncStatus: 'idle' }, // Mock para compilar
-      updateLeagueConfig: () => {},
-      syncFootballAll: async () => {},
-      banners: [], popups: [], news: [], liveMiniPlayerConfig: null
+      registerCambistaMovement,
+      footballData: { unifiedMatches: [], leagues: [], syncStatus: 'idle' }
     }}>
       {mounted && children}
     </AppContext.Provider>

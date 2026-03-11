@@ -16,7 +16,10 @@ export type LedgerType =
   | 'PRIZE_PAID' 
   | 'DESCARGA' 
   | 'DEPOSIT' 
-  | 'WITHDRAW';
+  | 'WITHDRAW'
+  | 'CASH_IN'
+  | 'CASH_OUT_RECOLHE'
+  | 'CASH_CLOSE';
 
 export interface LedgerEntry {
   id: string;
