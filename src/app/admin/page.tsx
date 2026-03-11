@@ -32,8 +32,8 @@ export default function AdminPage() {
     setActiveCtx(ctx);
     setCurrentBanca(resolveCurrentBanca());
     
-    // Busca usuários assincronamente
-    getUsers().then(setUsers);
+    // Busca usuários de forma síncrona
+    setUsers(getUsers());
   }, [router]);
 
   const totals = useMemo(() => {
@@ -275,5 +275,31 @@ export default function AdminPage() {
         </Card>
       </div>
     </main>
+  );
+}
+
+function KpiBox({ title, value, color, sub }: any) {
+  return (
+    <Card className="bg-slate-900 border-white/5 shadow-inner">
+      <CardContent className="p-4">
+        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{title}</p>
+        <p className={cn("text-2xl font-black italic tracking-tighter tabular-nums", color)}>{value}</p>
+        <p className="text-[8px] font-bold text-muted-foreground/50 uppercase">{sub}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function QuickLink({ href, icon: Icon, label, desc }: any) {
+  return (
+    <Link href={href}>
+      <div className="p-4 rounded-xl bg-black/30 border border-white/5 hover:border-primary/30 transition-all group flex flex-col gap-2">
+        <Icon className="h-5 w-5 text-primary group-hover:scale-110 transition-transform" />
+        <div>
+          <p className="text-xs font-black text-white uppercase italic">{label}</p>
+          <p className="text-[9px] text-muted-foreground font-bold uppercase">{desc}</p>
+        </div>
+      </div>
+    </Link>
   );
 }
