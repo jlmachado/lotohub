@@ -31,7 +31,9 @@ export default function AdminPage() {
     
     setActiveCtx(ctx);
     setCurrentBanca(resolveCurrentBanca());
-    setUsers(getUsers());
+    
+    // Busca usuários assincronamente
+    getUsers().then(setUsers);
   }, [router]);
 
   const totals = useMemo(() => {
@@ -45,7 +47,7 @@ export default function AdminPage() {
       footballBets: context.footballBets,
       userCommissions: context.userCommissions,
       users: users,
-      ledger: context.ledger || [] // Garantindo a passagem do ledger
+      ledger: context.ledger || []
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
@@ -62,8 +64,8 @@ export default function AdminPage() {
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
-    });
-  }, [context, activeCtx]);
+    }, users);
+  }, [context, activeCtx, users]);
 
   const recentPayouts = useMemo(() => {
     if (!activeCtx) return [];
@@ -75,8 +77,8 @@ export default function AdminPage() {
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
-    });
-  }, [context, activeCtx]);
+    }, users);
+  }, [context, activeCtx, users]);
 
   const getUserTypeBadge = (type: string) => {
     switch (type) {

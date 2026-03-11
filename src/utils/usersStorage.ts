@@ -59,10 +59,13 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
 
 /**
  * Proxy de compatibilidade assíncrona.
- * Nota: Como agora usamos banco de dados real, estas funções retornam Promises.
  */
 export const getUserByTerminal = async (terminal: string) => {
   return await usersRepo.getByTerminal(terminal);
+};
+
+export const getUsers = async (): Promise<User[]> => {
+  return await usersRepo.getAll();
 };
 
 export const upsertUser = async (userData: Partial<User> & { terminal: string }) => {
@@ -101,9 +104,11 @@ export interface AdminLog {
 }
 
 export const logAdminAction = async (log: Omit<AdminLog, 'id' | 'at'>) => {
-  const id = `log-${Date.now()}`;
-  const now = new Date().toISOString();
   // No futuro, usar um repositório específico para logs
+};
+
+export const getAuditLogs = async (terminal: string): Promise<AdminLog[]> => {
+  return []; // Placeholder para logs no Firestore futuramente
 };
 
 export const addPromoterCredit = async (terminal: string, amount: number, reason: string) => {

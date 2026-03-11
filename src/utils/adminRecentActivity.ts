@@ -3,7 +3,7 @@
  */
 
 import { Aposta, BingoTicket, SnookerBet, BingoDraw, FootballBet } from '@/context/AppContext';
-import { getUsers } from './usersStorage';
+import { User } from './usersStorage';
 
 export interface UnifiedActivity {
   id: string;
@@ -31,9 +31,9 @@ export function getRecentBets(
     snookerBets: SnookerBet[];
     footballBets?: FootballBet[];
   },
-  filter: { mode: 'GLOBAL' | 'BANCA'; bancaId: string | null }
+  filter: { mode: 'GLOBAL' | 'BANCA'; bancaId: string | null },
+  users: User[]
 ): UnifiedActivity[] {
-  const users = getUsers();
   const { mode, bancaId } = filter;
   const combined: UnifiedActivity[] = [];
 
@@ -116,9 +116,9 @@ export function getRecentPayouts(
     snookerBets: SnookerBet[];
     footballBets?: FootballBet[];
   },
-  filter: { mode: 'GLOBAL' | 'BANCA'; bancaId: string | null }
+  filter: { mode: 'GLOBAL' | 'BANCA'; bancaId: string | null },
+  users: User[]
 ): UnifiedActivity[] {
-  const users = getUsers();
   const { mode, bancaId } = filter;
   const combined: UnifiedActivity[] = [];
 

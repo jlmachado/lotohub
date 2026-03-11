@@ -29,11 +29,11 @@ export default function AdminUsersPage() {
   const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   useEffect(() => {
-    setAllUsers(getUsers());
+    refreshData();
   }, []);
 
   const refreshData = () => {
-    setAllUsers(getUsers());
+    getUsers().then(setAllUsers);
   };
 
   const filteredUsers = useMemo(() => {
@@ -55,29 +55,31 @@ export default function AdminUsersPage() {
 
   const handleToggleStatus = (user: User) => {
     const newStatus = user.status === 'ACTIVE' ? 'BLOCKED' : 'ACTIVE';
-    upsertUser({ terminal: user.terminal, status: newStatus });
-    logAdminAction({
-      adminUser: 'admin',
-      action: newStatus === 'ACTIVE' ? 'UNBLOCK_USER' : 'BLOCK_USER',
-      terminal: user.terminal,
-      reason: 'Alteração manual via lista'
+    upsertUser({ terminal: user.terminal, status: newStatus }).then(() => {
+      logAdminAction({
+        adminUser: 'admin',
+        action: newStatus === 'ACTIVE' ? 'UNBLOCK_USER' : 'BLOCK_USER',
+        terminal: user.terminal,
+        reason: 'Alteração manual via lista'
+      });
+      toast({ title: newStatus === 'ACTIVE' ? 'Usuário Desbloqueado' : 'Usuário Bloqueado' });
+      refreshData();
     });
-    toast({ title: newStatus === 'ACTIVE' ? 'Usuário Desbloqueado' : 'Usuário Bloqueado' });
-    refreshData();
   };
 
   const handleResetPassword = (user: User) => {
     const newPass = prompt(`Digite a nova senha para o terminal ${user.terminal}:`, '1234');
     if (newPass && newPass.length >= 4) {
-      upsertUser({ terminal: user.terminal, password: newPass });
-      logAdminAction({
-        adminUser: 'admin',
-        action: 'RESET_PASSWORD',
-        terminal: user.terminal,
-        reason: 'Reset via painel administrativo'
+      upsertUser({ terminal: user.terminal, password: newPass }).then(() => {
+        logAdminAction({
+          adminUser: 'admin',
+          action: 'RESET_PASSWORD',
+          terminal: user.terminal,
+          reason: 'Reset via painel administrativo'
+        });
+        toast({ title: 'Senha resetada com sucesso!' });
+        refreshData();
       });
-      toast({ title: 'Senha resetada com sucesso!' });
-      refreshData();
     } else if (newPass) {
       alert('A senha deve ter no mínimo 4 caracteres.');
     }
