@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { BilheteContent } from './BilheteContent';
 import { generateTicketImage } from '@/utils/generateTicketImage';
 import { shareTicketWhatsApp } from '@/utils/shareTicketWhatsApp';
+import { cn } from '@/lib/utils';
 
 interface TicketDialogProps {
   isOpen: boolean;
