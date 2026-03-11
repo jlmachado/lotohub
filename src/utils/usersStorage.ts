@@ -1,8 +1,7 @@
 'use client';
 
 /**
- * @fileOverview Persistência de Usuários via LocalStorage.
- * Restaurado para funcionamento síncrono local.
+ * @fileOverview Persistência de Usuários via LocalStorage com Seeding Automático.
  */
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
@@ -59,8 +58,82 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
   }
 };
 
+/**
+ * Cria usuários iniciais caso a base esteja vazia.
+ */
+const seedInitialUsers = (): User[] => {
+  const now = new Date().toISOString();
+  const initialUsers: User[] = [
+    {
+      id: 'u-10001',
+      terminal: '10001',
+      password: 'admin',
+      nome: 'Diretoria LotoHub',
+      status: 'ACTIVE',
+      tipoUsuario: 'SUPER_ADMIN',
+      permissoes: getDefaultPermissions('SUPER_ADMIN'),
+      saldo: 1000000,
+      bonus: 0,
+      bancaId: 'default',
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'u-20002',
+      terminal: '20002',
+      password: '1234',
+      nome: 'Caixa Central',
+      status: 'ACTIVE',
+      tipoUsuario: 'CAMBISTA',
+      permissoes: getDefaultPermissions('CAMBISTA'),
+      cambistaConfig: { loginFechamento: 'caixa', senhaFechamento: '1234' },
+      promotorConfig: { porcentagemComissao: 10 },
+      saldo: 5000,
+      bonus: 0,
+      bancaId: 'default',
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'u-30003',
+      terminal: '30003',
+      password: '1234',
+      nome: 'Promotor Gold',
+      status: 'ACTIVE',
+      tipoUsuario: 'PROMOTOR',
+      permissoes: getDefaultPermissions('PROMOTOR'),
+      promotorConfig: { porcentagemComissao: 15 },
+      saldo: 1000,
+      bonus: 500,
+      bancaId: 'default',
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'u-40004',
+      terminal: '40004',
+      password: '1234',
+      nome: 'Jogador Teste',
+      status: 'ACTIVE',
+      tipoUsuario: 'USUARIO',
+      permissoes: getDefaultPermissions('USUARIO'),
+      saldo: 100,
+      bonus: 50,
+      bancaId: 'default',
+      createdAt: now,
+      updatedAt: now
+    }
+  ];
+  setStorageItem(USERS_KEY, initialUsers);
+  return initialUsers;
+};
+
 export const getUsers = (): User[] => {
-  return getStorageItem(USERS_KEY, []);
+  const users = getStorageItem<User[]>(USERS_KEY, []);
+  if (users.length === 0) {
+    return seedInitialUsers();
+  }
+  return users;
 };
 
 export const getUserByTerminal = (terminal: string): User | null => {
