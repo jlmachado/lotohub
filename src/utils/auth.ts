@@ -1,25 +1,39 @@
+'use client';
+
 /**
- * @fileOverview Lógica de autenticação integrada ao Firestore.
+ * @fileOverview Lógica de autenticação baseada em Storage Local.
+ * Revertido para o modelo síncrono original.
  */
 
-import { User, UserType } from './usersStorage';
-import { usersRepo } from '@/repositories/users-repository';
+import { User, getUserByTerminal, upsertUser, getDefaultPermissions, getUsers } from './usersStorage';
 
 export interface Session {
   userId: string;
   terminal: string;
-  tipoUsuario: UserType;
+  tipoUsuario: any;
   bancaId?: string;
   loggedAt: number;
 }
 
 const SESSION_KEY = 'app:session:v1';
 
-export const login = async (identifier: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
-  const isEmail = identifier.includes('@');
-  const user = isEmail 
-    ? await usersRepo.getByEmail(identifier)
-    : await usersRepo.getByTerminal(identifier);
+export const login = (identifier: string, password: string): { success: boolean; message: string; user?: User } => {
+  // Super Admin Fallback (only for dev/initial setup)
+  if (identifier === '10001' && password === 'admin') {
+    const admin = getUserByTerminal('10001');
+    if (!admin) {
+      upsertUser({
+        terminal: '10001',
+        password: 'admin',
+        nome: 'Super Administrador',
+        tipoUsuario: 'SUPER_ADMIN',
+        saldo: 1000000,
+        bancaId: 'default'
+      });
+    }
+  }
+
+  const user = getUserByTerminal(identifier);
 
   if (!user) {
     return { success: false, message: 'Usuário não encontrado.' };
@@ -41,51 +55,31 @@ export const login = async (identifier: string, password: string): Promise<{ suc
     loggedAt: Date.now()
   };
 
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    window.dispatchEvent(new Event('auth-change'));
-  }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  window.dispatchEvent(new Event('auth-change'));
 
   return { success: true, message: 'Login realizado com sucesso!', user };
 };
 
-export const register = async (data: Partial<User>): Promise<{ success: boolean; message: string }> => {
-  if (data.terminal && await usersRepo.getByTerminal(data.terminal)) {
+export const register = (data: Partial<User>): { success: boolean; message: string } => {
+  if (data.terminal && getUserByTerminal(data.terminal)) {
     return { success: false, message: 'Terminal em uso.' };
   }
 
-  const id = `u-${data.terminal}-${Date.now()}`;
-  const newUser: User = {
+  upsertUser({
     ...data,
-    id,
     tipoUsuario: 'USUARIO', 
     saldo: 0,
-    bonus: 0,
     status: 'ACTIVE',
-    permissoes: {
-      podeApostar: true,
-      podeDepositar: true,
-      podeSacar: true,
-      podeVerRelatorios: true,
-      podeFazerJogoParaTerceiros: false,
-      podeReceberComissao: false,
-      podeFecharCaixa: false,
-      podeAcessarAdmin: false,
-      podeGerenciarBancas: false
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  } as User;
+    permissoes: getDefaultPermissions('USUARIO')
+  } as any);
 
-  await usersRepo.save(newUser);
   return { success: true, message: 'Cadastro realizado!' };
 };
 
 export const logout = () => {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(SESSION_KEY);
-    window.dispatchEvent(new Event('auth-change'));
-  }
+  localStorage.removeItem(SESSION_KEY);
+  window.dispatchEvent(new Event('auth-change'));
 };
 
 export const getSession = (): Session | null => {
@@ -99,16 +93,10 @@ export const getSession = (): Session | null => {
   }
 };
 
-/**
- * Retorna os dados básicos da sessão do usuário atual de forma síncrona.
- */
 export const getCurrentUser = (): Session | null => {
   return getSession();
 };
 
-/**
- * Verifica se o usuário tem permissão para acessar áreas administrativas.
- */
 export const canAccessAdmin = (user: Session | null): boolean => {
   if (!user) return false;
   return user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN';

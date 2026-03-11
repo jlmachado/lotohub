@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * @fileOverview Camada de compatibilidade para Usuários.
- * Faz a ponte entre as telas existentes e o repositório Firestore.
+ * @fileOverview Persistência de Usuários via LocalStorage.
+ * Restaurado para funcionamento síncrono local.
  */
 
-import { usersRepo } from '@/repositories/users-repository';
+import { getStorageItem, setStorageItem } from './safe-local-storage';
 
 export type UserStatus = 'ACTIVE' | 'BLOCKED';
 export type UserType = 'USUARIO' | 'PROMOTOR' | 'CAMBISTA' | 'ADMIN' | 'SUPER_ADMIN';
@@ -42,6 +42,8 @@ export interface User {
   updatedAt: string;
 }
 
+const USERS_KEY = 'app:users:v1';
+
 export const getDefaultPermissions = (type: UserType): UserPermissions => {
   const common = {
     podeApostar: true, podeDepositar: true, podeSacar: true, podeVerRelatorios: true,
@@ -57,42 +59,43 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
   }
 };
 
-/**
- * Proxy de compatibilidade assíncrona.
- */
-export const getUserByTerminal = async (terminal: string) => {
-  return await usersRepo.getByTerminal(terminal);
+export const getUsers = (): User[] => {
+  return getStorageItem(USERS_KEY, []);
 };
 
-export const getUsers = async (): Promise<User[]> => {
-  return await usersRepo.getAll();
+export const getUserByTerminal = (terminal: string): User | null => {
+  const users = getUsers();
+  return users.find(u => u.terminal === terminal) || null;
 };
 
-export const upsertUser = async (userData: Partial<User> & { terminal: string }) => {
-  const existing = await usersRepo.getByTerminal(userData.terminal);
-  if (existing) {
-    const updated = { ...existing, ...userData };
-    await usersRepo.save(updated);
-    return updated;
+export const saveUsers = (users: User[]) => {
+  setStorageItem(USERS_KEY, users);
+};
+
+export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
+  const users = getUsers();
+  const index = users.findIndex(u => u.terminal === userData.terminal);
+  const now = new Date().toISOString();
+
+  if (index >= 0) {
+    users[index] = { ...users[index], ...userData, updatedAt: now };
   } else {
-    const id = userData.id || `u-${userData.terminal}-${Date.now()}`;
     const newUser = {
       ...userData,
-      id,
+      id: userData.id || `u-${userData.terminal}-${Date.now()}`,
       status: userData.status || 'ACTIVE',
       tipoUsuario: userData.tipoUsuario || 'USUARIO',
       permissoes: userData.permissoes || getDefaultPermissions(userData.tipoUsuario || 'USUARIO'),
       saldo: userData.saldo || 0,
       bonus: userData.bonus || 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     } as User;
-    await usersRepo.save(newUser);
-    return newUser;
+    users.push(newUser);
   }
+  saveUsers(users);
 };
 
-// Funções de Log de Auditoria (Admin)
 export interface AdminLog {
   id: string;
   adminUser: string;
@@ -101,20 +104,37 @@ export interface AdminLog {
   delta?: number;
   reason?: string;
   at: string;
+  bancaId?: string;
 }
 
-export const logAdminAction = async (log: Omit<AdminLog, 'id' | 'at'>) => {
-  // No futuro, usar um repositório específico para logs
+const AUDIT_KEY = 'app:admin_audit:v1';
+
+export const logAdminAction = (log: Omit<AdminLog, 'id' | 'at'>) => {
+  const logs = getStorageItem<AdminLog[]>(AUDIT_KEY, []);
+  logs.unshift({
+    ...log,
+    id: `log-${Date.now()}`,
+    at: new Date().toISOString()
+  });
+  setStorageItem(AUDIT_KEY, logs.slice(0, 1000));
 };
 
-export const getAuditLogs = async (terminal: string): Promise<AdminLog[]> => {
-  return []; // Placeholder para logs no Firestore futuramente
+export const getAuditLogs = (terminal?: string): AdminLog[] => {
+  const logs = getStorageItem<AdminLog[]>(AUDIT_KEY, []);
+  if (terminal) return logs.filter(l => l.terminal === terminal);
+  return logs;
 };
 
-export const addPromoterCredit = async (terminal: string, amount: number, reason: string) => {
-  const user = await usersRepo.getByTerminal(terminal);
+export const addPromoterCredit = (terminal: string, amount: number, reason: string) => {
+  const user = getUserByTerminal(terminal);
   if (user) {
-    const newSaldo = user.saldo + amount;
-    await usersRepo.update(user.id, { saldo: newSaldo });
+    upsertUser({ terminal, saldo: user.saldo + amount });
+    logAdminAction({
+      adminUser: 'admin',
+      action: 'CREDIT_ADDED',
+      terminal,
+      delta: amount,
+      reason
+    });
   }
 };

@@ -1,13 +1,12 @@
+'use client';
+
 /**
- * @fileOverview BetService - Motor centralizado integrado ao Firestore.
+ * @fileOverview BetService - Motor local restaurado.
  */
 
-import { User } from '@/utils/usersStorage';
+import { User, upsertUser } from '@/utils/usersStorage';
 import { LedgerService } from './ledger-service';
-import { notifyDataChange } from './event-bus';
 import { resolveCurrentBanca } from '@/utils/bancaContext';
-import { usersRepo } from '@/repositories/users-repository';
-import { ledgerRepo } from '@/repositories/ledger-repository';
 
 export interface BetRequest {
   userId: string;
@@ -16,12 +15,10 @@ export interface BetRequest {
   retornoPotencial: number;
   descricao: string;
   referenceId: string;
-  loteria?: string;
-  horario?: string;
 }
 
 export class BetService {
-  static async processBet(user: User, request: BetRequest) {
+  static processBet(user: User, request: BetRequest) {
     const banca = resolveCurrentBanca();
     const bancaId = user.bancaId || banca?.id || 'default';
     
@@ -39,11 +36,11 @@ export class BetService {
       }
     }
 
-    // Atualizar Usuário no Firestore
-    await usersRepo.update(user.id, { saldo: newBalance, bonus: newBonus });
+    // Atualizar Usuário localmente
+    upsertUser({ terminal: user.terminal, saldo: newBalance, bonus: newBonus });
 
-    // Registrar Ledger no Firestore
-    const ledgerEntry = {
+    // Registrar Ledger localmente
+    LedgerService.addEntry({
       bancaId,
       userId: user.id,
       terminal: user.terminal,
@@ -54,30 +51,29 @@ export class BetService {
       balanceBefore: initialTotal,
       balanceAfter: newBalance + newBonus,
       referenceId: request.referenceId,
-      description: request.descricao,
-      id: `trx-${Date.now()}`
-    };
-    
-    await ledgerRepo.save(ledgerEntry as any);
+      description: request.descricao
+    });
 
-    // Cálculo de Comissão
+    // Cálculo de Comissão síncrono
     const percComissao = user.promotorConfig?.porcentagemComissao || 0;
     const valorComissao = (request.valor * percComissao) / 100;
 
     if (valorComissao > 0) {
-      const commEntry = {
-        ...ledgerEntry,
-        id: `trx-comm-${Date.now()}`,
+      LedgerService.addEntry({
+        bancaId,
+        userId: user.id,
+        terminal: user.terminal,
+        tipoUsuario: user.tipoUsuario,
+        modulo: request.modulo,
         type: 'COMMISSION_EARNED',
         amount: valorComissao,
         balanceBefore: newBalance + newBonus,
         balanceAfter: newBalance + newBonus,
+        referenceId: request.referenceId,
         description: `Comissão ${percComissao}% s/ venda ${request.modulo}`
-      };
-      await ledgerRepo.save(commEntry as any);
+      });
     }
 
-    notifyDataChange();
     return { success: true };
   }
 }

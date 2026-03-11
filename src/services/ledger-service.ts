@@ -1,10 +1,10 @@
+'use client';
+
 /**
- * @fileOverview Ledger Service - O coração financeiro do sistema.
- * Gerencia o extrato unificado e garante integridade em todas as transações.
+ * @fileOverview Ledger Service - Funcionamento local via Storage.
  */
 
 import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
-import { notifyDataChange } from './event-bus';
 
 export type LedgerType = 
   | 'BET_PLACED' 
@@ -53,8 +53,7 @@ export class LedgerService {
     };
 
     entries.unshift(newEntry);
-    setStorageItem(LEDGER_KEY, entries.slice(0, 5000)); // Mantém últimos 5k registros
-    notifyDataChange();
+    setStorageItem(LEDGER_KEY, entries.slice(0, 5000));
     return newEntry;
   }
 

@@ -1,29 +1,24 @@
-/**
- * @fileOverview AppContext - Orquestrador Central Reativo via Firebase.
- */
-
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+/**
+ * @fileOverview AppContext - Orquestrador Central baseado em Storage Local.
+ * Revertido totalmente para o modelo síncrono.
+ */
+
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getSession, logout as authLogout } from '@/utils/auth';
-import { APP_EVENTS, notifyDataChange } from '@/services/event-bus';
+import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
+import { getUserByTerminal, upsertUser, getUsers } from '@/utils/usersStorage';
+import { LedgerService } from '@/services/ledger-service';
+import { BetService } from '@/services/bet-service';
+import { generatePoule } from '@/utils/generatePoule';
 import { espnService } from '@/services/espn-api-service';
-import { MatchModel } from '@/services/match-mapper-service';
-import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 import { normalizeESPNScoreboard, normalizeESPNStandings } from '@/utils/espn-normalizer';
 import { FootballOddsEngine } from '@/services/football-odds-engine';
 import { FootballMarketsEngine } from '@/services/football-markets-engine';
-import { MigrationService } from '@/services/migration-service';
-import { usersRepo } from '@/repositories/users-repository';
-import { bancasRepo } from '@/repositories/bancas-repository';
-import { ledgerRepo } from '@/repositories/ledger-repository';
-import { BaseRepository } from '@/repositories/base-repository';
-import { onSnapshot, collection, query, orderBy, limit, doc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
-import { generatePoule } from '@/utils/generatePoule';
-import { BetService } from '@/services/bet-service';
+import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
 export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -39,13 +34,12 @@ export interface FootballBet {
   items: any[];
   status: 'OPEN' | 'WON' | 'LOST' | 'CANCELLED';
   createdAt: string;
-  isDescarga?: boolean;
 }
 
 export interface FootballData {
   leagues: ESPNLeagueConfig[];
   matches: any[];
-  unifiedMatches: MatchModel[];
+  unifiedMatches: any[];
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
   lastSyncAt: string | null;
 }
@@ -78,24 +72,23 @@ interface AppContextType {
   betSlip: any[];
   liveMiniPlayerConfig: LiveMiniPlayerConfig;
   
-  refreshData: () => Promise<void>;
+  refreshData: () => void;
   logout: () => void;
-  addBanner: (banner: Banner) => Promise<void>;
-  updateBanner: (banner: Banner) => Promise<void>;
-  deleteBanner: (id: string) => Promise<void>;
-  addPopup: (popup: Popup) => Promise<void>;
-  updatePopup: (popup: Popup) => Promise<void>;
-  deletePopup: (id: string) => Promise<void>;
-  addNews: (msg: NewsMessage) => Promise<void>;
-  updateNews: (msg: NewsMessage) => Promise<void>;
-  deleteNews: (id: string) => Promise<void>;
+  addBanner: (banner: Banner) => void;
+  updateBanner: (banner: Banner) => void;
+  deleteBanner: (id: string) => void;
+  addPopup: (popup: Popup) => void;
+  updatePopup: (popup: Popup) => void;
+  deletePopup: (id: string) => void;
+  addNews: (msg: NewsMessage) => void;
+  updateNews: (msg: NewsMessage) => void;
+  deleteNews: (id: string) => void;
   syncFootballAll: (force?: boolean) => Promise<void>;
-  updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => Promise<void>;
   addBetToSlip: (bet: any) => void;
   removeBetFromSlip: (id: string) => void;
   clearBetSlip: () => void;
   placeFootballBet: (stake: number) => Promise<string | null>;
-  updateLiveMiniPlayerConfig: (config: LiveMiniPlayerConfig) => Promise<void>;
+  updateLiveMiniPlayerConfig: (config: LiveMiniPlayerConfig) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -107,11 +100,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [user, setUser] = useState<any>(null);
-  const [ledger, setLedger] = useState<any[]>([]);
+  const [betSlip, setBetSlip] = useState<any[]>([]);
+  
+  // Local state mirrored from storage
   const [banners, setBanners] = useState<Banner[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
   const [news, setNews] = useState<NewsMessage[]>([]);
-  const [betSlip, setBetSlip] = useState<any[]>([]);
+  const [ledger, setLedger] = useState<any[]>([]);
   const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
   const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<LiveMiniPlayerConfig>({
     enabled: true, youtubeUrl: '', youtubeEmbedId: '', title: 'Sinuca ao Vivo',
@@ -123,95 +118,71 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     leagues: ESPN_LEAGUE_CATALOG, matches: [], unifiedMatches: [], syncStatus: 'idle', lastSyncAt: null
   });
 
-  const refreshData = useCallback(async () => {
+  const loadLocalData = useCallback(() => {
     const session = getSession();
     if (session) {
-      const u = await usersRepo.getById(session.userId);
+      const u = getUserByTerminal(session.terminal);
       setUser(u);
+      setLedger(LedgerService.getByUser(u?.id || ''));
     } else {
       setUser(null);
+      setLedger([]);
     }
+
+    setBanners(getStorageItem('app:banners:v1', []));
+    setPopups(getStorageItem('app:popups:v1', []));
+    setNews(getStorageItem('news_messages', []));
+    setFootballBets(getStorageItem('app:football_bets:v1', []));
+    setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', liveMiniPlayerConfig));
+    setFootballData(prev => ({
+      ...prev,
+      ...getStorageItem('app:football:unified:v1', { matches: [], unifiedMatches: [], lastSyncAt: null })
+    }));
   }, []);
 
-  // --- Realtime Listeners ---
   useEffect(() => {
-    if (!mounted) return;
+    setMounted(true);
+    loadLocalData();
+    setIsLoading(false);
 
-    // Listeners Globais
-    const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => {
-      setBanners(snap.docs.map(d => ({ ...d.data(), id: d.id } as Banner)).sort((a,b) => a.position - b.position));
-    });
-
-    const unsubPopups = onSnapshot(collection(db, 'popups'), (snap) => {
-      setPopups(snap.docs.map(d => ({ ...d.data(), id: d.id } as Popup)).sort((a,b) => b.priority - a.priority));
-    });
-
-    const unsubNews = onSnapshot(collection(db, 'newsMessages'), (snap) => {
-      setNews(snap.docs.map(d => ({ ...d.data(), id: d.id } as NewsMessage)).sort((a,b) => a.order - b.order));
-    });
-
-    const unsubConfig = onSnapshot(doc(db, 'systemConfigs', 'miniPlayer'), (doc) => {
-      if (doc.exists()) setLiveMiniPlayerConfig(doc.data() as LiveMiniPlayerConfig);
-    });
-
+    const handleDataChange = () => loadLocalData();
+    window.addEventListener('app:data-changed', handleDataChange);
+    window.addEventListener('auth-change', handleDataChange);
     return () => {
-      unsubBanners(); unsubPopups(); unsubNews(); unsubConfig();
+      window.removeEventListener('app:data-changed', handleDataChange);
+      window.removeEventListener('auth-change', handleDataChange);
     };
-  }, [mounted]);
+  }, [loadLocalData]);
 
-  // Listeners de Usuário (Ledger e Bets)
-  useEffect(() => {
-    if (!user?.id) return;
+  const notify = () => window.dispatchEvent(new Event('app:data-changed'));
 
-    const qLedger = query(collection(db, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100));
-    const unsubLedger = onSnapshot(qLedger, (snap) => {
-      setLedger(snap.docs.map(d => ({ ...d.data(), id: d.id } as any)).filter(e => e.userId === user.id));
-    });
+  const refreshData = () => loadLocalData();
 
-    const unsubUser = onSnapshot(doc(db, 'users', user.id), (snap) => {
-      if (snap.exists()) setUser(snap.data());
-    });
-
-    return () => { unsubLedger(); unsubUser(); };
-  }, [user?.id]);
-
-  useEffect(() => {
-    const init = async () => {
-      setMounted(true);
-      await MigrationService.run();
-      await refreshData();
-      setIsLoading(false);
-    };
-    init();
-  }, [refreshData]);
-
-  // --- Actions ---
-  const bannerRepo = new BaseRepository<Banner>('banners');
-  const popupRepo = new BaseRepository<Popup>('popups');
-  const newsRepo = new BaseRepository<NewsMessage>('newsMessages');
-
-  const addBanner = (b: Banner) => bannerRepo.save(b);
-  const updateBanner = (b: Banner) => bannerRepo.update(b.id, b);
-  const deleteBanner = (id: string) => bannerRepo.delete(id);
-
-  const addPopup = (p: Popup) => popupRepo.save(p);
-  const updatePopup = (p: Popup) => popupRepo.update(p.id, p);
-  const deletePopup = (id: string) => popupRepo.delete(id);
-
-  const addNews = (m: NewsMessage) => newsRepo.save(m);
-  const updateNews = (m: NewsMessage) => newsRepo.update(m.id, m);
-  const deleteNews = (id: string) => newsRepo.delete(id);
-
-  const updateLiveMiniPlayerConfig = async (cfg: LiveMiniPlayerConfig) => {
-    await setDoc(doc(db, 'systemConfigs', 'miniPlayer'), cfg);
+  const logout = () => {
+    authLogout();
+    setUser(null);
+    notify();
+    router.push('/login');
   };
 
-  const syncFootballAll = async (force: boolean = false) => {
-    if (footballData.syncStatus === 'syncing') return;
+  // --- CRUD RESTORED ---
+  const addBanner = (b: Banner) => { const items = [...banners, b]; setStorageItem('app:banners:v1', items); setBanners(items); notify(); };
+  const updateBanner = (b: Banner) => { const items = banners.map(i => i.id === b.id ? b : i); setStorageItem('app:banners:v1', items); setBanners(items); notify(); };
+  const deleteBanner = (id: string) => { const items = banners.filter(i => i.id !== id); setStorageItem('app:banners:v1', items); setBanners(items); notify(); };
+
+  const addPopup = (p: Popup) => { const items = [...popups, p]; setStorageItem('app:popups:v1', items); setPopups(items); notify(); };
+  const updatePopup = (p: Popup) => { const items = popups.map(i => i.id === p.id ? p : i); setStorageItem('app:popups:v1', items); setPopups(items); notify(); };
+  const deletePopup = (id: string) => { const items = popups.filter(i => i.id !== id); setStorageItem('app:popups:v1', items); setPopups(items); notify(); };
+
+  const addNews = (m: NewsMessage) => { const items = [...news, m]; setStorageItem('news_messages', items); setNews(items); notify(); };
+  const updateNews = (m: NewsMessage) => { const items = news.map(i => i.id === m.id ? m : i); setStorageItem('news_messages', items); setNews(items); notify(); };
+  const deleteNews = (id: string) => { const items = news.filter(i => i.id !== id); setStorageItem('news_messages', items); setNews(items); notify(); };
+
+  const updateLiveMiniPlayerConfig = (cfg: LiveMiniPlayerConfig) => { setStorageItem('app:mini_player_cfg:v1', cfg); setLiveMiniPlayerConfig(cfg); notify(); };
+
+  const syncFootballAll = async (force = false) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
-    
     try {
-      // Nota: No Firestore, podemos salvar o catálogo customizado por banca ou global
       const activeLeagues = footballData.leagues.filter(l => l.active);
       let allMatches: any[] = [];
       const leagueStandings: Record<string, any[]> = {};
@@ -225,71 +196,40 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)];
       }
 
-      const unified: MatchModel[] = allMatches.map(match => {
-        const probs = FootballOddsEngine.calculateMatchProbabilities(
-          match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || []
-        );
-        const internalMarkets = FootballMarketsEngine.generateAllMarkets(probs);
-        const resultMarket = internalMarkets.find(m => m.id === '1X2');
-
-        return {
-          id: match.id, espnId: match.id, league: match.leagueName, leagueSlug: match.leagueSlug,
-          homeTeam: match.homeTeam.name, awayTeam: match.awayTeam.name,
-          homeLogo: match.homeTeam.logo, awayLogo: match.awayTeam.logo,
-          kickoff: match.date, status: match.status, minute: match.clock || '',
-          scoreHome: match.homeTeam.score, scoreAway: match.awayTeam.score,
-          hasOdds: true,
-          odds: {
-            home: resultMarket?.selections.find(s => s.id === 'home')?.odd || 2.0,
-            draw: resultMarket?.selections.find(s => s.id === 'draw')?.odd || 3.2,
-            away: resultMarket?.selections.find(s => s.id === 'away')?.odd || 2.8
-          },
-          markets: internalMarkets,
-          isLive: match.status === 'LIVE',
-          isFinished: match.status === 'FINISHED',
-          marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN'
-        };
+      const unified = allMatches.map(match => {
+        const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || []);
+        const markets = FootballMarketsEngine.generateAllMarkets(probs);
+        return { ...match, markets, hasOdds: true, isLive: match.status === 'LIVE', marketStatus: 'OPEN', odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } };
       });
 
-      const now = new Date().toISOString();
-      setFootballData(prev => ({ ...prev, matches: allMatches, unifiedMatches: unified, syncStatus: 'success', lastSyncAt: now }));
-      toast({ title: 'Sincronização Concluída' });
-    } catch (error) {
+      const data = { matches: allMatches, unifiedMatches: unified, lastSyncAt: new Date().toISOString() };
+      setStorageItem('app:football:unified:v1', data);
+      setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' }));
+      toast({ title: 'Sync Concluído' });
+    } catch (e) {
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
-      toast({ variant: 'destructive', title: 'Erro na Sincronização' });
     }
   };
 
   const placeFootballBet = async (stake: number): Promise<string | null> => {
     if (!user) { router.push('/login'); return null; }
-    
-    const invalidSelection = betSlip.find(item => {
-      const liveMatch = footballData.unifiedMatches.find(m => m.id === item.matchId);
-      return liveMatch?.marketStatus !== 'OPEN';
-    });
-
-    if (invalidSelection) {
-      toast({ variant: 'destructive', title: 'Mercado Suspenso' });
-      return null;
-    }
-
     const pouleId = generatePoule();
     const totalOdds = parseFloat(betSlip.reduce((acc, item) => acc * (item.odd || 1), 1).toFixed(2));
     const potentialWin = parseFloat((stake * totalOdds).toFixed(2));
 
-    const result = await BetService.processBet(user, {
+    const result = BetService.processBet(user, {
       userId: user.id, modulo: 'Futebol', valor: stake, retornoPotencial: potentialWin,
       descricao: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`,
       referenceId: pouleId
     });
 
     if (result.success) {
-      const betRepo = new BaseRepository<FootballBet>('footballBets');
-      await betRepo.save({ 
-        id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', terminal: user.terminal,
-        stake, potentialWin, items: betSlip, status: 'OPEN', createdAt: new Date().toISOString()
-      } as any);
+      const bets = getStorageItem<FootballBet[]>('app:football_bets:v1', []);
+      const newBet: FootballBet = { id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', terminal: user.terminal, stake, potentialWin, items: betSlip, status: 'OPEN', createdAt: new Date().toISOString() };
+      bets.unshift(newBet);
+      setStorageItem('app:football_bets:v1', bets);
       setBetSlip([]);
+      notify();
       return pouleId;
     }
     return null;
@@ -299,10 +239,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     <AppContext.Provider value={{
       user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
       ledger, banners, popups, news, footballData, footballBets, betSlip, liveMiniPlayerConfig,
-      refreshData, logout: () => { authLogout(); setUser(null); router.push('/login'); },
-      addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup,
+      refreshData, logout, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup,
       addNews, updateNews, deleteNews, syncFootballAll,
-      updateLeagueConfig: async (id, cfg) => { /* logic to update leagues in DB */ },
       addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
       removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)),
       clearBetSlip: () => setBetSlip([]),

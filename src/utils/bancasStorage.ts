@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * @fileOverview Camada de compatibilidade para Bancas.
- * Integra as funções legadas com o repositório Firestore.
+ * @fileOverview Persistência de Bancas via LocalStorage.
+ * Restaurado para funcionamento síncrono local.
  */
 
-import { bancasRepo } from '@/repositories/bancas-repository';
+import { getStorageItem, setStorageItem } from './safe-local-storage';
 
 export interface BancaModulos {
   bingo: boolean;
@@ -47,36 +47,23 @@ export interface BancaContext {
   updatedAt: string;
 }
 
+const BANCAS_KEY = 'app:bancas:v1';
 const CURRENT_BANCA_KEY = 'app:current_banca:v1';
 
-/**
- * Retorna todas as bancas cadastradas no Firestore.
- */
-export const getBancas = async (): Promise<Banca[]> => {
-  return await bancasRepo.getAll();
-};
-
-/**
- * Cria ou atualiza uma banca no Firestore.
- */
-export const upsertBanca = async (bancaData: Partial<Banca> & { subdomain: string }): Promise<Banca> => {
-  const existing = await bancasRepo.getBySubdomain(bancaData.subdomain);
-  const now = new Date().toISOString();
-
-  if (existing) {
-    const updated = { ...existing, ...bancaData, updatedAt: now };
-    await bancasRepo.save(updated);
-    return updated;
-  } else {
-    const newBanca: Banca = {
-      id: bancaData.id || `banca-${bancaData.subdomain}-${Date.now()}`,
-      subdomain: bancaData.subdomain.toLowerCase().trim(),
-      adminLogin: bancaData.adminLogin || 'admin',
-      adminPassword: bancaData.adminPassword || '1234',
-      nome: bancaData.nome || 'Nova Banca',
-      cidade: bancaData.cidade || '',
-      whatsapp: bancaData.whatsapp || '',
-      modulos: bancaData.modulos || {
+export const getBancas = (): Banca[] => {
+  const bancas = getStorageItem<Banca[]>(BANCAS_KEY, []);
+  if (bancas.length === 0) {
+    // Initial default banca if none exists
+    const defaultBanca: Banca = {
+      id: 'default',
+      subdomain: 'default',
+      nome: 'LotoHub Matriz',
+      adminLogin: 'admin',
+      adminPassword: 'password',
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      modulos: {
         bingo: true,
         cassino: true,
         jogoDoBicho: true,
@@ -87,57 +74,63 @@ export const upsertBanca = async (bancaData: Partial<Banca> & { subdomain: strin
         sinucaAoVivo: true,
         loteriaUruguai: true
       },
-      descargaConfig: bancaData.descargaConfig || {
-        limitePremio: 999999,
-        ativo: false,
-        updatedAt: Date.now()
+      descargaConfig: { limitePremio: 10000, ativo: true, updatedAt: Date.now() }
+    };
+    setStorageItem(BANCAS_KEY, [defaultBanca]);
+    return [defaultBanca];
+  }
+  return bancas;
+};
+
+export const saveBancas = (bancas: Banca[]) => {
+  setStorageItem(BANCAS_KEY, bancas);
+};
+
+export const upsertBanca = (bancaData: Partial<Banca> & { subdomain: string }) => {
+  const bancas = getBancas();
+  const index = bancas.findIndex(b => b.subdomain === bancaData.subdomain);
+  const now = new Date().toISOString();
+
+  if (index >= 0) {
+    bancas[index] = { ...bancas[index], ...bancaData, updatedAt: now };
+  } else {
+    const newBanca: Banca = {
+      ...bancaData,
+      id: bancaData.id || `banca-${bancaData.subdomain}-${Date.now()}`,
+      adminLogin: bancaData.adminLogin || 'admin',
+      adminPassword: bancaData.adminPassword || '1234',
+      nome: bancaData.nome || 'Nova Banca',
+      modulos: bancaData.modulos || {
+        bingo: true, cassino: true, jogoDoBicho: true, seninha: true,
+        quininha: true, lotinha: true, futebol: true, sinucaAoVivo: true, loteriaUruguai: true
       },
+      descargaConfig: bancaData.descargaConfig || { limitePremio: 999999, ativo: false, updatedAt: Date.now() },
       status: bancaData.status || 'ACTIVE',
       createdAt: now,
-      updatedAt: now,
-    };
-    await bancasRepo.save(newBanca);
-    return newBanca;
+      updatedAt: now
+    } as Banca;
+    bancas.push(newBanca);
   }
+  saveBancas(bancas);
 };
 
-/**
- * Garante que a banca padrão exista (usado em migrações).
- */
-export const ensureDefaultBanca = async () => {
-  const existing = await bancasRepo.getById('default');
-  if (!existing) {
-    await upsertBanca({
-      id: 'default',
-      subdomain: 'default',
-      nome: 'LotoHub Matriz',
-      status: 'ACTIVE'
-    });
-  }
+export const ensureDefaultBanca = () => {
+  getBancas();
 };
 
-/**
- * Gerenciamento de Contexto (LocalStorage - Mantido local por ser preferência de sessão da UI)
- */
 export const getCurrentBancaContext = (): BancaContext | null => {
-  if (typeof window === 'undefined') return null;
-  const stored = localStorage.getItem(CURRENT_BANCA_KEY);
-  if (!stored) return null;
-  try {
-    return JSON.parse(stored);
-  } catch (e) {
-    return null;
-  }
+  return getStorageItem<BancaContext | null>(CURRENT_BANCA_KEY, null);
 };
 
 export const setBancaContext = (context: BancaContext | null) => {
-  if (typeof window === 'undefined') return;
   if (!context) {
     localStorage.removeItem(CURRENT_BANCA_KEY);
   } else {
-    localStorage.setItem(CURRENT_BANCA_KEY, JSON.stringify(context));
+    setStorageItem(CURRENT_BANCA_KEY, context);
   }
-  window.dispatchEvent(new Event('banca-context-updated'));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('banca-context-updated'));
+  }
 };
 
 export const setBancaContextGlobal = () => {
@@ -156,9 +149,4 @@ export const setBancaContextBanca = (banca: Banca) => {
     subdomain: banca.subdomain,
     updatedAt: new Date().toISOString()
   });
-};
-
-export const saveBancas = (bancas: Banca[]) => {
-  // Função legada - No Firestore salvamos individualmente via upsertBanca
-  console.warn("saveBancas (legacy) chamada. Use upsertBanca para persistência em nuvem.");
 };
