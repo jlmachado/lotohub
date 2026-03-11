@@ -9,7 +9,8 @@ export function StatusBar() {
   const { banners } = useAppContext();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-  const activeStatus = banners
+  // Proteção defensiva contra banners indefinidos durante a hidratação
+  const activeStatus = (banners || [])
     .filter(b => b.active)
     .sort((a, b) => a.position - b.position);
 

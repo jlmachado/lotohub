@@ -18,6 +18,49 @@ import { getActiveContext } from '@/utils/bancaContext';
 import { getDashboardTotals } from '@/utils/dashboardTotals';
 import { getUsers } from '@/utils/usersStorage';
 
+export interface Banner {
+  id: string;
+  title: string;
+  content: string;
+  imageUrl: string;
+  thumbUrl: string;
+  linkUrl: string;
+  position: number;
+  active: boolean;
+  startAt: string;
+  endAt: string;
+  imageMeta?: ImageMetadata;
+}
+
+export interface Popup {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  thumbUrl: string;
+  linkUrl: string;
+  buttonText: string;
+  active: boolean;
+  priority: number;
+  startAt: string;
+  endAt: string;
+  imageMeta?: ImageMetadata;
+}
+
+export interface NewsMessage {
+  id: string;
+  text: string;
+  order: number;
+  active: boolean;
+}
+
+export interface ImageMetadata {
+  width: number;
+  height: number;
+  sizeBytes: number;
+  mimeType: string;
+}
+
 interface AppContextType {
   user: any;
   isLoading: boolean;
@@ -28,8 +71,13 @@ interface AppContextType {
   dashboardTotals: any;
   apostas: any[];
   bingoDraws: any[];
+  bingoTickets: any[];
   jdbLoterias: any[];
   genericLotteryConfigs: any[];
+  banners: Banner[];
+  popups: Popup[];
+  news: NewsMessage[];
+  betSlip: any[];
   isFullscreen: boolean;
   
   refreshData: () => void;
@@ -39,6 +87,22 @@ interface AppContextType {
   buyBingoTickets: (drawId: string, count: number) => boolean;
   handleFinalizarAposta: (aposta: any, totalValue: number) => string | null;
   registerCambistaMovement: (data: any) => void;
+  
+  // Banner/Status methods
+  addBanner: (banner: Banner) => void;
+  updateBanner: (banner: Banner) => void;
+  deleteBanner: (id: string) => void;
+  
+  // Popup methods
+  addPopup: (popup: Popup) => void;
+  updatePopup: (popup: Popup) => void;
+  deletePopup: (id: string) => void;
+
+  // News methods
+  addNews: (msg: NewsMessage) => void;
+  updateNews: (msg: NewsMessage) => void;
+  deleteNews: (id: string) => void;
+
   [key: string]: any;
 }
 
@@ -56,8 +120,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [apostas, setApostas] = useState<any[]>([]);
   const [bingoDraws, setBingoDraws] = useState<any[]>([]);
+  const [bingoTickets, setBingoTickets] = useState<any[]>([]);
   const [jdbLoterias, setJdbLoterias] = useState<any[]>([]);
   const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<any[]>([]);
+  const [banners, setBanners] = useState<Banner[]>([]);
+  const [popups, setPopups] = useState<Popup[]>([]);
+  const [news, setNews] = useState<NewsMessage[]>([]);
   const [dashboardTotals, setDashboardTotals] = useState<any>(null);
   const [betSlip, setBetSlip] = useState<any[]>([]);
 
@@ -71,10 +139,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setUser(currentUser);
     const currentLedger = LedgerService.getEntries();
     setLedger(currentLedger);
+    
     setApostas(getStorageItem('app:apostas:v1', []));
     setBingoDraws(getStorageItem('app:bingo_draws:v1', []));
+    setBingoTickets(getStorageItem('app:bingo_tickets:v1', []));
     setJdbLoterias(getStorageItem('jogo_bicho:loterias:v1', INITIAL_JDB_LOTERIAS));
     setGenericLotteryConfigs(getStorageItem('app:generic_lotteries:v1', INITIAL_GENERIC_LOTTERIES));
+    setBanners(getStorageItem('app:banners:v1', []));
+    setPopups(getStorageItem('app:popups:v1', []));
+    setNews(getStorageItem('news_messages', []));
 
     const totals = getDashboardTotals({
       apostas: getStorageItem('app:apostas:v1', []),
@@ -125,6 +198,57 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setIsFullscreen(false);
       }
     }
+  };
+
+  // CRUD Banner
+  const addBanner = (b: Banner) => {
+    const list = [...banners, b];
+    setStorageItem('app:banners:v1', list);
+    notifyDataChange();
+  };
+  const updateBanner = (b: Banner) => {
+    const list = banners.map(item => item.id === b.id ? b : item);
+    setStorageItem('app:banners:v1', list);
+    notifyDataChange();
+  };
+  const deleteBanner = (id: string) => {
+    const list = banners.filter(item => item.id !== id);
+    setStorageItem('app:banners:v1', list);
+    notifyDataChange();
+  };
+
+  // CRUD Popup
+  const addPopup = (p: Popup) => {
+    const list = [...popups, p];
+    setStorageItem('app:popups:v1', list);
+    notifyDataChange();
+  };
+  const updatePopup = (p: Popup) => {
+    const list = popups.map(item => item.id === p.id ? p : item);
+    setStorageItem('app:popups:v1', list);
+    notifyDataChange();
+  };
+  const deletePopup = (id: string) => {
+    const list = popups.filter(item => item.id !== id);
+    setStorageItem('app:popups:v1', list);
+    notifyDataChange();
+  };
+
+  // CRUD News
+  const addNews = (m: NewsMessage) => {
+    const list = [...news, m];
+    setStorageItem('news_messages', list);
+    notifyDataChange();
+  };
+  const updateNews = (m: NewsMessage) => {
+    const list = news.map(item => item.id === m.id ? m : item);
+    setStorageItem('news_messages', list);
+    notifyDataChange();
+  };
+  const deleteNews = (id: string) => {
+    const list = news.filter(item => item.id !== id);
+    setStorageItem('news_messages', list);
+    notifyDataChange();
   };
 
   const placeFootballBet = async (stake: number): Promise<string | null> => {
@@ -251,7 +375,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       type: ledgerType,
       amount: data.tipo === 'RECOLHE' ? -data.valor : data.valor,
       balanceBefore: user.saldo + user.bonus,
-      balanceAfter: user.saldo + user.bonus, // Movimentação de caixa física não altera saldo virtual no protótipo
+      balanceAfter: user.saldo + user.bonus,
       referenceId: `cash-${Date.now()}`,
       description: data.observacao || data.tipo
     });
@@ -265,7 +389,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       balance: user?.saldo || 0, 
       bonus: user?.bonus || 0, 
       terminal: user?.terminal || '',
-      ledger, dashboardTotals, apostas, bingoDraws, jdbLoterias, genericLotteryConfigs,
+      ledger, dashboardTotals, apostas, bingoDraws, bingoTickets, jdbLoterias, genericLotteryConfigs,
+      banners, popups, news,
       isFullscreen, toggleFullscreen,
       refreshData, logout,
       betSlip,
@@ -276,6 +401,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       handleFinalizarAposta,
       buyBingoTickets,
       registerCambistaMovement,
+      addBanner, updateBanner, deleteBanner,
+      addPopup, updatePopup, deletePopup,
+      addNews, updateNews, deleteNews,
       footballData: { unifiedMatches: [], leagues: [], syncStatus: 'idle' }
     }}>
       {mounted && children}
