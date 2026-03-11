@@ -17,7 +17,7 @@ import { useAppContext } from '@/context/AppContext';
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { refreshUser } = useAppContext();
+  const { refreshData } = useAppContext();
   
   const [terminal, setTerminal] = useState('');
   const [password, setPassword] = useState('');
@@ -65,7 +65,7 @@ export default function LoginPage() {
         }
 
         // 2. Notificar AppContext para atualizar o estado do usuário imediatamente
-        refreshUser();
+        refreshData();
 
         toast({ title: 'Acesso autorizado!', description: `Bem-vindo, ${user?.nome}` });
 
