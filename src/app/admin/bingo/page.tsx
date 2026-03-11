@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { ChevronLeft, Ticket, DollarSign, Percent, Play, Settings, BarChart, PlusCircle, Bot, Lock, Unlock } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 
@@ -26,51 +26,40 @@ const StatCard = ({ title, value, icon, description }: { title: string; value: s
 export default function AdminBingoDashboardPage() {
   const router = useRouter();
   const { bingoSettings, bingoDraws, bingoTickets } = useAppContext();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   const nextDraw = useMemo(() => {
     const draws = bingoDraws || [];
-    return draws
-      .filter(d => d.status === 'scheduled' || d.status === 'waiting')
+    return [...draws]
+      .filter(d => d.status === 'scheduled' || d.status === 'waiting' || d.status === 'live')
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
   }, [bingoDraws]);
   
   const rtpStatus = useMemo(() => {
     if (!nextDraw || !bingoSettings) return null;
-    
-    const totalPrizes = nextDraw.prizeRules.quadra + nextDraw.prizeRules.kina + nextDraw.prizeRules.keno;
-    const minRevenue = totalPrizes / (1 - (bingoSettings.rtpPercent / 100));
-    const currentRevenue = nextDraw.totalRevenue;
+    const totalPrizes = (nextDraw.prizeRules.quadra || 0) + (nextDraw.prizeRules.kina || 0) + (nextDraw.prizeRules.keno || 0);
+    const minRevenue = totalPrizes / (1 - ((bingoSettings.rtpPercent || 20) / 100));
+    const currentRevenue = nextDraw.totalRevenue || 0;
     const isReleased = currentRevenue >= minRevenue;
-    const progress = Math.min(100, (currentRevenue / minRevenue) * 100);
-
-    return {
-        isReleased,
-        minRevenue,
-        currentRevenue,
-        progress,
-        totalPrizes
-    };
+    const progress = Math.min(100, (currentRevenue / (minRevenue || 1)) * 100);
+    return { isReleased, minRevenue, currentRevenue, progress, totalPrizes };
   }, [nextDraw, bingoSettings]);
 
   const todayStats = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     const tickets = bingoTickets || [];
     const draws = bingoDraws || [];
-    
-    const todayTickets = tickets.filter(t => t.createdAt.startsWith(today));
+    const todayTickets = tickets.filter(t => t.createdAt?.startsWith(today));
     const todayDraws = draws.filter(d => d.finishedAt?.startsWith(today));
-
-    const totalRevenue = todayTickets.reduce((acc, t) => acc + t.amountPaid, 0);
-    const totalPayout = todayDraws.reduce((acc, d) => acc + d.payoutTotal, 0);
-    const houseShare = todayDraws.reduce((acc, d) => acc + (d.totalRevenue * (d.housePercent / 100)), 0);
-
-    return {
-        tickets: todayTickets.length,
-        revenue: totalRevenue,
-        payout: totalPayout,
-        profit: houseShare,
-    }
+    const totalRevenue = todayTickets.reduce((acc, t) => acc + (t.amountPaid || 0), 0);
+    const totalPayout = todayDraws.reduce((acc, d) => acc + (d.payoutTotal || 0), 0);
+    const houseShare = todayDraws.reduce((acc, d) => acc + ((d.totalRevenue || 0) * ((d.housePercent || 10) / 100)), 0);
+    return { tickets: todayTickets.length, revenue: totalRevenue, payout: totalPayout, profit: houseShare };
   }, [bingoTickets, bingoDraws]);
+
+  if (!mounted) return null;
 
   return (
     <main className="p-4 md:p-8">
@@ -99,7 +88,7 @@ export default function AdminBingoDashboardPage() {
           <div className="lg:col-span-2 space-y-6">
               <Card>
                   <CardHeader>
-                      <CardTitle>Próximo Sorteio</CardTitle>
+                      <CardTitle>Sorteio Atual / Próximo</CardTitle>
                   </CardHeader>
                   <CardContent>
                       {nextDraw ? (
@@ -107,7 +96,7 @@ export default function AdminBingoDashboardPage() {
                               <div>
                                   <p><strong>Sorteio N°:</strong> {nextDraw.drawNumber}</p>
                                   <p><strong>Agendado para:</strong> {new Date(nextDraw.scheduledAt).toLocaleString('pt-BR')}</p>
-                                  <p><strong>Status:</strong> <span className="font-semibold uppercase">{nextDraw.status}</span></p>
+                                  <p><strong>Status:</strong> <Badge variant={nextDraw.status === 'live' ? 'destructive' : 'secondary'}>{nextDraw.status.toUpperCase()}</Badge></p>
                               </div>
                               
                               {bingoSettings?.rtpEnabled && rtpStatus && (
@@ -129,15 +118,12 @@ export default function AdminBingoDashboardPage() {
                                               <span>Meta: R$ {rtpStatus.minRevenue.toFixed(2)}</span>
                                           </div>
                                           <Progress value={rtpStatus.progress} className="h-2" />
-                                          <p className="text-[10px] text-muted-foreground text-center">
-                                              Os prêmios serão pagos para BOTS até que a meta de R$ {rtpStatus.minRevenue.toFixed(2)} seja atingida.
-                                          </p>
                                       </div>
                                   </div>
                               )}
                           </div>
                       ): (
-                          <p className="text-muted-foreground">Nenhum sorteio agendado.</p>
+                          <p className="text-muted-foreground italic">Nenhum sorteio ativo ou agendado no momento.</p>
                       )}
                   </CardContent>
                   <CardFooter className="gap-2">
@@ -157,7 +143,7 @@ export default function AdminBingoDashboardPage() {
            <Card>
               <CardHeader>
                   <CardTitle>Ações Rápidas</CardTitle>
-                  <CardDescription>Atalhos para as principais seções de gerenciamento.</CardDescription>
+                  <CardDescription>Gerenciamento do módulo.</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-4">
                   <Button variant="outline" className="h-20" onClick={() => router.push('/bingo')}><Play className="mr-2"/>Abrir Jogo</Button>
@@ -166,7 +152,6 @@ export default function AdminBingoDashboardPage() {
                   <Button variant="outline" className="h-20" onClick={() => router.push('/admin/bingo/relatorios')}><BarChart className="mr-2"/>Relatórios</Button>
               </CardContent>
           </Card>
-
       </div>
     </main>
   );
