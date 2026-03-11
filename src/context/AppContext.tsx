@@ -3,15 +3,14 @@
 import { useToast } from '@/hooks/use-toast';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import { getCurrentUser, logout as authLogout } from '@/utils/auth';
-import { upsertUser } from '@/utils/usersStorage';
 import { useRouter } from 'next/navigation';
 import { espnService } from '@/services/espn-api-service';
-import { liveScoreService } from '@/services/livescore-api-service';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 import { normalizeESPNScoreboard } from '@/utils/espn-normalizer';
 import { MatchMapperService, MatchModel } from '@/services/match-mapper-service';
 import { BetPermissionService } from '@/services/bet-permission-service';
 import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
+import { INITIAL_GENERIC_LOTTERIES, INITIAL_JDB_LOTERIAS } from '@/constants/lottery-configs';
 
 // --- BINGO INTERFACES ---
 export interface BingoWinner {
@@ -244,7 +243,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setMounted(true);
     refreshUser();
     
-    // Carregar do Storage Seguro
+    // Carregar do Storage Seguro com Fallbacks Iniciais Restaurados
     setBingoDraws(getStorageItem('app:bingo_draws:v1', []));
     setBingoTickets(getStorageItem('app:bingo_tickets:v1', []));
     setBingoSettings(getStorageItem('app:bingo_settings:v1', {
@@ -252,12 +251,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       preDrawHoldSeconds: 10, prizeDefaults: { quadra: 60, kina: 90, keno: 150 }, scheduleMode: 'manual',
       autoSchedule: { everyMinutes: 5, startHour: 8, endHour: 23 }, rtpEnabled: false, rtpPercent: 20
     }));
-    setJdbLoterias(getStorageItem('jogo_bicho:loterias:v1', []));
-    setGenericLotteryConfigs(getStorageItem('app:generic_lotteries:v1', [
-      { id: 'seninha', nome: 'Seninha', status: 'Ativa', horarios: [{ dia: 'Todos os dias', horas: '20:00' }], multiplicadores: [{ modalidade: 'SENINHA 14D', multiplicador: '5000' }] },
-      { id: 'quininha', nome: 'Quininha', status: 'Ativa', horarios: [{ dia: 'Todos os dias', horas: '20:00' }], multiplicadores: [{ modalidade: 'QUININHA 13D', multiplicador: '5000' }] },
-      { id: 'lotinha', nome: 'Lotinha', status: 'Ativa', horarios: [{ dia: 'Todos os dias', horas: '20:00' }], multiplicadores: [{ modalidade: 'LOTINHA 16D', multiplicador: '5000' }] }
-    ]));
+
+    // RESTAURAÇÃO DE LOTERIAS PADRÃO
+    const storedJdb = getStorageItem('jogo_bicho:loterias:v1', []);
+    setJdbLoterias(storedJdb.length > 0 ? storedJdb : INITIAL_JDB_LOTERIAS);
+
+    const storedGeneric = getStorageItem('app:generic_lotteries:v1', []);
+    setGenericLotteryConfigs(storedGeneric.length > 0 ? storedGeneric : INITIAL_GENERIC_LOTTERIES);
     
     setIsLoading(false);
     const handleAuthChange = () => refreshUser();
