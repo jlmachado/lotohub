@@ -23,20 +23,22 @@ export default function AdminFutebolDashboardPage() {
   const { footballData, footballBets, syncFootballAll } = useAppContext();
 
   const stats = useMemo(() => {
-    const activeLeagues = footballData.leagues.filter(l => l.active).length;
     const bets = footballBets || [];
-    const openBets = bets.filter(b => b.status === 'OPEN');
-    const totalStaked = openBets.reduce((acc, b) => acc + b.stake, 0);
-    const totalLiability = openBets.reduce((acc, b) => acc + b.potentialWin, 0);
+    const openBets = bets.filter(b => b.status === 'OPEN' || b.status === 'aguardando');
+    const totalStaked = openBets.reduce((acc, b) => acc + (b.stake || 0), 0);
+    const totalLiability = openBets.reduce((acc, b) => acc + (b.potentialWin || 0), 0);
 
     return {
-      activeLeagues,
+      activeLeagues: footballData?.leagues?.filter((l: any) => l.active).length || 0,
       openBetsCount: openBets.length,
       totalStaked,
       totalLiability,
-      liveMatches: footballData.unifiedMatches.filter(m => m.isLive).length
+      liveMatches: footballData?.unifiedMatches?.filter((m: any) => m.isLive).length || 0
     };
   }, [footballData, footballBets]);
+
+  const isSyncing = footballData?.syncStatus === 'syncing';
+  const matchesCount = footballData?.matches?.length || 0;
 
   return (
     <main className="p-4 md:p-8 space-y-8">
@@ -48,11 +50,11 @@ export default function AdminFutebolDashboardPage() {
         <div className="flex gap-2">
           <Button 
             variant="outline" 
-            onClick={() => syncFootballAll(true)}
-            disabled={footballData.syncStatus === 'syncing'}
+            onClick={() => syncFootballAll?.(true)}
+            disabled={isSyncing}
             className="h-11 rounded-xl font-bold border-white/10"
           >
-            {footballData.syncStatus === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Sync Global
           </Button>
           <Link href="/admin/futebol/ligas">
@@ -67,14 +69,14 @@ export default function AdminFutebolDashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <ProviderStatusCard 
           name="ESPN SITE API" 
-          status={footballData.syncStatus === 'syncing' ? 'syncing' : (footballData.matches.length > 0 ? 'online' : 'error')}
-          eventsCount={footballData.matches.length}
+          status={isSyncing ? 'syncing' : (matchesCount > 0 ? 'online' : 'error')}
+          eventsCount={matchesCount}
           icon={Globe}
         />
         <ProviderStatusCard 
           name="LIVE SCORE API" 
           status="online"
-          eventsCount={footballData.unifiedMatches.filter(m => m.hasOdds).length}
+          eventsCount={footballData?.unifiedMatches?.filter((m: any) => m.hasOdds).length || 0}
           icon={Zap}
           latency="142ms"
         />
@@ -114,7 +116,7 @@ export default function AdminFutebolDashboardPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-white/5">
-              {footballData.leagues.filter(l => l.active).slice(0, 5).map(league => (
+              {footballData?.leagues?.filter((l: any) => l.active).slice(0, 5).map((league: any) => (
                 <div key={league.id} className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Goal size={16} className="text-primary" />
@@ -126,6 +128,9 @@ export default function AdminFutebolDashboardPage() {
                   </div>
                 </div>
               ))}
+              {(footballData?.leagues?.filter((l: any) => l.active).length === 0) && (
+                <p className="p-8 text-center text-xs text-muted-foreground italic">Nenhuma liga ativa configurada.</p>
+              )}
             </div>
           </CardContent>
           <CardFooter className="p-4 bg-slate-950/50">

@@ -61,6 +61,36 @@ export interface ImageMetadata {
   mimeType: string;
 }
 
+export interface BingoDraw {
+  id: string;
+  drawNumber: number;
+  scheduledAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  status: 'scheduled' | 'waiting' | 'live' | 'finished' | 'cancelled';
+  drawnNumbers: number[];
+  ticketPrice: number;
+  prizeRules: { quadra: number; kina: number; keno: number };
+  totalRevenue: number;
+  payoutTotal: number;
+  housePercent: number;
+  winnersFound: any;
+}
+
+export interface SnookerBet {
+  id: string;
+  userId: string;
+  userName: string;
+  channelId: string;
+  pick: 'A' | 'B' | 'EMPATE';
+  amount: number;
+  oddsA: number;
+  oddsB: number;
+  oddsD: number;
+  status: 'open' | 'won' | 'lost' | 'refunded';
+  createdAt: string;
+}
+
 interface AppContextType {
   user: any;
   isLoading: boolean;
@@ -78,11 +108,14 @@ interface AppContextType {
   popups: Popup[];
   news: NewsMessage[];
   betSlip: any[];
+  footballBets: any[];
+  footballData: any;
   isFullscreen: boolean;
   
   refreshData: () => void;
   logout: () => void;
   toggleFullscreen: () => void;
+  syncFootballAll: (force?: boolean) => Promise<void>;
   placeFootballBet: (stake: number) => Promise<string | null>;
   buyBingoTickets: (drawId: string, count: number) => boolean;
   handleFinalizarAposta: (aposta: any, totalValue: number) => string | null;
@@ -128,6 +161,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [news, setNews] = useState<NewsMessage[]>([]);
   const [dashboardTotals, setDashboardTotals] = useState<any>(null);
   const [betSlip, setBetSlip] = useState<any[]>([]);
+  const [footballBets, setFootballBets] = useState<any[]>([]);
+  const [footballData, setFootballData] = useState<any>({
+    matches: [],
+    unifiedMatches: [],
+    leagues: [],
+    syncStatus: 'idle'
+  });
 
   const refreshData = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -148,6 +188,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setBanners(getStorageItem('app:banners:v1', []));
     setPopups(getStorageItem('app:popups:v1', []));
     setNews(getStorageItem('news_messages', []));
+    
+    const storedFootballBets = getStorageItem('app:football_bets:v1', []);
+    setFootballBets(storedFootballBets);
 
     const totals = getDashboardTotals({
       apostas: getStorageItem('app:apostas:v1', []),
@@ -155,7 +198,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       bingoDraws: getStorageItem('app:bingo_draws:v1', []),
       snookerBets: [],
       snookerFinancialHistory: [],
-      footballBets: getStorageItem('app:football_bets:v1', []),
+      footballBets: storedFootballBets,
       users: users,
       ledger: currentLedger
     }, {
@@ -198,6 +241,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setIsFullscreen(false);
       }
     }
+  };
+
+  const syncFootballAll = async (force: boolean = false) => {
+    setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
+    // Simulação de delay de rede
+    setTimeout(() => {
+      setFootballData(prev => ({ ...prev, syncStatus: 'idle' }));
+      toast({ title: 'Dados Sincronizados', description: 'Mercados de futebol atualizados via ESPN.' });
+    }, 1500);
   };
 
   // CRUD Banner
@@ -397,6 +449,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
       removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)),
       clearBetSlip: () => setBetSlip([]),
+      syncFootballAll,
       placeFootballBet,
       handleFinalizarAposta,
       buyBingoTickets,
@@ -404,7 +457,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addBanner, updateBanner, deleteBanner,
       addPopup, updatePopup, deletePopup,
       addNews, updateNews, deleteNews,
-      footballData: { unifiedMatches: [], leagues: [], syncStatus: 'idle' }
+      footballBets,
+      footballData
     }}>
       {mounted && children}
     </AppContext.Provider>
