@@ -1,63 +1,68 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { cn } from '@/lib/utils';
-import { getLogoSrc } from '@/utils/branding';
 
 interface LogoProps {
   className?: string;
-  width?: number; 
+  variant?: 'gold' | 'black' | 'white' | 'currentColor';
   height?: number;
 }
 
-export const Logo = ({ className, height }: LogoProps) => {
-  const [logoError, setLogoError] = useState(false);
-  const [logoSrc, setLogoSrc] = useState('/logo-lotohub.png');
+/**
+ * LR° Logo Component
+ * Projetado para ser moderno, minimalista e altamente legível.
+ * O símbolo "°" é estilizado como um anel tecnológico.
+ */
+export const Logo = ({ className, variant = 'gold', height = 24 }: LogoProps) => {
+  const colorMap = {
+    gold: '#FFD700',
+    black: '#000000',
+    white: '#FFFFFF',
+    currentColor: 'currentColor',
+  };
 
-  useEffect(() => {
-    const updateLogo = () => {
-      setLogoSrc(getLogoSrc());
-      setLogoError(false);
-    };
-
-    // Carregamento inicial
-    updateLogo();
-
-    // Ouvir atualizações de branding (mesma aba)
-    window.addEventListener('branding-update', updateLogo);
-    
-    // Ouvir mudanças no storage (outras abas)
-    window.addEventListener('storage', (e) => {
-      if (e.key === 'app:branding:v1') updateLogo();
-    });
-
-    return () => {
-      window.removeEventListener('branding-update', updateLogo);
-      window.removeEventListener('storage', updateLogo);
-    };
-  }, []);
-
-  // Fallback em texto caso a imagem não carregue ou não exista
-  if (logoError) {
-    return (
-      <span className={cn(
-        "text-white font-[800] tracking-[1px] text-[16px] md:text-[18px] uppercase italic drop-shadow-sm whitespace-nowrap",
-        className
-      )}>
-        Lotohub
-      </span>
-    );
-  }
+  const activeColor = colorMap[variant] || colorMap.gold;
 
   return (
-    <div className={cn("flex items-center justify-center", className)}>
-      <img
-        src={logoSrc}
-        alt="Lotohub"
-        onError={() => setLogoError(true)}
-        className="h-[24px] md:h-[28px] w-auto object-contain block"
-        style={height ? { height: `${height}px` } : undefined}
-      />
+    <div 
+      className={cn("flex items-center justify-center", className)}
+      style={{ height: `${height}px`, width: 'auto' }}
+    >
+      <svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 120 100"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="drop-shadow-sm"
+      >
+        {/* Letras LR com tipografia bold e moderna */}
+        <text
+          x="45"
+          y="72"
+          fill={activeColor}
+          style={{
+            fontFamily: 'Inter, system-ui, sans-serif',
+            fontWeight: 900,
+            fontSize: '65px',
+            letterSpacing: '-0.05em',
+          }}
+          textAnchor="middle"
+        >
+          LR
+        </text>
+        
+        {/* Símbolo de grau ° estilizado como anel tecnológico */}
+        <circle
+          cx="92"
+          cy="32"
+          r="10"
+          stroke={activeColor}
+          strokeWidth="12"
+          fill="none"
+        />
+      </svg>
     </div>
   );
 };
