@@ -1,5 +1,8 @@
+'use client';
+
 /**
- * @fileOverview Adaptador para manter compatibilidade com usersRepo.
+ * @fileOverview Camada de compatibilidade para Usuários.
+ * Faz a ponte entre as telas existentes e o repositório Firestore.
  */
 
 import { usersRepo } from '@/repositories/users-repository';
@@ -54,22 +57,59 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
   }
 };
 
-// Proxies para manter compatibilidade com telas administrativas (convertendo sync em async onde necessário)
-export const getUsers = () => { /* Em telas reais, usar AppContext.users ou aguardar Firestore */ return []; };
-export const getUserByTerminal = async (t: string) => await usersRepo.getByTerminal(t);
-export const upsertUser = async (u: Partial<User> & { terminal: string }) => {
-  const existing = await usersRepo.getByTerminal(u.terminal);
+/**
+ * Proxy de compatibilidade assíncrona.
+ * Nota: Como agora usamos banco de dados real, estas funções retornam Promises.
+ */
+export const getUserByTerminal = async (terminal: string) => {
+  return await usersRepo.getByTerminal(terminal);
+};
+
+export const upsertUser = async (userData: Partial<User> & { terminal: string }) => {
+  const existing = await usersRepo.getByTerminal(userData.terminal);
   if (existing) {
-    await usersRepo.update(existing.id, u);
-    return { ...existing, ...u };
+    const updated = { ...existing, ...userData };
+    await usersRepo.save(updated);
+    return updated;
   } else {
-    const id = u.id || `u-${u.terminal}-${Date.now()}`;
-    const newUser = { ...u, id } as User;
+    const id = userData.id || `u-${userData.terminal}-${Date.now()}`;
+    const newUser = {
+      ...userData,
+      id,
+      status: userData.status || 'ACTIVE',
+      tipoUsuario: userData.tipoUsuario || 'USUARIO',
+      permissoes: userData.permissoes || getDefaultPermissions(userData.tipoUsuario || 'USUARIO'),
+      saldo: userData.saldo || 0,
+      bonus: userData.bonus || 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    } as User;
     await usersRepo.save(newUser);
     return newUser;
   }
 };
 
-export const ensureDefaultUsers = async () => {
-  // Logic already moved to Firestore init/seed scripts if needed
+// Funções de Log de Auditoria (Admin)
+export interface AdminLog {
+  id: string;
+  adminUser: string;
+  action: string;
+  terminal: string;
+  delta?: number;
+  reason?: string;
+  at: string;
+}
+
+export const logAdminAction = async (log: Omit<AdminLog, 'id' | 'at'>) => {
+  const id = `log-${Date.now()}`;
+  const now = new Date().toISOString();
+  // No futuro, usar um repositório específico para logs
+};
+
+export const addPromoterCredit = async (terminal: string, amount: number, reason: string) => {
+  const user = await usersRepo.getByTerminal(terminal);
+  if (user) {
+    const newSaldo = user.saldo + amount;
+    await usersRepo.update(user.id, { saldo: newSaldo });
+  }
 };

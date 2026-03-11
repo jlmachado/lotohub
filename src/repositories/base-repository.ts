@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @fileOverview Classe base para repositórios Firestore.
+ * @fileOverview Classe base para repositórios Firestore com Tipagem Forte.
  */
 
 import { 
@@ -13,8 +13,8 @@ import {
   updateDoc, 
   deleteDoc, 
   query, 
-  where,
   QueryConstraint,
+  CollectionReference,
   DocumentData
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
@@ -22,7 +22,7 @@ import { db } from '@/lib/firebase/client';
 export class BaseRepository<T extends { id: string }> {
   constructor(protected collectionName: string) {}
 
-  protected getCollection() {
+  protected getCollection(): CollectionReference<DocumentData> {
     return collection(db, this.collectionName);
   }
 
@@ -33,6 +33,7 @@ export class BaseRepository<T extends { id: string }> {
   }
 
   async getById(id: string): Promise<T | null> {
+    if (!id) return null;
     const docRef = doc(db, this.collectionName, id);
     const docSnap = await getDoc(docRef);
     return docSnap.exists() ? ({ ...docSnap.data(), id: docSnap.id } as T) : null;

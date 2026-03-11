@@ -22,7 +22,7 @@ const SOURCES: MigrationSource[] = [
   { key: 'app:popups:v1', type: 'array' },          // Popups
 ];
 
-export function runMigrations() {
+export async function runMigrations() {
   if (typeof window === 'undefined') return;
 
   const status = localStorage.getItem(MIGRATION_KEY);
@@ -34,10 +34,10 @@ export function runMigrations() {
 
   console.log("🚀 Iniciando migração de dados para modelo multi-banca...");
 
-  // 1. Garantir que a banca default existe
-  ensureDefaultBanca();
+  // 1. Garantir que a banca default existe no banco
+  await ensureDefaultBanca();
 
-  // 2. Migrar cada fonte de dados
+  // 2. Migrar cada fonte de dados localmente antes do upload para Cloud
   SOURCES.forEach(source => {
     const rawData = localStorage.getItem(source.key);
     if (!rawData) return;
@@ -71,5 +71,5 @@ export function runMigrations() {
     at: new Date().toISOString()
   }));
 
-  console.log("✨ Todas as migrações foram processadas.");
+  console.log("✨ Todas as migrações locais foram processadas.");
 }

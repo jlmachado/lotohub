@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @fileOverview Inicialização do Firebase Client com proteção contra SSR.
+ * @fileOverview Inicialização robusta do Firebase Client.
  */
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
