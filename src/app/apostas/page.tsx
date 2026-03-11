@@ -17,31 +17,41 @@ export default function ApostasPage() {
   }, []);
 
   const allBets = useMemo(() => {
+    // Garantir que as fontes sejam arrays antes de processar
+    const safeApostas = Array.isArray(apostas) ? apostas : [];
+    const safeSnooker = Array.isArray(snookerBets) ? snookerBets : [];
+
     const combined = [
-      ...apostas.map(a => ({
+      ...safeApostas.map(a => ({
         ...a,
         source: 'lottery' as const,
-        displayData: a.data,
-        displayValor: a.valor,
-        displayNumeros: a.numeros,
-        displayStatus: a.status
+        displayData: a.data || '',
+        displayValor: a.valor || 'R$ 0,00',
+        displayNumeros: a.numeros || '',
+        displayStatus: a.status || 'aguardando'
       })),
-      ...snookerBets.map(b => ({
+      ...safeSnooker.map(b => ({
         id: b.id,
         createdAt: b.createdAt,
         loteria: 'Sinuca ao Vivo',
-        displayData: '', // Será formatado no cliente
-        displayValor: `R$ ${b.amount.toFixed(2).replace('.', ',')}`,
+        displayData: '', 
+        displayValor: `R$ ${(b.amount || 0).toFixed(2).replace('.', ',')}`,
         displayNumeros: `Aposta em ${b.pick}`,
         displayStatus: b.status,
         source: 'snooker' as const,
-        detalhes: [{ ...b, modalidadeLabel: `Aposta no Vencedor: ${b.pick}`, numeros: [b.pick], valor: b.amount, retornoPossivel: b.amount * ({ A: b.oddsA, B: b.oddsB, EMPATE: b.oddsD }[b.pick]) }]
+        detalhes: [{ 
+          ...b, 
+          modalidadeLabel: `Aposta no Vencedor: ${b.pick}`, 
+          numeros: [b.pick], 
+          valor: b.amount, 
+          retornoPossivel: (b.amount || 0) * ({ A: b.oddsA || 1, B: b.oddsB || 1, EMPATE: b.oddsD || 1 }[b.pick as 'A'|'B'|'EMPATE'] || 1) 
+        }]
       }))
     ];
 
     return combined.sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
       return dateB - dateA;
     });
   }, [apostas, snookerBets]);
@@ -56,7 +66,7 @@ export default function ApostasPage() {
             <div className="flex justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
-          ) : allBets.length === 0 ? (
+          ) : (allBets || []).length === 0 ? (
             <p className="text-center text-muted-foreground py-12">Você ainda não fez nenhuma aposta.</p>
           ) : (
             allBets.map((aposta) => (
@@ -69,11 +79,11 @@ export default function ApostasPage() {
                         {aposta.loteria}
                       </CardTitle>
                       <CardDescription>
-                        Pule: {aposta.id.substring(0, 8)}... - Data: {new Date(aposta.createdAt).toLocaleString('pt-BR')}
+                        Pule: {aposta.id?.substring(0, 8)}... - Data: {aposta.createdAt ? new Date(aposta.createdAt).toLocaleString('pt-BR') : 'N/A'}
                       </CardDescription>
                     </div>
                     <Badge variant={aposta.displayStatus === 'premiado' || aposta.displayStatus === 'won' ? 'default' : aposta.displayStatus === 'perdeu' || aposta.displayStatus === 'lost' ? 'destructive' : aposta.displayStatus === 'cash_out' ? 'outline' : 'secondary'}>
-                      {aposta.displayStatus.charAt(0).toUpperCase() + aposta.displayStatus.slice(1).replace('_', ' ')}
+                      {(aposta.displayStatus || '').charAt(0).toUpperCase() + (aposta.displayStatus || '').slice(1).replace('_', ' ')}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -82,14 +92,14 @@ export default function ApostasPage() {
                     <div className="space-y-3 mt-2">
                       {aposta.detalhes.selections.map((item: any, index: number) => (
                         <div key={index} className="text-sm p-3 border rounded-lg bg-muted/50">
-                          <p className="text-xs text-muted-foreground">{item.match.homeTeamName} vs {item.match.awayTeamName}</p>
+                          <p className="text-xs text-muted-foreground">{item.match?.homeTeamName} vs {item.match?.awayTeamName}</p>
                           <div className="flex justify-between items-center mt-1">
                             <p>Sua aposta: <span className="font-semibold">{item.pickLabel}</span></p>
-                            <p className="font-mono text-primary">@{item.odd.toFixed(2)}</p>
+                            <p className="font-mono text-primary">@{item.odd?.toFixed(2)}</p>
                           </div>
                           <div className="flex justify-between items-center mt-1">
-                            <p>Valor: <span className="font-semibold">R$ {item.value.toFixed(2).replace('.', ',')}</span></p>
-                            <p className="font-semibold text-green-600">Retorno: R$ {(item.value * item.odd).toFixed(2).replace('.', ',')}</p>
+                            <p>Valor: <span className="font-semibold">R$ {(item.value || 0).toFixed(2).replace('.', ',')}</span></p>
+                            <p className="font-semibold text-green-600">Retorno: R$ {((item.value || 0) * (item.odd || 0)).toFixed(2).replace('.', ',')}</p>
                           </div>
                         </div>
                       ))}
@@ -97,8 +107,8 @@ export default function ApostasPage() {
                   ) : Array.isArray(aposta.detalhes) && aposta.detalhes.length > 0 ? (
                     <div className="space-y-3 mt-2">
                       {aposta.detalhes.map((item: any, index: number) => {
-                        const displayNumbers = Array.isArray(item.numeros) ? item.numeros.join(', ') : (item.numeros || item.numero);
-                        const valorAposta = typeof item.valor === 'string' ? parseFloat(item.valor.replace(',', '.')) : item.valor;
+                        const displayNumbers = Array.isArray(item.numeros) ? item.numeros.join(', ') : (item.numeros || item.numero || '');
+                        const valorAposta = typeof item.valor === 'string' ? parseFloat(item.valor.replace(',', '.')) : (item.valor || 0);
                         const retornoPossivel = item.retornoPossivel || 0;
 
                         return (
