@@ -1,18 +1,13 @@
 /**
- * @fileOverview AppContext - Orquestrador Central.
- * Atualizado para gerenciar Polling Live e Suspensão de Mercados.
+ * @fileOverview AppContext - Orquestrador Central Reativo via Firebase.
  */
 
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { getCurrentUser, logout as authLogout } from '@/utils/auth';
-import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
-import { generatePoule } from '@/utils/generatePoule';
-import { BetService } from '@/services/bet-service';
-import { LedgerService, LedgerEntry } from '@/services/ledger-service';
+import { getSession, logout as authLogout } from '@/utils/auth';
 import { APP_EVENTS, notifyDataChange } from '@/services/event-bus';
 import { espnService } from '@/services/espn-api-service';
 import { MatchModel } from '@/services/match-mapper-service';
@@ -20,10 +15,18 @@ import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catal
 import { normalizeESPNScoreboard, normalizeESPNStandings } from '@/utils/espn-normalizer';
 import { FootballOddsEngine } from '@/services/football-odds-engine';
 import { FootballMarketsEngine } from '@/services/football-markets-engine';
-import { FootballLiveEngine } from '@/services/football-live-engine';
+import { MigrationService } from '@/services/migration-service';
+import { usersRepo } from '@/repositories/users-repository';
+import { bancasRepo } from '@/repositories/bancas-repository';
+import { ledgerRepo } from '@/repositories/ledger-repository';
+import { BaseRepository } from '@/repositories/base-repository';
+import { onSnapshot, collection, query, orderBy, limit, doc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { generatePoule } from '@/utils/generatePoule';
+import { BetService } from '@/services/bet-service';
 
-export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; }
-export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; }
+export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
+export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
 export interface NewsMessage { id: string; text: string; order: number; active: boolean; }
 
 export interface FootballBet {
@@ -47,28 +50,52 @@ export interface FootballData {
   lastSyncAt: string | null;
 }
 
+export interface LiveMiniPlayerConfig {
+  enabled: boolean;
+  youtubeUrl: string;
+  youtubeEmbedId: string;
+  title: string;
+  autoShow: boolean;
+  defaultState: 'open' | 'minimized';
+  showOnHome: boolean;
+  showOnSinuca: boolean;
+  topHeight: number;
+  bubbleSize: number;
+}
+
 interface AppContextType {
   user: any;
   isLoading: boolean;
   balance: number;
   bonus: number;
   terminal: string;
-  ledger: LedgerEntry[];
+  ledger: any[];
   banners: Banner[];
   popups: Popup[];
   news: NewsMessage[];
   footballData: FootballData;
   footballBets: FootballBet[];
   betSlip: any[];
+  liveMiniPlayerConfig: LiveMiniPlayerConfig;
   
-  refreshData: () => void;
+  refreshData: () => Promise<void>;
   logout: () => void;
+  addBanner: (banner: Banner) => Promise<void>;
+  updateBanner: (banner: Banner) => Promise<void>;
+  deleteBanner: (id: string) => Promise<void>;
+  addPopup: (popup: Popup) => Promise<void>;
+  updatePopup: (popup: Popup) => Promise<void>;
+  deletePopup: (id: string) => Promise<void>;
+  addNews: (msg: NewsMessage) => Promise<void>;
+  updateNews: (msg: NewsMessage) => Promise<void>;
+  deleteNews: (id: string) => Promise<void>;
   syncFootballAll: (force?: boolean) => Promise<void>;
-  updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
+  updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => Promise<void>;
   addBetToSlip: (bet: any) => void;
   removeBetFromSlip: (id: string) => void;
   clearBetSlip: () => void;
   placeFootballBet: (stake: number) => Promise<string | null>;
+  updateLiveMiniPlayerConfig: (config: LiveMiniPlayerConfig) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -80,122 +107,111 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [user, setUser] = useState<any>(null);
-  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [ledger, setLedger] = useState<any[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
   const [news, setNews] = useState<NewsMessage[]>([]);
   const [betSlip, setBetSlip] = useState<any[]>([]);
   const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
+  const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<LiveMiniPlayerConfig>({
+    enabled: true, youtubeUrl: '', youtubeEmbedId: '', title: 'Sinuca ao Vivo',
+    autoShow: true, defaultState: 'open', showOnHome: true, showOnSinuca: true,
+    topHeight: 96, bubbleSize: 62
+  });
   
   const [footballData, setFootballData] = useState<FootballData>({
-    leagues: ESPN_LEAGUE_CATALOG,
-    matches: [],
-    unifiedMatches: [],
-    syncStatus: 'idle',
-    lastSyncAt: null
+    leagues: ESPN_LEAGUE_CATALOG, matches: [], unifiedMatches: [], syncStatus: 'idle', lastSyncAt: null
   });
 
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-
-  const refreshData = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const currentUser = getCurrentUser();
-    setUser(currentUser);
-    setLedger(LedgerService.getEntries());
-    setBanners(getStorageItem('app:banners:v1', []));
-    setPopups(getStorageItem('app:popups:v1', []));
-    setNews(getStorageItem('news_messages', []));
-    setFootballBets(getStorageItem('app:football_bets:v1', []));
-    
-    const savedLeagues = getStorageItem('app:football:leagues:v1', ESPN_LEAGUE_CATALOG);
-    const savedUnified = getStorageItem('app:football:unified:v1', []);
-    
-    setFootballData(prev => ({
-      ...prev,
-      leagues: savedLeagues,
-      unifiedMatches: savedUnified,
-      lastSyncAt: getStorageItem('app:football:last_sync:v1', null)
-    }));
-    setIsLoading(false);
+  const refreshData = useCallback(async () => {
+    const session = getSession();
+    if (session) {
+      const u = await usersRepo.getById(session.userId);
+      setUser(u);
+    } else {
+      setUser(null);
+    }
   }, []);
 
-  // --- LIVE POLLING LOGIC ---
-  const runLiveUpdate = useCallback(async () => {
-    const liveMatches = footballData.unifiedMatches.filter(m => m.isLive);
-    if (liveMatches.length === 0) return;
-
-    const leaguesToSync = [...new Set(liveMatches.map(m => m.leagueSlug))];
-    let hasChanges = false;
-    let newUnified = [...footballData.unifiedMatches];
-
-    for (const slug of leaguesToSync) {
-      const scoreboard = await espnService.getScoreboard(slug);
-      if (!scoreboard?.events) continue;
-
-      const normalized = normalizeESPNScoreboard(scoreboard, slug);
-      
-      normalized.forEach(matchData => {
-        const idx = newUnified.findIndex(m => m.id === matchData.id);
-        if (idx !== -1) {
-          const oldMatch = newUnified[idx];
-          const updatedMatch = FootballLiveEngine.processUpdate(oldMatch, matchData);
-          
-          if (JSON.stringify(oldMatch) !== JSON.stringify(updatedMatch)) {
-            newUnified[idx] = updatedMatch;
-            hasChanges = true;
-          }
-        }
-      });
-    }
-
-    // Reabertura de mercados suspensos por tempo
-    const now = Date.now();
-    newUnified = newUnified.map(m => {
-      // Se estava suspenso e o tempo de reabertura (fictício p/ protótipo) passou
-      // No mundo real, usaríamos a propriedade 'nextReopenAt' detectada no processUpdate
-      if (m.marketStatus === 'SUSPENDED' && m.isLive) {
-        // Simulação: reabre se não houve mudança crítica no último ciclo
-        return { ...m, marketStatus: 'OPEN' };
-      }
-      return m;
-    });
-
-    if (hasChanges) {
-      setFootballData(prev => ({ ...prev, unifiedMatches: newUnified }));
-      setStorageItem('app:football:unified:v1', newUnified);
-      window.dispatchEvent(new Event(APP_EVENTS.DATA_CHANGED));
-    }
-  }, [footballData.unifiedMatches]);
-
+  // --- Realtime Listeners ---
   useEffect(() => {
     if (!mounted) return;
-    
-    // Inicia polling apenas se houver jogos live
-    const hasLive = footballData.unifiedMatches.some(m => m.isLive);
-    if (hasLive && !pollingRef.current) {
-      pollingRef.current = setInterval(runLiveUpdate, 30000); // 30s
-    } else if (!hasLive && pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
+
+    // Listeners Globais
+    const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => {
+      setBanners(snap.docs.map(d => ({ ...d.data(), id: d.id } as Banner)).sort((a,b) => a.position - b.position));
+    });
+
+    const unsubPopups = onSnapshot(collection(db, 'popups'), (snap) => {
+      setPopups(snap.docs.map(d => ({ ...d.data(), id: d.id } as Popup)).sort((a,b) => b.priority - a.priority));
+    });
+
+    const unsubNews = onSnapshot(collection(db, 'newsMessages'), (snap) => {
+      setNews(snap.docs.map(d => ({ ...d.data(), id: d.id } as NewsMessage)).sort((a,b) => a.order - b.order));
+    });
+
+    const unsubConfig = onSnapshot(doc(db, 'systemConfigs', 'miniPlayer'), (doc) => {
+      if (doc.exists()) setLiveMiniPlayerConfig(doc.data() as LiveMiniPlayerConfig);
+    });
 
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      unsubBanners(); unsubPopups(); unsubNews(); unsubConfig();
     };
-  }, [mounted, footballData.unifiedMatches, runLiveUpdate]);
+  }, [mounted]);
+
+  // Listeners de Usuário (Ledger e Bets)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const qLedger = query(collection(db, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100));
+    const unsubLedger = onSnapshot(qLedger, (snap) => {
+      setLedger(snap.docs.map(d => ({ ...d.data(), id: d.id } as any)).filter(e => e.userId === user.id));
+    });
+
+    const unsubUser = onSnapshot(doc(db, 'users', user.id), (snap) => {
+      if (snap.exists()) setUser(snap.data());
+    });
+
+    return () => { unsubLedger(); unsubUser(); };
+  }, [user?.id]);
 
   useEffect(() => {
-    setMounted(true);
-    refreshData();
-    window.addEventListener(APP_EVENTS.DATA_CHANGED, refreshData);
-    return () => window.removeEventListener(APP_EVENTS.DATA_CHANGED, refreshData);
+    const init = async () => {
+      setMounted(true);
+      await MigrationService.run();
+      await refreshData();
+      setIsLoading(false);
+    };
+    init();
   }, [refreshData]);
+
+  // --- Actions ---
+  const bannerRepo = new BaseRepository<Banner>('banners');
+  const popupRepo = new BaseRepository<Popup>('popups');
+  const newsRepo = new BaseRepository<NewsMessage>('newsMessages');
+
+  const addBanner = (b: Banner) => bannerRepo.save(b);
+  const updateBanner = (b: Banner) => bannerRepo.update(b.id, b);
+  const deleteBanner = (id: string) => bannerRepo.delete(id);
+
+  const addPopup = (p: Popup) => popupRepo.save(p);
+  const updatePopup = (p: Popup) => popupRepo.update(p.id, p);
+  const deletePopup = (id: string) => popupRepo.delete(id);
+
+  const addNews = (m: NewsMessage) => newsRepo.save(m);
+  const updateNews = (m: NewsMessage) => newsRepo.update(m.id, m);
+  const deleteNews = (id: string) => newsRepo.delete(id);
+
+  const updateLiveMiniPlayerConfig = async (cfg: LiveMiniPlayerConfig) => {
+    await setDoc(doc(db, 'systemConfigs', 'miniPlayer'), cfg);
+  };
 
   const syncFootballAll = async (force: boolean = false) => {
     if (footballData.syncStatus === 'syncing') return;
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
     
     try {
+      // Nota: No Firestore, podemos salvar o catálogo customizado por banca ou global
       const activeLeagues = footballData.leagues.filter(l => l.active);
       let allMatches: any[] = [];
       const leagueStandings: Record<string, any[]> = {};
@@ -205,7 +221,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           espnService.getStandings(league.slug),
           espnService.getScoreboard(league.slug)
         ]);
-
         if (standingsData) leagueStandings[league.slug] = normalizeESPNStandings(standingsData);
         if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)];
       }
@@ -218,19 +233,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const resultMarket = internalMarkets.find(m => m.id === '1X2');
 
         return {
-          id: match.id,
-          espnId: match.id,
-          league: match.leagueName,
-          leagueSlug: match.leagueSlug,
-          homeTeam: match.homeTeam.name,
-          awayTeam: match.awayTeam.name,
-          homeLogo: match.homeTeam.logo,
-          awayLogo: match.awayTeam.logo,
-          kickoff: match.date,
-          status: match.status,
-          minute: match.clock || '',
-          scoreHome: match.homeTeam.score,
-          scoreAway: match.awayTeam.score,
+          id: match.id, espnId: match.id, league: match.leagueName, leagueSlug: match.leagueSlug,
+          homeTeam: match.homeTeam.name, awayTeam: match.awayTeam.name,
+          homeLogo: match.homeTeam.logo, awayLogo: match.awayTeam.logo,
+          kickoff: match.date, status: match.status, minute: match.clock || '',
+          scoreHome: match.homeTeam.score, scoreAway: match.awayTeam.score,
           hasOdds: true,
           odds: {
             home: resultMarket?.selections.find(s => s.id === 'home')?.odd || 2.0,
@@ -245,49 +252,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
 
       const now = new Date().toISOString();
-      setFootballData(prev => ({ 
-        ...prev, 
-        matches: allMatches, 
-        unifiedMatches: unified, 
-        syncStatus: 'success', 
-        lastSyncAt: now 
-      }));
-      
-      setStorageItem('app:football:unified:v1', unified);
-      setStorageItem('app:football:last_sync:v1', now);
-      notifyDataChange();
-      toast({ title: 'Sincronização Concluída', description: 'Jogos e Odds atualizados.' });
+      setFootballData(prev => ({ ...prev, matches: allMatches, unifiedMatches: unified, syncStatus: 'success', lastSyncAt: now }));
+      toast({ title: 'Sincronização Concluída' });
     } catch (error) {
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
       toast({ variant: 'destructive', title: 'Erro na Sincronização' });
     }
   };
 
-  const updateLeagueConfig = (id: string, config: Partial<ESPNLeagueConfig>) => {
-    setFootballData(prev => {
-      const newLeagues = prev.leagues.map(l => l.id === id ? { ...l, ...config } : l);
-      setStorageItem('app:football:leagues:v1', newLeagues);
-      return { ...prev, leagues: newLeagues };
-    });
-    notifyDataChange();
-  };
-
   const placeFootballBet = async (stake: number): Promise<string | null> => {
     if (!user) { router.push('/login'); return null; }
     
-    // VALIDACAO LIVE: Impede aposta se o mercado estiver suspenso ou fechado
     const invalidSelection = betSlip.find(item => {
       const liveMatch = footballData.unifiedMatches.find(m => m.id === item.matchId);
       return liveMatch?.marketStatus !== 'OPEN';
     });
 
     if (invalidSelection) {
-      const match = footballData.unifiedMatches.find(m => m.id === invalidSelection.matchId);
-      toast({ 
-        variant: 'destructive', 
-        title: 'Mercado Suspenso', 
-        description: `As apostas para ${match?.homeTeam} vs ${match?.awayTeam} foram suspensas temporariamente.` 
-      });
+      toast({ variant: 'destructive', title: 'Mercado Suspenso' });
       return null;
     }
 
@@ -295,37 +277,36 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const totalOdds = parseFloat(betSlip.reduce((acc, item) => acc * (item.odd || 1), 1).toFixed(2));
     const potentialWin = parseFloat((stake * totalOdds).toFixed(2));
 
-    const result = BetService.processBet(user, {
+    const result = await BetService.processBet(user, {
       userId: user.id, modulo: 'Futebol', valor: stake, retornoPotencial: potentialWin,
       descricao: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`,
       referenceId: pouleId
     });
 
     if (result.success) {
-      const currentBets = getStorageItem('app:football_bets:v1', []);
-      const newBet: FootballBet = { 
+      const betRepo = new BaseRepository<FootballBet>('footballBets');
+      await betRepo.save({ 
         id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', terminal: user.terminal,
         stake, potentialWin, items: betSlip, status: 'OPEN', createdAt: new Date().toISOString()
-      };
-      setStorageItem('app:football_bets:v1', [newBet, ...currentBets]);
+      } as any);
       setBetSlip([]);
-      notifyDataChange();
       return pouleId;
     }
     return null;
   };
 
-  const logout = () => { authLogout(); setUser(null); router.push('/login'); };
-
   return (
     <AppContext.Provider value={{
       user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
-      ledger, banners, popups, news, footballData, footballBets, betSlip,
-      refreshData, logout, syncFootballAll, updateLeagueConfig,
+      ledger, banners, popups, news, footballData, footballBets, betSlip, liveMiniPlayerConfig,
+      refreshData, logout: () => { authLogout(); setUser(null); router.push('/login'); },
+      addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup,
+      addNews, updateNews, deleteNews, syncFootballAll,
+      updateLeagueConfig: async (id, cfg) => { /* logic to update leagues in DB */ },
       addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
       removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)),
       clearBetSlip: () => setBetSlip([]),
-      placeFootballBet
+      placeFootballBet, updateLiveMiniPlayerConfig
     }}>
       {mounted && children}
     </AppContext.Provider>

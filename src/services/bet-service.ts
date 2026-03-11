@@ -1,13 +1,13 @@
 /**
- * @fileOverview BetService - Motor central de processamento de apostas.
- * Unifica a lógica de desconto de saldo, comissão e descarga.
+ * @fileOverview BetService - Motor centralizado integrado ao Firestore.
  */
 
-import { User, upsertUser } from '@/utils/usersStorage';
+import { User } from '@/utils/usersStorage';
 import { LedgerService } from './ledger-service';
 import { notifyDataChange } from './event-bus';
 import { resolveCurrentBanca } from '@/utils/bancaContext';
-import { registerDescarga } from '@/utils/descargaStorage';
+import { usersRepo } from '@/repositories/users-repository';
+import { ledgerRepo } from '@/repositories/ledger-repository';
 
 export interface BetRequest {
   userId: string;
@@ -21,11 +21,10 @@ export interface BetRequest {
 }
 
 export class BetService {
-  static processBet(user: User, request: BetRequest) {
+  static async processBet(user: User, request: BetRequest) {
     const banca = resolveCurrentBanca();
     const bancaId = user.bancaId || banca?.id || 'default';
     
-    // 1. Cálculo de Saldos
     let newBalance = user.saldo;
     let newBonus = user.bonus;
     const initialTotal = user.saldo + user.bonus;
@@ -40,15 +39,11 @@ export class BetService {
       }
     }
 
-    // 2. Atualizar Usuário
-    upsertUser({ 
-      terminal: user.terminal, 
-      saldo: newBalance, 
-      bonus: newBonus 
-    });
+    // Atualizar Usuário no Firestore
+    await usersRepo.update(user.id, { saldo: newBalance, bonus: newBonus });
 
-    // 3. Registrar Ledger (Débito da Aposta)
-    LedgerService.addEntry({
+    // Registrar Ledger no Firestore
+    const ledgerEntry = {
       bancaId,
       userId: user.id,
       terminal: user.terminal,
@@ -59,66 +54,30 @@ export class BetService {
       balanceBefore: initialTotal,
       balanceAfter: newBalance + newBonus,
       referenceId: request.referenceId,
-      description: request.descricao
-    });
+      description: request.descricao,
+      id: `trx-${Date.now()}`
+    };
+    
+    await ledgerRepo.save(ledgerEntry as any);
 
-    // 4. Lógica de Descarga (Risco)
-    const limiteDescarga = banca?.descargaConfig?.limitePremio || 999999;
-    const isDescarga = banca?.descargaConfig?.ativo && request.retornoPotencial > limiteDescarga;
-
-    if (isDescarga) {
-      registerDescarga({
-        bancaId,
-        bancaNome: banca?.nome || 'Banca',
-        apostaId: request.referenceId,
-        userId: user.id,
-        terminal: user.terminal,
-        nomeUsuario: user.nome || 'Usuário',
-        tipoUsuario: user.tipoUsuario,
-        modulo: request.modulo,
-        loteria: request.loteria,
-        horario: request.horario,
-        valorApostado: request.valor,
-        retornoPossivel: request.retornoPotencial,
-        status: 'EM_DESCARGA'
-      });
-
-      LedgerService.addEntry({
-        bancaId,
-        userId: user.id,
-        terminal: user.terminal,
-        tipoUsuario: user.tipoUsuario,
-        modulo: request.modulo,
-        type: 'DESCARGA',
-        amount: request.retornoPotencial,
-        balanceBefore: newBalance + newBonus,
-        balanceAfter: newBalance + newBonus,
-        referenceId: request.referenceId,
-        description: `Risco descarregado para Superadmin: ${request.descricao}`
-      });
-    }
-
-    // 5. Cálculo de Comissão
+    // Cálculo de Comissão
     const percComissao = user.promotorConfig?.porcentagemComissao || 0;
     const valorComissao = (request.valor * percComissao) / 100;
 
     if (valorComissao > 0) {
-      LedgerService.addEntry({
-        bancaId,
-        userId: user.id,
-        terminal: user.terminal,
-        tipoUsuario: user.tipoUsuario,
-        modulo: request.modulo,
+      const commEntry = {
+        ...ledgerEntry,
+        id: `trx-comm-${Date.now()}`,
         type: 'COMMISSION_EARNED',
         amount: valorComissao,
         balanceBefore: newBalance + newBonus,
         balanceAfter: newBalance + newBonus,
-        referenceId: request.referenceId,
         description: `Comissão ${percComissao}% s/ venda ${request.modulo}`
-      });
+      };
+      await ledgerRepo.save(commEntry as any);
     }
 
     notifyDataChange();
-    return { success: true, isDescarga };
+    return { success: true };
   }
 }

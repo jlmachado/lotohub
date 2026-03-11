@@ -1,8 +1,9 @@
 /**
- * @fileOverview Lógica de autenticação e gestão de usuários baseada em LocalStorage.
+ * @fileOverview Lógica de autenticação integrada ao Firestore.
  */
 
-import { User, UserType, UserPermissions, getDefaultPermissions, getUsers, saveUsers, upsertUser } from './usersStorage';
+import { User, UserType } from './usersStorage';
+import { usersRepo } from '@/repositories/users-repository';
 
 export interface Session {
   userId: string;
@@ -14,16 +15,11 @@ export interface Session {
 
 const SESSION_KEY = 'app:session:v1';
 
-/**
- * Realiza o login do usuário verificando credenciais no LocalStorage.
- * Aceita terminal ou e-mail.
- */
-export const login = (identifier: string, password: string): { success: boolean; message: string; user?: User } => {
-  const users = getUsers();
-  
-  // Busca por terminal ou e-mail
+export const login = async (identifier: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
   const isEmail = identifier.includes('@');
-  const user = users.find(u => isEmail ? u.email === identifier : u.terminal === identifier);
+  const user = isEmail 
+    ? await usersRepo.getByEmail(identifier)
+    : await usersRepo.getByTerminal(identifier);
 
   if (!user) {
     return { success: false, message: 'Usuário não encontrado.' };
@@ -34,10 +30,9 @@ export const login = (identifier: string, password: string): { success: boolean;
   }
 
   if (user.status === 'BLOCKED') {
-    return { success: false, message: 'Este terminal está bloqueado. Entre em contato com o suporte.' };
+    return { success: false, message: 'Este terminal está bloqueado.' };
   }
 
-  // Criar sessão
   const session: Session = {
     userId: user.id,
     terminal: user.terminal,
@@ -46,49 +41,53 @@ export const login = (identifier: string, password: string): { success: boolean;
     loggedAt: Date.now()
   };
 
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  window.dispatchEvent(new Event('auth-change'));
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    window.dispatchEvent(new Event('auth-change'));
+  }
 
   return { success: true, message: 'Login realizado com sucesso!', user };
 };
 
-/**
- * Realiza o cadastro de um novo usuário comum.
- */
-export const register = (data: Partial<User>): { success: boolean; message: string } => {
-  const users = getUsers();
-  
-  if (users.some(u => u.terminal === data.terminal)) {
-    return { success: false, message: 'Este número de terminal já está em uso.' };
+export const register = async (data: Partial<User>): Promise<{ success: boolean; message: string }> => {
+  if (data.terminal && await usersRepo.getByTerminal(data.terminal)) {
+    return { success: false, message: 'Terminal em uso.' };
   }
 
-  if (data.email && users.some(u => u.email === data.email)) {
-    return { success: false, message: 'Este e-mail já está em uso.' };
-  }
-
-  const newUser = upsertUser({
+  const id = `u-${data.terminal}-${Date.now()}`;
+  const newUser: User = {
     ...data,
+    id,
     tipoUsuario: 'USUARIO', 
     saldo: 0,
     bonus: 0,
     status: 'ACTIVE',
-    permissoes: getDefaultPermissions('USUARIO')
-  } as User);
+    permissoes: {
+      podeApostar: true,
+      podeDepositar: true,
+      podeSacar: true,
+      podeVerRelatorios: true,
+      podeFazerJogoParaTerceiros: false,
+      podeReceberComissao: false,
+      podeFecharCaixa: false,
+      podeAcessarAdmin: false,
+      podeGerenciarBancas: false
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  } as User;
 
-  return { success: true, message: 'Cadastro realizado! Agora você pode entrar.' };
+  await usersRepo.save(newUser);
+  return { success: true, message: 'Cadastro realizado!' };
 };
 
-/**
- * Encerra a sessão atual.
- */
 export const logout = () => {
-  localStorage.removeItem(SESSION_KEY);
-  window.dispatchEvent(new Event('auth-change'));
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(SESSION_KEY);
+    window.dispatchEvent(new Event('auth-change'));
+  }
 };
 
-/**
- * Retorna os dados da sessão atual.
- */
 export const getSession = (): Session | null => {
   if (typeof window === 'undefined') return null;
   const stored = localStorage.getItem(SESSION_KEY);
@@ -101,18 +100,16 @@ export const getSession = (): Session | null => {
 };
 
 /**
- * Retorna o objeto completo do usuário logado.
+ * Retorna os dados básicos da sessão do usuário atual de forma síncrona.
  */
-export const getCurrentUser = (): User | null => {
-  const session = getSession();
-  if (!session) return null;
-  const users = getUsers();
-  return users.find(u => u.id === session.userId) || null;
+export const getCurrentUser = (): Session | null => {
+  return getSession();
 };
 
 /**
- * Verifica se o usuário tem permissão para acessar o admin.
+ * Verifica se o usuário tem permissão para acessar áreas administrativas.
  */
-export const canAccessAdmin = (user: User | null): boolean => {
-  return !!(user && (user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN'));
+export const canAccessAdmin = (user: Session | null): boolean => {
+  if (!user) return false;
+  return user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN';
 };
