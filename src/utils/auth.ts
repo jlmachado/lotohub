@@ -1,7 +1,9 @@
+
 'use client';
 
 /**
- * @fileOverview Lógica de autenticação baseada em Storage Local Síncrono.
+ * @fileOverview Lógica de autenticação síncrona baseada em Storage Local.
+ * Mantém o funcionamento idêntico ao "preview" original.
  */
 
 import { User, getUserByTerminal, upsertUser, getDefaultPermissions } from './usersStorage';
@@ -17,9 +19,8 @@ export interface Session {
 const SESSION_KEY = 'app:session:v1';
 
 export const login = (identifier: string, password: string): { success: boolean; message: string; user?: User } => {
-  if (typeof window === 'undefined') return { success: false, message: 'Aguardando inicialização...' };
+  if (typeof window === 'undefined') return { success: false, message: 'Ambiente inválido' };
 
-  // Busca síncrona imediata
   const user = getUserByTerminal(identifier);
 
   if (!user) {
@@ -43,8 +44,6 @@ export const login = (identifier: string, password: string): { success: boolean;
   };
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  
-  // Dispara evento para o AppContext atualizar globalmente
   window.dispatchEvent(new Event('auth-change'));
 
   return { success: true, message: 'Logado com sucesso!', user };
@@ -86,7 +85,7 @@ export const getSession = (): Session | null => {
   try {
     return JSON.parse(stored);
   } catch (e) {
-    localStorage.removeItem(SESSION_KEY); // Limpa sessão corrompida
+    localStorage.removeItem(SESSION_KEY);
     return null;
   }
 };

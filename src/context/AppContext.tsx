@@ -1,8 +1,9 @@
+
 'use client';
 
 /**
- * @fileOverview AppContext - Orquestrador Central baseado em Storage Local.
- * Gerencia o estado global de todos os módulos: Futebol, Bingo, Sinuca, Cassino e Loterias.
+ * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
+ * Controla o estado de todos os módulos exatamente como no preview.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -23,7 +24,6 @@ import { INITIAL_GENERIC_LOTTERIES, INITIAL_JDB_LOTERIAS } from '@/constants/lot
 import { MatchMapperService } from '@/services/match-mapper-service';
 
 // --- INTERFACES ---
-
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
 export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
 export interface NewsMessage { id: string; text: string; order: number; active: boolean; }
@@ -41,11 +41,6 @@ export interface Aposta {
   detalhes?: any;
   createdAt: string;
 }
-
-export interface JDBModalidade { nome: string; multiplicador: string; }
-export interface JDBDia { selecionado: boolean; horarios: string[]; }
-export interface JDBLoteria { id: string; bancaId?: string; nome: string; modalidades: JDBModalidade[]; dias: Record<string, JDBDia>; }
-export interface GenericLotteryConfig { id: string; nome: string; status: 'Ativa' | 'Inativa'; horarios: { dia: string; horas: string; }[]; multiplicadores: { modalidade: string; multiplicador: string; }[]; }
 
 export interface FootballBet {
   id: string;
@@ -82,16 +77,6 @@ export interface LiveMiniPlayerConfig {
   showLiveBadge?: boolean;
 }
 
-// Interfaces de Bingo e Sinuca (Simplificadas para o contexto síncrono)
-export interface BingoTicket { id: string; drawId: string; userId: string; terminalId: string; userName: string; amountPaid: number; ticketNumbers: number[][]; status: 'active' | 'won' | 'lost' | 'refunded'; createdAt: string; bancaId: string; isBot?: boolean; result?: any; }
-export interface BingoWinner { category: 'quadra' | 'kina' | 'keno'; terminalId: string; userName: string; winAmount: number; winningNumbers: number[]; wonAt: string; type: 'USER_WIN' | 'BOT_WIN'; }
-export interface BingoDraw { id: string; drawNumber: number; scheduledAt: string; startedAt?: string; finishedAt?: string; status: 'scheduled' | 'waiting' | 'live' | 'finished' | 'cancelled'; ticketPrice: number; drawnNumbers: number[]; winnersFound: Record<string, BingoWinner | null>; totalRevenue: number; payoutTotal: number; housePercent: number; prizeRules: any; bancaId: string; updatedAt: string; }
-export interface BingoSettings { enabled: boolean; rtpEnabled: boolean; rtpPercent: number; ticketPriceDefault: number; housePercentDefault: number; maxTicketsPerUserDefault: number; preDrawHoldSeconds: number; prizeDefaults: any; scheduleMode: 'manual' | 'auto'; autoSchedule: any; }
-
-export interface SnookerBet { id: string; channelId: string; userId: string; userName: string; pick: 'A' | 'B' | 'EMPATE'; amount: number; oddsA: number; oddsB: number; oddsD: number; status: 'open' | 'won' | 'lost' | 'refunded'; createdAt: string; settledAt?: string; }
-export interface SnookerChannel { id: string; title: string; youtubeUrl: string; embedId: string; scheduledAt: string; startedAt?: string; playerA: any; playerB: any; scoreA: number; scoreB: number; status: 'scheduled' | 'imminent' | 'live' | 'finished' | 'cancelled'; enabled: boolean; bestOf: number; houseMargin: number; priority: number; viewerCount: number; updatedAt: string; }
-export interface SnookerFinancialSummary { id: string; settledAt: string; channelId: string; channelTitle: string; totalPot: number; totalPayout: number; houseProfit: number; roundNumber?: number; }
-
 interface AppContextType {
   user: any;
   isLoading: boolean;
@@ -99,52 +84,28 @@ interface AppContextType {
   bonus: number;
   terminal: string;
   activeBancaId: string;
-  
-  // Dados
   ledger: any[];
   banners: Banner[];
   popups: Popup[];
   news: NewsMessage[];
   apostas: Aposta[];
   postedResults: any[];
-  jdbLoterias: JDBLoteria[];
-  genericLotteryConfigs: GenericLotteryConfig[];
-  
-  // Futebol
+  jdbLoterias: any[];
+  genericLotteryConfigs: any[];
   footballData: FootballData;
   footballBets: FootballBet[];
   betSlip: any[];
-  
-  // Bingo & Sinuca
-  bingoSettings: BingoSettings;
-  bingoDraws: BingoDraw[];
-  bingoTickets: BingoTicket[];
-  snookerChannels: SnookerChannel[];
-  snookerBets: SnookerBet[];
-  snookerFinancialHistory: SnookerFinancialSummary[];
-  snookerPresence: Record<string, any>;
-  snookerChatMessages: any[];
-  snookerBetsFeed: any[];
-  snookerActivityFeed: any[];
-  snookerScoreboards: Record<string, any>;
-  snookerLiveConfig: any;
-  snookerCashOutLog: any[];
-  
-  // Configurações
   liveMiniPlayerConfig: LiveMiniPlayerConfig;
-  casinoSettings: any;
-  soundEnabled: boolean;
-  isFullscreen: boolean;
-  celebrationTrigger: boolean;
-
-  // Funções
   refreshData: () => void;
   logout: () => void;
-  toggleSound: () => void;
-  toggleFullscreen: () => void;
-  clearCelebration: () => void;
-  
-  // Handlers
+  handleFinalizarAposta: (aposta: any, valorTotal: number) => string | null;
+  processarResultados: (dados: any) => void;
+  syncFootballAll: (force?: boolean) => Promise<void>;
+  updateLeagueConfig: (id: string, config: any) => void;
+  addBetToSlip: (bet: any) => void;
+  removeBetFromSlip: (id: string) => void;
+  clearBetSlip: () => void;
+  placeFootballBet: (stake: number) => Promise<string | null>;
   addBanner: (b: Banner) => void;
   updateBanner: (b: Banner) => void;
   deleteBanner: (id: string) => void;
@@ -154,35 +115,6 @@ interface AppContextType {
   addNews: (m: NewsMessage) => void;
   updateNews: (m: NewsMessage) => void;
   deleteNews: (id: string) => void;
-  
-  // Loterias
-  handleFinalizarAposta: (aposta: any, valorTotal: number) => string | null;
-  processarResultados: (dados: any) => void;
-  updateGenericLottery: (config: GenericLotteryConfig) => void;
-  addJDBLoteria: (loteria: JDBLoteria) => void;
-  updateJDBLoteria: (loteria: JDBLoteria) => void;
-  deleteJDBLoteria: (id: string) => void;
-
-  // Futebol Handlers
-  syncFootballAll: (force?: boolean) => Promise<void>;
-  updateLeagueConfig: (id: string, config: any) => void;
-  addBetToSlip: (bet: any) => void;
-  removeBetFromSlip: (id: string) => void;
-  clearBetSlip: () => void;
-  placeFootballBet: (stake: number) => Promise<string | null>;
-
-  // Mini Player
-  updateLiveMiniPlayerConfig: (config: LiveMiniPlayerConfig) => void;
-  
-  // Outros (Bingo/Sinuca stubs para compilar páginas existentes)
-  registerCambistaMovement: (move: any) => void;
-  buyBingoTickets: (drawId: string, count: number) => boolean;
-  cashOutSnookerBet: (betId: string) => void;
-  sendSnookerChatMessage: (channelId: string, text: string) => void;
-  deleteSnookerChatMessage: (msgId: string) => void;
-  sendSnookerReaction: (channelId: string, reaction: string) => void;
-  joinChannel: (channelId: string, userId: string) => void;
-  leaveChannel: (channelId: string, userId: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -193,50 +125,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
-  // --- ESTADO ---
   const [user, setUser] = useState<any>(null);
   const [betSlip, setBetSlip] = useState<any[]>([]);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [celebrationTrigger, setCelebrationTrigger] = useState(false);
-
   const [banners, setBanners] = useState<Banner[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
   const [news, setNews] = useState<NewsMessage[]>([]);
   const [ledger, setLedger] = useState<any[]>([]);
   const [apostas, setApostas] = useState<Aposta[]>([]);
   const [postedResults, setPostedResults] = useState<any[]>([]);
-  const [jdbLoterias, setJdbLoterias] = useState<JDBLoteria[]>([]);
-  const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<GenericLotteryConfig[]>([]);
-  
+  const [jdbLoterias, setJdbLoterias] = useState<any[]>([]);
+  const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<any[]>([]);
   const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
   const [footballData, setFootballData] = useState<FootballData>({
     leagues: ESPN_LEAGUE_CATALOG, matches: [], unifiedMatches: [], syncStatus: 'idle', lastSyncAt: null
   });
-
   const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<LiveMiniPlayerConfig>({
     enabled: true, youtubeUrl: '', youtubeEmbedId: '', title: 'Sinuca ao Vivo',
     autoShow: true, defaultState: 'open', showOnHome: true, showOnSinuca: true,
     topHeight: 96, bubbleSize: 62
   });
 
-  // Estubs de Bingo/Sinuca/Cassino para as páginas compilarem
-  const [bingoSettings] = useState<any>({ enabled: true, ticketPriceDefault: 0.3, prizeDefaults: { quadra: 60, kina: 90, keno: 150 }, autoSchedule: {} });
-  const [bingoDraws] = useState<any[]>([]);
-  const [bingoTickets] = useState<any[]>([]);
-  const [snookerChannels] = useState<any[]>([]);
-  const [snookerBets] = useState<any[]>([]);
-  const [snookerFinancialHistory] = useState<any[]>([]);
-  const [snookerPresence] = useState<any>({});
-  const [snookerChatMessages] = useState<any[]>([]);
-  const [snookerBetsFeed] = useState<any[]>([]);
-  const [snookerActivityFeed] = useState<any[]>([]);
-  const [snookerScoreboards] = useState<any>({});
-  const [snookerLiveConfig] = useState<any>({ enabled: true });
-  const [snookerCashOutLog] = useState<any[]>([]);
-  const [casinoSettings] = useState<any>({ casinoStatus: true, casinoName: 'LotoHub Casino' });
-
-  // --- CARREGAMENTO ---
   const loadLocalData = useCallback(() => {
     const session = getSession();
     if (session) {
@@ -254,10 +162,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setApostas(getStorageItem('app:apostas:v1', []));
     setPostedResults(getStorageItem('app:posted_results:v1', []));
     setFootballBets(getStorageItem('app:football_bets:v1', []));
-    setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', liveMiniPlayerConfig));
-    
     setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS));
     setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES));
+    setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', liveMiniPlayerConfig));
 
     const savedFootball = getStorageItem('app:football:unified:v1', null);
     if (savedFootball) setFootballData(prev => ({ ...prev, ...savedFootball }));
@@ -281,44 +188,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => { authLogout(); setUser(null); notify(); router.push('/login'); };
 
-  // --- CRUD HANDLERS ---
-  const addBanner = (b: Banner) => { const items = [...banners, b]; setStorageItem('app:banners:v1', items); notify(); };
-  const updateBanner = (b: Banner) => { const items = banners.map(i => i.id === b.id ? b : i); setStorageItem('app:banners:v1', items); notify(); };
-  const deleteBanner = (id: string) => { const items = banners.filter(i => i.id !== id); setStorageItem('app:banners:v1', items); notify(); };
-
-  const addPopup = (p: Popup) => { const items = [...popups, p]; setStorageItem('app:popups:v1', items); notify(); };
-  const updatePopup = (p: Popup) => { const items = popups.map(i => i.id === p.id ? p : i); setStorageItem('app:popups:v1', items); notify(); };
-  const deletePopup = (id: string) => { const items = popups.filter(i => i.id !== id); setStorageItem('app:popups:v1', items); notify(); };
-
-  const addNews = (m: NewsMessage) => { const items = [...news, m]; setStorageItem('news_messages', items); notify(); };
-  const updateNews = (m: NewsMessage) => { const items = news.map(i => i.id === m.id ? m : i); setStorageItem('news_messages', items); notify(); };
-  const deleteNews = (id: string) => { const items = news.filter(i => i.id !== id); setStorageItem('news_messages', items); notify(); };
-
-  const updateGenericLottery = (config: GenericLotteryConfig) => {
-    const items = genericLotteryConfigs.map(c => c.id === config.id ? config : c);
-    setStorageItem('app:generic_loterias:v1', items);
-    notify();
-  };
-
-  const addJDBLoteria = (l: JDBLoteria) => {
-    const items = [...jdbLoterias, l];
-    setStorageItem('app:jdb_loterias:v1', items);
-    notify();
-  };
-
-  const updateJDBLoteria = (l: JDBLoteria) => {
-    const items = jdbLoterias.map(item => item.id === l.id ? l : item);
-    setStorageItem('app:jdb_loterias:v1', items);
-    notify();
-  };
-
-  const deleteJDBLoteria = (id: string) => {
-    const items = jdbLoterias.filter(l => l.id !== id);
-    setStorageItem('app:jdb_loterias:v1', items);
-    notify();
-  };
-
-  // --- LOTERIA HANDLERS ---
   const handleFinalizarAposta = (aposta: any, valorTotal: number): string | null => {
     if (!user) { router.push('/login'); return null; }
     const pouleId = generatePoule();
@@ -343,7 +212,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     notify();
   };
 
-  // --- FUTEBOL HANDLERS ---
   const syncFootballAll = async (force = false) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
     try {
@@ -361,28 +229,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const unified = allMatches.map(match => {
-        // Cálculo de probabilidades utilizando IDs originais
-        const probs = FootballOddsEngine.calculateMatchProbabilities(
-          match.homeTeam.id, 
-          match.awayTeam.id, 
-          leagueStandings[match.leagueSlug] || []
-        );
-        
-        // Transformação para o modelo Bettable (achata objetos de times para strings para evitar erro de renderização)
+        const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || []);
         const baseModel = MatchMapperService.transformEspnToBettable(match);
         const markets = FootballMarketsEngine.generateAllMarkets(probs);
-        
         return { 
           ...baseModel, 
-          markets, 
-          hasOdds: true, 
-          isLive: match.status === 'LIVE', 
+          markets, hasOdds: true, isLive: match.status === 'LIVE', 
           marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN', 
-          odds: { 
-            home: markets[0].selections[0].odd, 
-            draw: markets[0].selections[1].odd, 
-            away: markets[0].selections[2].odd 
-          } 
+          odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } 
         };
       });
 
@@ -391,7 +245,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' }));
       toast({ title: 'Sync Concluído' });
     } catch (e) {
-      console.error("[Football Sync Error]:", e);
+      console.error(e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
     }
   };
@@ -410,8 +264,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const result = BetService.processBet(user, {
       userId: user.id, modulo: 'Futebol', valor: stake, retornoPotencial: potentialWin,
-      descricao: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`,
-      referenceId: pouleId
+      descricao: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`, referenceId: pouleId
     });
 
     if (result.success) {
@@ -425,39 +278,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return null;
   };
 
-  // --- STUBS E OUTROS ---
-  const updateLiveMiniPlayerConfig = (cfg: LiveMiniPlayerConfig) => { setStorageItem('app:mini_player_cfg:v1', cfg); notify(); };
-  const toggleSound = () => setSoundEnabled(!soundEnabled);
-  const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
-  const clearCelebration = () => setCelebrationTrigger(false);
+  const addBanner = (b: Banner) => { const items = [...banners, b]; setStorageItem('app:banners:v1', items); notify(); };
+  const updateBanner = (b: Banner) => { const items = banners.map(i => i.id === b.id ? b : i); setStorageItem('app:banners:v1', items); notify(); };
+  const deleteBanner = (id: string) => { const items = banners.filter(i => i.id !== id); setStorageItem('app:banners:v1', items); notify(); };
+
+  const addPopup = (p: Popup) => { const items = [...popups, p]; setStorageItem('app:popups:v1', items); notify(); };
+  const updatePopup = (p: Popup) => { const items = popups.map(i => i.id === p.id ? p : i); setStorageItem('app:popups:v1', items); notify(); };
+  const deletePopup = (id: string) => { const items = popups.filter(i => i.id !== id); setStorageItem('app:popups:v1', items); notify(); };
+
+  const addNews = (m: NewsMessage) => { const items = [...news, m]; setStorageItem('news_messages', items); notify(); };
+  const updateNews = (m: NewsMessage) => { const items = news.map(i => i.id === m.id ? m : i); setStorageItem('news_messages', items); notify(); };
+  const deleteNews = (id: string) => { const items = news.filter(i => i.id !== id); setStorageItem('news_messages', items); notify(); };
 
   return (
     <AppContext.Provider value={{
       user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
-      activeBancaId: user?.bancaId || 'default',
-      ledger, banners, popups, news, apostas, postedResults, jdbLoterias, genericLotteryConfigs,
-      footballData, footballBets, betSlip,
-      bingoSettings, bingoDraws, bingoTickets,
-      snookerChannels, snookerBets, snookerFinancialHistory, snookerPresence, snookerChatMessages, snookerBetsFeed, snookerActivityFeed, snookerScoreboards, snookerLiveConfig, snookerCashOutLog,
-      liveMiniPlayerConfig, casinoSettings, soundEnabled, isFullscreen, celebrationTrigger,
-      refreshData: loadLocalData, logout, toggleSound, toggleFullscreen, clearCelebration,
-      addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup,
-      addNews, updateNews, deleteNews,
-      handleFinalizarAposta, processarResultados, updateGenericLottery, addJDBLoteria, updateJDBLoteria, deleteJDBLoteria,
-      syncFootballAll, updateLeagueConfig,
-      addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
-      removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)),
-      clearBetSlip: () => setBetSlip([]),
-      placeFootballBet, updateLiveMiniPlayerConfig,
-      // Stubs
-      registerCambistaMovement: () => {},
-      buyBingoTickets: () => false,
-      cashOutSnookerBet: () => {},
-      sendSnookerChatMessage: () => {},
-      deleteSnookerChatMessage: () => {},
-      sendSnookerReaction: () => {},
-      joinChannel: () => {},
-      leaveChannel: () => {}
+      activeBancaId: user?.bancaId || 'default', ledger, banners, popups, news, apostas, postedResults, 
+      jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
+      refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, 
+      updateLeagueConfig, addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
+      removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
+      placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews
     }}>
       {mounted && children}
     </AppContext.Provider>

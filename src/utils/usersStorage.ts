@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -135,7 +136,6 @@ export const getUsers = (): User[] => {
 
 export const getUserByTerminal = (terminal: string): User | null => {
   const users = getUsers();
-  // Busca por terminal ou por email (caso o usuário digite o email no campo de login)
   return users.find(u => u.terminal === terminal || u.email === terminal) || null;
 };
 
