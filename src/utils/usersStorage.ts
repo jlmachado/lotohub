@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @fileOverview Persistência de Usuários via LocalStorage com Seeding Automático.
+ * @fileOverview Persistência de Usuários via LocalStorage com Seeding Automático Síncrono.
  */
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
@@ -58,9 +58,6 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
   }
 };
 
-/**
- * Cria usuários iniciais caso a base esteja vazia.
- */
 const seedInitialUsers = (): User[] => {
   const now = new Date().toISOString();
   const initialUsers: User[] = [
@@ -138,7 +135,8 @@ export const getUsers = (): User[] => {
 
 export const getUserByTerminal = (terminal: string): User | null => {
   const users = getUsers();
-  return users.find(u => u.terminal === terminal) || null;
+  // Busca por terminal ou por email (caso o usuário digite o email no campo de login)
+  return users.find(u => u.terminal === terminal || u.email === terminal) || null;
 };
 
 export const saveUsers = (users: User[]) => {

@@ -1,8 +1,7 @@
 'use client';
 
 /**
- * @fileOverview Lógica de autenticação baseada em Storage Local.
- * Valida credenciais contra a base de usuários do LocalStorage.
+ * @fileOverview Lógica de autenticação baseada em Storage Local Síncrono.
  */
 
 import { User, getUserByTerminal, upsertUser, getDefaultPermissions } from './usersStorage';
@@ -18,25 +17,23 @@ export interface Session {
 const SESSION_KEY = 'app:session:v1';
 
 export const login = (identifier: string, password: string): { success: boolean; message: string; user?: User } => {
-  if (typeof window === 'undefined') return { success: false, message: 'SSR' };
+  if (typeof window === 'undefined') return { success: false, message: 'Aguardando inicialização...' };
 
-  // Busca usuário no storage local (inclui seeding se vazio)
+  // Busca síncrona imediata
   const user = getUserByTerminal(identifier);
 
   if (!user) {
-    return { success: false, message: 'Terminal ou Usuário não identificado no sistema.' };
+    return { success: false, message: 'Usuário ou Terminal não encontrado.' };
   }
 
-  // Validação de senha simples (texto puro para protótipo local)
   if (user.password !== password) {
-    return { success: false, message: 'Senha incorreta para este terminal.' };
+    return { success: false, message: 'Senha incorreta.' };
   }
 
   if (user.status === 'BLOCKED') {
-    return { success: false, message: 'Este terminal está temporariamente bloqueado. Contate o administrador.' };
+    return { success: false, message: 'Terminal bloqueado.' };
   }
 
-  // Criar sessão persistente
   const session: Session = {
     userId: user.id,
     terminal: user.terminal,
@@ -47,10 +44,10 @@ export const login = (identifier: string, password: string): { success: boolean;
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   
-  // Notificar outros componentes
+  // Dispara evento para o AppContext atualizar globalmente
   window.dispatchEvent(new Event('auth-change'));
 
-  return { success: true, message: 'Acesso autorizado!', user };
+  return { success: true, message: 'Logado com sucesso!', user };
 };
 
 export const register = (data: Partial<User>): { success: boolean; message: string } => {
@@ -59,7 +56,7 @@ export const register = (data: Partial<User>): { success: boolean; message: stri
   }
 
   if (getUserByTerminal(data.terminal)) {
-    return { success: false, message: 'Este número de terminal já está em uso.' };
+    return { success: false, message: 'Este terminal já existe.' };
   }
 
   upsertUser({
@@ -73,7 +70,7 @@ export const register = (data: Partial<User>): { success: boolean; message: stri
     permissoes: getDefaultPermissions('USUARIO')
   } as any);
 
-  return { success: true, message: 'Cadastro realizado com sucesso! Faça login para começar.' };
+  return { success: true, message: 'Cadastro concluído!' };
 };
 
 export const logout = () => {
@@ -89,6 +86,7 @@ export const getSession = (): Session | null => {
   try {
     return JSON.parse(stored);
   } catch (e) {
+    localStorage.removeItem(SESSION_KEY); // Limpa sessão corrompida
     return null;
   }
 };

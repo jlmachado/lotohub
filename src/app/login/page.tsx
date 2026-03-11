@@ -48,55 +48,50 @@ export default function LoginPage() {
 
     setLoading(true);
     
-    // Simular delay para melhor UX
-    setTimeout(() => {
-      const result = login(terminal, password);
+    // Processamento imediato síncrono
+    const result = login(terminal, password);
 
-      if (result.success) {
-        const user = result.user;
+    if (result.success) {
+      const user = result.user;
 
-        // 1. AUTO-SET BANCA CONTEXT
-        if (user?.bancaId) {
-          const bancas = getBancas();
-          const targetBanca = bancas.find(b => b.id === user.bancaId);
-          if (targetBanca) {
-            setBancaContextBanca(targetBanca);
-          }
+      // Sincroniza contexto de banca se o usuário pertencer a uma
+      if (user?.bancaId) {
+        const bancas = getBancas();
+        const targetBanca = bancas.find(b => b.id === user.bancaId);
+        if (targetBanca) {
+          setBancaContextBanca(targetBanca);
         }
-
-        // 2. Notificar AppContext para atualizar o estado do usuário imediatamente
-        refreshData();
-
-        toast({ title: 'Acesso autorizado!', description: `Bem-vindo, ${user?.nome}` });
-
-        // 3. Redirect com base no perfil
-        if (user?.tipoUsuario === 'ADMIN' || user?.tipoUsuario === 'SUPER_ADMIN') {
-          router.push('/admin');
-        } else if (user?.tipoUsuario === 'CAMBISTA') {
-          router.push('/cambista/caixa');
-        } else if (user?.tipoUsuario === 'PROMOTOR') {
-          router.push('/promotor/comissao');
-        } else {
-          router.push('/');
-        }
-      } else {
-        toast({ variant: 'destructive', title: 'Falha no login', description: result.message });
-        setLoading(false);
       }
-    }, 800);
+
+      refreshData();
+      toast({ title: 'Acesso autorizado!', description: `Bem-vindo, ${user?.nome}` });
+
+      // Redirecionamento baseado no perfil
+      if (user?.tipoUsuario === 'ADMIN' || user?.tipoUsuario === 'SUPER_ADMIN') {
+        router.push('/admin');
+      } else if (user?.tipoUsuario === 'CAMBISTA') {
+        router.push('/cambista/caixa');
+      } else if (user?.tipoUsuario === 'PROMOTOR') {
+        router.push('/promotor/comissao');
+      } else {
+        router.push('/');
+      }
+    } else {
+      toast({ variant: 'destructive', title: 'Falha no login', description: result.message });
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      {/* Elementos decorativos de fundo */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none"></div>
 
-      <div className="mb-8 animate-in fade-in slide-in-from-top-4 duration-700">
+      <div className="mb-8">
         <Logo height={48} />
       </div>
 
-      <Card className="w-full max-w-md border-white/10 bg-slate-900/80 backdrop-blur-xl shadow-2xl animate-in fade-in zoom-in-95 duration-500">
+      <Card className="w-full max-w-md border-white/10 bg-slate-900/80 backdrop-blur-xl shadow-2xl">
         <CardHeader className="text-center space-y-1">
           <CardTitle className="text-3xl font-black uppercase italic tracking-tighter text-white">Entrar no Sistema</CardTitle>
           <CardDescription className="text-slate-400 font-medium">Acesse sua conta para continuar jogando</CardDescription>
@@ -107,7 +102,7 @@ export default function LoginPage() {
               <Label htmlFor="terminal" className="text-white/70 font-bold uppercase text-[10px] tracking-widest ml-1">Terminal ou Usuário</Label>
               <Input 
                 id="terminal" 
-                placeholder="Ex: 10001 ou email" 
+                placeholder="Ex: 10001" 
                 value={terminal} 
                 onChange={(e) => setTerminal(e.target.value)}
                 className="bg-black/40 border-white/10 h-12 text-white text-lg focus:border-primary/50 transition-all rounded-xl"
@@ -116,8 +111,7 @@ export default function LoginPage() {
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between ml-1">
-                <Label htmlFor="password" name="password" className="text-white/70 font-bold uppercase text-[10px] tracking-widest">Senha Master</Label>
-                <Link href="#" className="text-[10px] font-black uppercase text-primary hover:underline tracking-widest">Esqueceu?</Link>
+                <Label htmlFor="password" className="text-white/70 font-bold uppercase text-[10px] tracking-widest">Senha Master</Label>
               </div>
               <Input 
                 id="password" 
