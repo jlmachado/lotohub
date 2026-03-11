@@ -44,7 +44,8 @@ export default function AdminPage() {
       snookerFinancialHistory: context.snookerFinancialHistory,
       footballBets: context.footballBets,
       userCommissions: context.userCommissions,
-      users: users
+      users: users,
+      ledger: context.ledger || [] // Garantindo a passagem do ledger
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId

@@ -27,15 +27,21 @@ export function getDashboardTotals(
 ): DashboardTotals {
   const { bancaId, mode } = filter;
 
+  // Garantir que ledger seja sempre um array para evitar TypeError: .filter is not a function
+  const safeLedger = Array.isArray(data.ledger) ? data.ledger : [];
+
   // Filtrar Ledger pelo escopo
   const filteredLedger = mode === 'GLOBAL' 
-    ? data.ledger 
-    : data.ledger.filter(e => e.bancaId === bancaId);
+    ? safeLedger 
+    : safeLedger.filter(e => e.bancaId === bancaId);
+
+  // Garantir que users seja sempre um array
+  const safeUsers = Array.isArray(data.users) ? data.users : [];
 
   // Filtrar Usuários pelo escopo
   const filteredUsers = mode === 'GLOBAL'
-    ? data.users
-    : data.users.filter(u => u.bancaId === bancaId);
+    ? safeUsers
+    : safeUsers.filter(u => u.bancaId === bancaId);
 
   // Agregações via Ledger (Fonte de Verdade)
   const totalApostado = filteredLedger
