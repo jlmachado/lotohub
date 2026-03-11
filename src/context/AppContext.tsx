@@ -255,12 +255,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setFootballBets(getStorageItem('app:football_bets:v1', []));
     setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', liveMiniPlayerConfig));
     
-    setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_Loterias));
+    setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS));
     setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES));
 
     const savedFootball = getStorageItem('app:football:unified:v1', null);
     if (savedFootball) setFootballData(prev => ({ ...prev, ...savedFootball }));
-  }, []);
+  }, [liveMiniPlayerConfig]);
 
   useEffect(() => {
     setMounted(true);
