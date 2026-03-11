@@ -1,9 +1,8 @@
-
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Maximize2, Trophy, User } from 'lucide-react';
+import { ArrowLeft, Maximize2, Trophy } from 'lucide-react';
 import { useAppContext, BingoWinner } from '@/context/AppContext';
 import { getBingoWaitingState, getBingoUiState, BingoUiState } from '@/lib/bingoUiAdapter';
 import { cn } from '@/lib/utils';
@@ -253,31 +252,6 @@ const BingoWaitingScreen = ({
 // --- TELA DE SORTEIO ---
 
 const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
-  const targetHits = useMemo(() => {
-    if (ui.phaseLabel.includes("Quadra")) return 4;
-    if (ui.phaseLabel.includes("Kina")) return 5;
-    return 25;
-  }, [ui.phaseLabel]);
-
-  const topParticipants = useMemo(() => {
-    const drawnSet = new Set(ui.drawnNumbers);
-    return ui.participants
-      .map(p => {
-        const hits = p.numbers.filter(n => drawnSet.has(n)).length;
-        const missingCount = Math.max(0, targetHits - hits);
-        const missingPool = p.numbers.filter(n => !drawnSet.has(n));
-        return {
-          ...p,
-          hits,
-          missingCount,
-          missingNumbersToShow: missingPool.slice(0, 6),
-          totalMissingInPool: missingPool.length
-        };
-      })
-      .sort((a, b) => a.missingCount - b.missingCount)
-      .slice(0, 10);
-  }, [ui.participants, ui.drawnNumbers, targetHits]);
-
   return (
     <div className="flex-grow flex flex-col bg-[#f4f6f9] overflow-hidden select-none h-full relative">
       <WinnerPopupController ui={ui} />
@@ -348,7 +322,6 @@ const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
         </div>
       </div>
 
-      {/* TABELA DE GANHADORES (NOVA) */}
       <div className="mt-2 bg-white px-2 py-1 shrink-0 h-[120px] overflow-hidden border-t-2 border-blue-100">
         <h4 className="text-[10px] font-black uppercase text-blue-800 mb-1 px-1">Ganhadores da Rodada</h4>
         <div className="h-full overflow-y-auto rounded border border-gray-100">
@@ -363,7 +336,7 @@ const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {ui.roundWinners.map((w, idx) => (
+              {(ui.roundWinners || []).map((w, idx) => (
                 <tr key={`winner-row-${idx}`} className="bg-white">
                   <td className="p-1"><Badge variant="outline" className="text-[8px] h-4 uppercase">{w.category}</Badge></td>
                   <td className="p-1 font-mono text-gray-600">{w.terminalId}</td>
@@ -376,7 +349,7 @@ const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
                   <td className="p-1 text-right font-black text-green-700">R$ {w.winAmount.toFixed(2)}</td>
                 </tr>
               ))}
-              {ui.roundWinners.length === 0 && (
+              {(ui.roundWinners || []).length === 0 && (
                 <tr><td colSpan={5} className="p-4 text-center text-gray-400 italic">Aguardando primeiros resultados...</td></tr>
               )}
             </tbody>
@@ -404,7 +377,7 @@ const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
 
 export default function BingoPage() {
   const router = useRouter();
-  const { bingoDraws, bingoTickets, bingoSettings, buyBingoTickets, startBingoDraw } = useAppContext();
+  const { bingoDraws, bingoTickets, bingoSettings, buyBingoTickets } = useAppContext();
   
   const [numCartelas, setNumCartelas] = useState(0);
   const [purchaseStep, setPurchaseStep] = useState(10);
@@ -418,18 +391,23 @@ export default function BingoPage() {
   }, []);
 
   const activeDraw = useMemo(() => {
-    const live = bingoDraws.find(d => d.status === 'live');
+    const draws = bingoDraws || [];
+    const live = draws.find(d => d.status === 'live');
     if (live) return live;
-    return bingoDraws
+    return draws
       .filter(d => d.status === 'scheduled')
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
   }, [bingoDraws]);
 
   const ui = useMemo(() => {
-    const myCount = bingoTickets.filter(t => t.drawId === activeDraw?.id && t.userId === 'user-01').length;
-    if (activeDraw?.status === 'live') return getBingoUiState(activeDraw, bingoTickets, myCount, bingoSettings);
-    return getBingoWaitingState(activeDraw, myCount, bingoSettings);
-  }, [activeDraw, bingoTickets, bingoSettings, ticker]);
+    const draws = bingoDraws || [];
+    const tickets = bingoTickets || [];
+    const settings = bingoSettings || { enabled: true, ticketPriceDefault: 0.3, preDrawHoldSeconds: 10 } as any;
+    
+    const myCount = tickets.filter(t => t.drawId === activeDraw?.id && t.userId === 'user-01').length;
+    if (activeDraw?.status === 'live') return getBingoUiState(activeDraw, tickets, myCount, settings);
+    return getBingoWaitingState(activeDraw, myCount, settings);
+  }, [activeDraw, bingoDraws, bingoTickets, bingoSettings, ticker]);
 
   const handleFullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen();
@@ -458,7 +436,7 @@ export default function BingoPage() {
         ) : (
           <BingoWaitingScreen 
             ui={ui} 
-            onBuy={() => buyBingoTickets(activeDraw?.id || '', numCartelas) && setNumCartelas(0)} 
+            onBuy={() => buyBingoTickets?.(activeDraw?.id || '', numCartelas) && setNumCartelas(0)} 
             numCartelas={numCartelas} 
             setNumCartelas={setNumCartelas}
             purchaseStep={purchaseStep}

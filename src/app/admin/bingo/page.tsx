@@ -28,7 +28,8 @@ export default function AdminBingoDashboardPage() {
   const { bingoSettings, bingoDraws, bingoTickets } = useAppContext();
 
   const nextDraw = useMemo(() => {
-    return bingoDraws
+    const draws = bingoDraws || [];
+    return draws
       .filter(d => d.status === 'scheduled' || d.status === 'waiting')
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
   }, [bingoDraws]);
@@ -53,8 +54,11 @@ export default function AdminBingoDashboardPage() {
 
   const todayStats = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    const todayTickets = bingoTickets.filter(t => t.createdAt.startsWith(today));
-    const todayDraws = bingoDraws.filter(d => d.finishedAt?.startsWith(today));
+    const tickets = bingoTickets || [];
+    const draws = bingoDraws || [];
+    
+    const todayTickets = tickets.filter(t => t.createdAt.startsWith(today));
+    const todayDraws = draws.filter(d => d.finishedAt?.startsWith(today));
 
     const totalRevenue = todayTickets.reduce((acc, t) => acc + t.amountPaid, 0);
     const totalPayout = todayDraws.reduce((acc, d) => acc + d.payoutTotal, 0);

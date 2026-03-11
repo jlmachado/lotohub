@@ -19,6 +19,176 @@ import { BetPermissionService } from '@/services/bet-permission-service';
 import { registerDescarga } from '@/utils/descargaStorage';
 import { resolveCurrentBanca, getActiveContext } from '@/utils/bancaContext';
 
+// --- BINGO INTERFACES ---
+
+export interface BingoWinner {
+  category: 'quadra' | 'kina' | 'keno';
+  userId: string;
+  userName: string;
+  terminalId: string;
+  winningNumbers: number[];
+  winAmount: number;
+  wonAt: string;
+  type: 'BOT_WIN' | 'USER_WIN';
+}
+
+export interface BingoDraw {
+  id: string;
+  drawNumber: number;
+  status: 'scheduled' | 'waiting' | 'live' | 'finished' | 'cancelled';
+  scheduledAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  ticketPrice: number;
+  housePercent: number;
+  prizeRules: {
+    quadra: number;
+    kina: number;
+    keno: number;
+  };
+  drawnNumbers: number[];
+  winnersFound: {
+    quadra?: BingoWinner;
+    kina?: BingoWinner;
+    keno?: BingoWinner;
+  };
+  totalTickets: number;
+  totalRevenue: number;
+  payoutTotal: number;
+  bancaId: string;
+}
+
+export interface BingoTicket {
+  id: string;
+  drawId: string;
+  userId: string;
+  userName: string;
+  terminalId: string;
+  ticketNumbers: number[][];
+  status: 'active' | 'won' | 'lost' | 'refunded';
+  amountPaid: number;
+  createdAt: string;
+  bancaId: string;
+  isBot?: boolean;
+}
+
+export interface BingoSettings {
+  enabled: boolean;
+  ticketPriceDefault: number;
+  housePercentDefault: number;
+  maxTicketsPerUserDefault: number;
+  preDrawHoldSeconds: number;
+  prizeDefaults: {
+    quadra: number;
+    kina: number;
+    keno: number;
+  };
+  scheduleMode: 'manual' | 'auto';
+  autoSchedule: {
+    everyMinutes: number;
+    startHour: number;
+    endHour: number;
+  };
+  rtpEnabled: boolean;
+  rtpPercent: number;
+}
+
+export interface BingoPayout {
+  id: string;
+  drawId: string;
+  userId: string;
+  userName: string;
+  terminalId: string;
+  type: string;
+  amount: number;
+  status: 'pending' | 'paid' | 'failed' | 'cancelled';
+  createdAt: string;
+}
+
+// --- SNOOKER INTERFACES ---
+
+export interface SnookerChannel {
+  id: string;
+  title: string;
+  description: string;
+  youtubeUrl: string;
+  embedId: string;
+  scheduledAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  status: 'scheduled' | 'imminent' | 'live' | 'finished' | 'cancelled';
+  playerA: { name: string; level: number; avatarUrl?: string };
+  playerB: { name: string; level: number; avatarUrl?: string };
+  scoreA: number;
+  scoreB: number;
+  odds: { A: number; B: number; D: number };
+  houseMargin: number;
+  bestOf: number;
+  priority: number;
+  enabled: boolean;
+  viewerCount?: number;
+  bancaId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SnookerBet {
+  id: string;
+  userId: string;
+  userName: string;
+  channelId: string;
+  pick: 'A' | 'B' | 'EMPATE';
+  amount: number;
+  oddsA: number;
+  oddsB: number;
+  oddsD: number;
+  status: 'open' | 'won' | 'lost' | 'refunded' | 'cash_out';
+  createdAt: string;
+}
+
+export interface SnookerScoreboard {
+  channelId: string;
+  matchTitle: string;
+  playerA: { name: string; avatarUrl?: string };
+  playerB: { name: string; avatarUrl?: string };
+  scoreA: number;
+  scoreB: number;
+  statusText: string;
+  frame: number;
+  round: {
+    number: number;
+    endsAt?: string;
+  };
+}
+
+export interface SnookerLiveConfig {
+  enabled: boolean;
+  defaultChannelId: string;
+  showLiveBadge: boolean;
+  betsEnabled: boolean;
+  minBet: number;
+  maxBet: number;
+  cashOutMargin: number;
+  chatEnabled: boolean;
+  reactionsEnabled: boolean;
+  profanityFilterEnabled: boolean;
+  topHeight: number;
+  bubbleSize: number;
+}
+
+export interface SnookerFinancialSummary {
+  id: string;
+  channelId: string;
+  channelTitle: string;
+  roundNumber: number;
+  totalPot: number;
+  totalPayout: number;
+  houseProfit: number;
+  settledAt: string;
+}
+
+// --- CORE INTERFACES ---
+
 export interface BetSlipItem {
   id: string; 
   matchId: string;
@@ -105,6 +275,45 @@ interface AppContextType {
   handleFinalizarAposta: (aposta: any, totalValue: number) => string | null;
   processarResultados: (dados: any) => void;
   activeBancaId: string | null;
+  
+  // Bingo
+  bingoDraws: BingoDraw[];
+  bingoTickets: BingoTicket[];
+  bingoSettings: BingoSettings | null;
+  bingoPayouts: BingoPayout[];
+  buyBingoTickets: (drawId: string, count: number) => boolean;
+  startBingoDraw: (id: string) => void;
+  finishBingoDraw: (id: string) => void;
+  cancelBingoDraw: (id: string, reason: string) => void;
+  refundBingoTicket: (id: string) => void;
+  updateBingoSettings: (s: BingoSettings) => void;
+  createBingoDraw: (d: any) => void;
+  payBingoPayout: (id: string) => void;
+
+  // Snooker
+  snookerChannels: SnookerChannel[];
+  snookerBets: SnookerBet[];
+  snookerPresence: Record<string, { viewers: string[] }>;
+  snookerChatMessages: any[];
+  snookerBetsFeed: any[];
+  snookerActivityFeed: any[];
+  snookerFinancialHistory: SnookerFinancialSummary[];
+  snookerCashOutLog: any[];
+  snookerScoreboards: Record<string, SnookerScoreboard>;
+  snookerLiveConfig: SnookerLiveConfig | null;
+  joinChannel: (cId: string, uId: string) => void;
+  leaveChannel: (cId: string, uId: string) => void;
+  sendSnookerChatMessage: (cId: string, text: string) => void;
+  deleteSnookerChatMessage: (id: string) => void;
+  sendSnookerReaction: (cId: string, reaction: string) => void;
+  placeSnookerBet: (bet: any) => boolean;
+  cashOutSnookerBet: (id: string) => void;
+  settleSnookerRound: (cId: string, winner: 'A' | 'B' | 'EMPATE') => void;
+  updateSnookerLiveConfig: (c: any) => void;
+  addSnookerChannel: (c: any) => void;
+  updateSnookerChannel: (c: any) => void;
+  deleteSnookerChannel: (id: string) => void;
+  updateSnookerScoreboard: (cId: string, s: any) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -149,6 +358,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [jdbLoterias, setJdbLoterias] = useState<any[]>([]);
   const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<any[]>([]);
 
+  // Bingo State
+  const [bingoDraws, setBingoDraws] = useState<BingoDraw[]>([]);
+  const [bingoTickets, setBingoTickets] = useState<BingoTicket[]>([]);
+  const [bingoSettings, setBingoSettings] = useState<BingoSettings | null>(null);
+  const [bingoPayouts, setBingoPayouts] = useState<BingoPayout[]>([]);
+
+  // Snooker State
+  const [snookerChannels, setSnookerChannels] = useState<SnookerChannel[]>([]);
+  const [snookerBets, setSnookerBets] = useState<SnookerBet[]>([]);
+  const [snookerPresence, setSnookerPresence] = useState<Record<string, { viewers: string[] }>>({});
+  const [snookerChatMessages, setSnookerChatMessages] = useState<any[]>([]);
+  const [snookerBetsFeed, setSnookerBetsFeed] = useState<any[]>([]);
+  const [snookerActivityFeed, setSnookerActivityFeed] = useState<any[]>([]);
+  const [snookerFinancialHistory, setSnookerFinancialHistory] = useState<SnookerFinancialSummary[]>([]);
+  const [snookerCashOutLog, setSnookerCashOutLog] = useState<any[]>([]);
+  const [snookerScoreboards, setSnookerScoreboards] = useState<Record<string, SnookerScoreboard>>({});
+  const [snookerLiveConfig, setSnookerLiveConfig] = useState<SnookerLiveConfig | null>(null);
+
   const refreshUser = useCallback(() => {
     const currentUser = getCurrentUser();
     if (currentUser) {
@@ -191,6 +418,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
         const savedComms = localStorage.getItem('app:user_commissions:v1');
         if (savedComms) setUserCommissions(JSON.parse(savedComms));
+        
+        // Carregar Bingo do storage se existir
+        const savedBingoDraws = localStorage.getItem('app:bingo_draws:v1');
+        if (savedBingoDraws) setBingoDraws(JSON.parse(savedBingoDraws));
       } catch (e) {
         console.error("Erro ao carregar dados do storage:", e);
       }
@@ -212,7 +443,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     try {
       const activeLeagues = footballData.leagues.filter(l => l.active);
       let allEspnMatches: NormalizedESPNMatch[] = [];
-      const allStandings: Record<string, NormalizedESPNStanding[]> = {};
 
       for (const league of activeLeagues) {
         const scoreboard = await espnService.getScoreboard(league.slug);
@@ -255,7 +485,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     try {
       const totalOdds = betSlip.reduce((acc, item) => acc * item.odd, 1);
       const potentialWin = stake * totalOdds;
-      const currentBanca = resolveCurrentBanca();
       const bancaId = user.bancaId || 'default';
 
       const newBet: FootballBet = {
@@ -321,7 +550,46 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       cambistaMovements, userCommissions, promoterCredits, apostas, postedResults, 
       jdbLoterias, genericLotteryConfigs, handleFinalizarAposta, 
       processarResultados: () => {},
-      activeBancaId: user?.bancaId || null
+      activeBancaId: user?.bancaId || null,
+      
+      // Bingo Default Implementation
+      bingoDraws,
+      bingoTickets,
+      bingoSettings,
+      bingoPayouts,
+      buyBingoTickets: () => true,
+      startBingoDraw: () => {},
+      finishBingoDraw: () => {},
+      cancelBingoDraw: () => {},
+      refundBingoTicket: () => {},
+      updateBingoSettings: (s) => setBingoSettings(s),
+      createBingoDraw: () => {},
+      payBingoPayout: () => {},
+
+      // Snooker Default Implementation
+      snookerChannels,
+      snookerBets,
+      snookerPresence,
+      snookerChatMessages,
+      snookerBetsFeed,
+      snookerActivityFeed,
+      snookerFinancialHistory,
+      snookerCashOutLog,
+      snookerScoreboards,
+      snookerLiveConfig,
+      joinChannel: () => {},
+      leaveChannel: () => {},
+      sendSnookerChatMessage: () => {},
+      deleteSnookerChatMessage: () => {},
+      sendSnookerReaction: () => {},
+      placeSnookerBet: () => true,
+      cashOutSnookerBet: () => {},
+      settleSnookerRound: () => {},
+      updateSnookerLiveConfig: (c) => setSnookerLiveConfig(c),
+      addSnookerChannel: () => {},
+      updateSnookerChannel: () => {},
+      deleteSnookerChannel: () => {},
+      updateSnookerScoreboard: () => {}
     }}>
       {children}
     </AppContext.Provider>

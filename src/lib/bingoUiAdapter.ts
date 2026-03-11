@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Adaptador de leitura para transformar o estado do AppContext
  * no formato exigido pela interface visual profissional do Bingo.
@@ -82,8 +81,8 @@ export function getBingoUiState(
 
   if (activeDraw.status === 'live') {
     status = "DRAWING";
-    if (!activeDraw.winnersFound.quadra) phase = "Buscando Quadra";
-    else if (!activeDraw.winnersFound.kina) phase = "Buscando Kina";
+    if (!activeDraw.winnersFound?.quadra) phase = "Buscando Quadra";
+    else if (!activeDraw.winnersFound?.kina) phase = "Buscando Kina";
     else phase = "Buscando Keno";
   } else if (activeDraw.status === 'scheduled') {
     if (now >= scheduledTime) {
@@ -101,21 +100,22 @@ export function getBingoUiState(
   const drawDate = new Date(activeDraw.scheduledAt);
   const dayHour = `${drawDate.getDate().toString().padStart(2, '0')}/${(drawDate.getMonth() + 1).toString().padStart(2, '0')} - ${drawDate.getHours().toString().padStart(2, '0')}:${drawDate.getMinutes().toString().padStart(2, '0')}`;
 
-  const participants = tickets
+  const safeTickets = tickets || [];
+  const participants = safeTickets
     .filter(t => t.drawId === activeDraw.id)
     .map((t) => ({
       terminal: t.terminalId || "000",
       name: t.userName || "Usuário",
-      numbers: (t.ticketNumbers[0] as number[]) || [],
+      numbers: (t.ticketNumbers?.[0] as number[]) || [],
       highlight: !t.isBot,
       isBot: !!t.isBot
     }));
 
-  const roundWinners = [
+  const roundWinners = activeDraw.winnersFound ? [
     activeDraw.winnersFound.quadra,
     activeDraw.winnersFound.kina,
     activeDraw.winnersFound.keno
-  ].filter(Boolean) as BingoWinner[];
+  ].filter(Boolean) as BingoWinner[] : [];
 
   return {
     status,

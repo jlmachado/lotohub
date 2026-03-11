@@ -44,10 +44,12 @@ export default function SorteioDetailPage() {
   const [tickets, setTickets] = useState<BingoTicket[]>([]);
 
   useEffect(() => {
-    const foundDraw = bingoDraws.find(d => d.id === id);
+    const draws = bingoDraws || [];
+    const allTickets = bingoTickets || [];
+    const foundDraw = draws.find(d => d.id === id);
     if (foundDraw) {
       setDraw(foundDraw);
-      const relatedTickets = bingoTickets.filter(t => t.drawId === id);
+      const relatedTickets = allTickets.filter(t => t.drawId === id);
       setTickets(relatedTickets);
     }
   }, [id, bingoDraws, bingoTickets]);
