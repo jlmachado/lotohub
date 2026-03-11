@@ -20,6 +20,7 @@ import { FootballOddsEngine } from '@/services/football-odds-engine';
 import { FootballMarketsEngine } from '@/services/football-markets-engine';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 import { INITIAL_GENERIC_LOTTERIES, INITIAL_JDB_LOTERIAS } from '@/constants/lottery-configs';
+import { MatchMapperService } from '@/services/match-mapper-service';
 
 // --- INTERFACES ---
 
@@ -360,15 +361,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const unified = allMatches.map(match => {
-        const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || []);
+        // Cálculo de probabilidades utilizando IDs originais
+        const probs = FootballOddsEngine.calculateMatchProbabilities(
+          match.homeTeam.id, 
+          match.awayTeam.id, 
+          leagueStandings[match.leagueSlug] || []
+        );
+        
+        // Transformação para o modelo Bettable (achata objetos de times para strings para evitar erro de renderização)
+        const baseModel = MatchMapperService.transformEspnToBettable(match);
         const markets = FootballMarketsEngine.generateAllMarkets(probs);
+        
         return { 
-          ...match, 
+          ...baseModel, 
           markets, 
           hasOdds: true, 
           isLive: match.status === 'LIVE', 
-          marketStatus: 'OPEN', 
-          odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } 
+          marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN', 
+          odds: { 
+            home: markets[0].selections[0].odd, 
+            draw: markets[0].selections[1].odd, 
+            away: markets[0].selections[2].odd 
+          } 
         };
       });
 
@@ -377,6 +391,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' }));
       toast({ title: 'Sync Concluído' });
     } catch (e) {
+      console.error("[Football Sync Error]:", e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
     }
   };
