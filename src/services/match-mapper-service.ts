@@ -30,8 +30,8 @@ export interface MatchModel {
 
 export class MatchMapperService {
   /**
-   * Nota: Este serviço foi simplificado para focar no enriquecimento dos dados ESPN
-   * com o motor de precificação interno configurado no AppContext.
+   * Transforma o modelo bruto da ESPN para o modelo Bettable consumido pela UI.
+   * Garante que objetos complexos sejam transformados em strings renderizáveis.
    */
   static transformEspnToBettable(match: NormalizedESPNMatch): MatchModel {
     return {
@@ -39,20 +39,22 @@ export class MatchMapperService {
       espnId: match.id,
       league: match.leagueName,
       leagueSlug: match.leagueSlug,
-      homeTeam: match.homeTeam.name,
-      awayTeam: match.awayTeam.name,
-      homeLogo: match.homeTeam.logo,
-      awayLogo: match.awayTeam.logo,
+      // Garantir que homeTeam e awayTeam sejam strings (nomes)
+      homeTeam: String(match.homeTeam?.name || 'Time Mandante'),
+      awayTeam: String(match.awayTeam?.name || 'Time Visitante'),
+      // Mapear logos para o nível superior para facilitar acesso
+      homeLogo: match.homeTeam?.logo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png',
+      awayLogo: match.awayTeam?.logo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png',
       kickoff: match.date,
       status: match.status,
       minute: match.clock || '',
-      scoreHome: match.homeTeam.score,
-      scoreAway: match.awayTeam.score,
-      hasOdds: false, // Será preenchido pelo motor de odds
+      scoreHome: typeof match.homeTeam?.score === 'number' ? match.homeTeam.score : 0,
+      scoreAway: typeof match.awayTeam?.score === 'number' ? match.awayTeam.score : 0,
+      hasOdds: false, 
       odds: { home: 1.0, draw: 1.0, away: 1.0 },
       isLive: match.status === 'LIVE',
       isFinished: match.status === 'FINISHED',
-      marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'SUSPENDED'
+      marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN'
     };
   }
 }

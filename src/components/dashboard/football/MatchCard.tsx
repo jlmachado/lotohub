@@ -26,6 +26,13 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
   const isSuspended = match.marketStatus === 'SUSPENDED';
   const isClosed = match.marketStatus === 'CLOSED' || match.isFinished;
 
+  // Extração segura de nomes e logos para evitar erro "Objects are not valid as a React child"
+  // Caso o dado venha mal formatado do storage (objeto em vez de string)
+  const homeName = typeof match.homeTeam === 'object' ? match.homeTeam?.name : match.homeTeam;
+  const awayName = typeof match.awayTeam === 'object' ? match.awayTeam?.name : match.awayTeam;
+  const homeLogoUrl = typeof match.homeTeam === 'object' ? match.homeTeam?.logo : match.homeLogo;
+  const awayLogoUrl = typeof match.awayTeam === 'object' ? match.awayTeam?.logo : match.awayLogo;
+
   return (
     <Card className={cn(
       "bg-slate-900 border-white/5 overflow-hidden transition-all shadow-xl group",
@@ -66,9 +73,11 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
         <div className="flex justify-between items-center gap-2">
           <div className="text-center flex-1 min-w-0">
             <div className="w-8 h-8 mx-auto mb-1.5 relative">
-              <img src={match.homeLogo} className="w-full h-full object-contain" alt="" />
+              <img src={homeLogoUrl} className="w-full h-full object-contain" alt="" />
             </div>
-            <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{match.homeTeam}</p>
+            <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">
+              {String(homeName || '---')}
+            </p>
           </div>
           
           <div className={cn(
@@ -89,9 +98,11 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
 
           <div className="text-center flex-1 min-w-0">
             <div className="w-8 h-8 mx-auto mb-1.5 relative">
-              <img src={match.awayLogo} className="w-full h-full object-contain" alt="" />
+              <img src={awayLogoUrl} className="w-full h-full object-contain" alt="" />
             </div>
-            <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{match.awayTeam}</p>
+            <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">
+              {String(awayName || '---')}
+            </p>
           </div>
         </div>
 
@@ -100,21 +111,21 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           <div className={cn("grid grid-cols-3 gap-1.5 transition-opacity", isSuspended && "opacity-40 pointer-events-none")}>
             <OddButton 
               label="1" 
-              odd={match.odds.home} 
+              odd={match.odds?.home || 1.0} 
               active={isSelected?.('Casa')} 
-              onClick={() => onSelectOdd?.('Casa', match.odds.home)} 
+              onClick={() => onSelectOdd?.('Casa', match.odds?.home || 1.0)} 
             />
             <OddButton 
               label="X" 
-              odd={match.odds.draw} 
+              odd={match.odds?.draw || 1.0} 
               active={isSelected?.('Empate')} 
-              onClick={() => onSelectOdd?.('Empate', match.odds.draw)} 
+              onClick={() => onSelectOdd?.('Empate', match.odds?.draw || 1.0)} 
             />
             <OddButton 
               label="2" 
-              odd={match.odds.away} 
+              odd={match.odds?.away || 1.0} 
               active={isSelected?.('Fora')} 
-              onClick={() => onSelectOdd?.('Fora', match.odds.away)} 
+              onClick={() => onSelectOdd?.('Fora', match.odds?.away || 1.0)} 
             />
           </div>
         ) : (
@@ -146,7 +157,7 @@ function OddButton({ label, odd, onClick, active }: any) {
     >
       <span className={cn("text-[8px] font-black opacity-50 mb-0.5", active && "text-black")}>{label}</span>
       <span className={cn("text-[13px] font-black italic", active ? "text-black" : "text-primary tabular-nums")}>
-        {odd.toFixed(2)}
+        {typeof odd === 'number' ? odd.toFixed(2) : '1.00'}
       </span>
     </Button>
   );
