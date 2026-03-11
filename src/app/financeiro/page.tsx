@@ -1,362 +1,111 @@
+/**
+ * @fileOverview Página de Extrato Unificado - Consome dados do Ledger.
+ */
+
 'use client';
 
 import { Header } from '@/components/header';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-    Tabs,
-    TabsContent,
-    TabsList,
-    TabsTrigger,
-} from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useState } from 'react';
-import { Aposta, useAppContext } from '@/context/AppContext';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { useToast } from '@/hooks/use-toast';
+import { useAppContext } from '@/context/AppContext';
+import { formatBRL } from '@/utils/currency';
+import { ArrowDownCircle, ArrowUpCircle, History, Filter } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
-export default function FinanceiroPage() {
-    const { apostas = [], depositos = [], saques = [] } = useAppContext();
+export default function ExtratoPage() {
+  const { ledger, user, isLoading } = useAppContext();
+  const [filter, setFilter] = useState('all');
 
-    const getStatusBadgeVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
-        switch (status) {
-            case 'Concluído':
-                return 'default';
-            case 'Pendente':
-                return 'secondary';
-            case 'Recusado':
-                return 'destructive';
-            default:
-                return 'outline';
-        }
-    }
+  const myLedger = useMemo(() => {
+    if (!user) return [];
+    return ledger
+      .filter(e => e.userId === user.id)
+      .filter(e => filter === 'all' || e.type === filter)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [ledger, user, filter]);
 
-    const [dataInicio, setDataInicio] = useState('');
-    const [dataFim, setDataFim] = useState('');
-    const [resumo, setResumo] = useState<{
-        totalApostado: number;
-        premiosPagos: number;
-        comissao: number;
-        fechamento: number;
-    } | null>(null);
+  if (isLoading) return <div className="p-20 text-center">Carregando extrato...</div>;
 
-    const [isCaixaDialogOpen, setIsCaixaDialogOpen] = useState(false);
-    const [caixaStep, setCaixaStep] = useState<'password' | 'action'>('password');
-    const [passwordInput, setPasswordInput] = useState('');
-    const [passwordError, setPasswordError] = useState(false);
-    const [caixaAction, setCaixaAction] = useState<'pagar' | 'retirar'>('pagar');
-    const { toast } = useToast();
-
-    const COMISSION_PERCENTAGE = 0.10; // 10%
-
-    const parseDate = (dateString: string): Date => {
-        if (!dateString) return new Date('invalid');
-        // Handles formats like "26/07/2024, 10:30:00" or "26/07/2024 10:30:00"
-        const cleanedDateString = dateString.replace(',', '');
-        const [datePart, timePart] = cleanedDateString.split(' ');
-        if (!datePart) return new Date('invalid');
-        const [day, month, year] = datePart.split('/');
-        if (!year || !month || !day) return new Date('invalid');
-        return new Date(`${year}-${month}-${day}T${timePart || '00:00:00'}`);
-    };
-
-    const parseValor = (valorString: string): number => {
-        if (!valorString) return 0;
-        if (typeof valorString === 'number') return valorString;
-        return parseFloat(valorString.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
-    };
-    
-    const calcularPremio = (bilhete: Aposta) => {
-        if (bilhete.status !== 'premiado' && bilhete.status !== 'won') {
-            return 0;
-        }
-
-        if (Array.isArray(bilhete.detalhes) && bilhete.detalhes.length > 0) {
-           return bilhete.detalhes.reduce((acc: number, item: any) => acc + (item.retornoPossivel || 0), 0);
-        }
-        
-        const valorAposta = parseValor(bilhete.valor);
-        return valorAposta * 10;
-    };
-
-
-    const handleCalcularResumo = () => {
-        const startDate = dataInicio ? new Date(dataInicio + 'T00:00:00') : null;
-        const endDate = dataFim ? new Date(dataFim + 'T23:59:59') : null;
-
-        const safeApostas = apostas || [];
-        const apostasFiltradas = safeApostas.filter(aposta => {
-            const apostaDate = parseDate(aposta.data);
-            if (apostaDate.toString() === 'Invalid Date') return false;
-            if (startDate && apostaDate < startDate) return false;
-            if (endDate && apostaDate > endDate) return false;
-            return true;
-        });
-
-        const totalApostado = apostasFiltradas.reduce((acc, aposta) => acc + parseValor(aposta.valor), 0);
-        const premiosPagos = apostasFiltradas.reduce((acc, aposta) => acc + calcularPremio(aposta), 0);
-        const comissao = totalApostado * COMISSION_PERCENTAGE;
-        const fechamento = totalApostado - premiosPagos - comissao;
-        
-        setResumo({
-            totalApostado,
-            premiosPagos,
-            comissao,
-            fechamento,
-        });
-    };
-
-    const handleVerifyPassword = () => {
-        if (passwordInput === '1234') {
-            setCaixaStep('action');
-            setPasswordError(false);
-            setPasswordInput('');
-        } else {
-            setPasswordError(true);
-        }
-    };
-
-    const handleConfirmCaixa = () => {
-        if(!resumo) return;
-        toast({
-            title: "Ação de Caixa Confirmada",
-            description: `Ação "${caixaAction === 'pagar' ? 'Pagar' : 'Retirar'}" para o valor de R$ ${resumo.fechamento.toFixed(2)} foi registrada.`,
-        });
-        resetCaixaDialog();
-    };
-
-    const resetCaixaDialog = () => {
-        setIsCaixaDialogOpen(false);
-        // A small delay to allow the dialog to close before resetting its internal state
-        setTimeout(() => {
-            setCaixaStep('password');
-            setPasswordInput('');
-            setPasswordError(false);
-        }, 300);
-    };
-
-
-    return (
-        <div>
-            <Header />
-            <main className="p-4 md:p-8">
-                <h1 className="text-3xl font-bold mb-6">Histórico Financeiro</h1>
-                <Tabs defaultValue="depositos" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="depositos">Depósitos</TabsTrigger>
-                        <TabsTrigger value="saques">Saques</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="depositos">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Depósitos Realizados</CardTitle>
-                                <CardDescription>Seu histórico de recargas.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Data e Hora</TableHead>
-                                            <TableHead>Valor</TableHead>
-                                            <TableHead className="text-right">Status</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {Array.isArray(depositos) && depositos.length > 0 ? (
-                                            depositos.map((deposito, index) => (
-                                                <TableRow key={index}>
-                                                    <TableCell>{deposito.data}</TableCell>
-                                                    <TableCell className="font-medium">{deposito.valor}</TableCell>
-                                                    <TableCell className="text-right">
-                                                        <Badge variant={getStatusBadgeVariant(deposito.status)}>{deposito.status}</Badge>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        ) : (
-                                            <TableRow>
-                                                <TableCell colSpan={3} className="text-center text-muted-foreground">Nenhum depósito realizado.</TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-                    <TabsContent value="saques">
-                        <Card>
-                             <CardHeader>
-                                <CardTitle>Saques Solicitados</CardTitle>
-                                <CardDescription>Seu histórico de solicitações de saque.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Data e Hora</TableHead>
-                                            <TableHead>Valor</TableHead>
-                                            <TableHead className="text-right">Status</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {Array.isArray(saques) && saques.length > 0 ? (
-                                            saques.map((saque, index) => (
-                                                <TableRow key={index}>
-                                                    <TableCell>{saque.data}</TableCell>
-                                                    <TableCell className="font-medium">{saque.valor}</TableCell>
-                                                    <TableCell className="text-right">
-                                                        <Badge variant={getStatusBadgeVariant(saque.status)}>{saque.status}</Badge>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        ) : (
-                                             <TableRow>
-                                                <TableCell colSpan={3} className="text-center text-muted-foreground">Nenhum saque solicitado.</TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-                </Tabs>
-
-                <Card className="mt-6">
-                    <CardHeader>
-                        <CardTitle>Resumo Financeiro por Período</CardTitle>
-                        <CardDescription>Filtre por data para calcular o fechamento.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid md:grid-cols-3 gap-4 items-end">
-                            <div className="grid gap-2">
-                                <Label htmlFor="data-inicio">Data de Início</Label>
-                                <Input id="data-inicio" type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="data-fim">Data de Fim</Label>
-                                <Input id="data-fim" type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
-                            </div>
-                            <Button onClick={handleCalcularResumo}>Buscar</Button>
-                        </div>
-                        {resumo !== null && (
-                            <>
-                                <Separator className="my-6" />
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-center">
-                                    <div className="p-4 rounded-lg bg-gray-100 dark:bg-gray-800">
-                                        <p className="text-sm text-muted-foreground">Total Apostado</p>
-                                        <p className="text-2xl font-bold">R$ {resumo.totalApostado.toFixed(2).replace('.', ',')}</p>
-                                    </div>
-                                    <div className="p-4 rounded-lg bg-red-100 dark:bg-red-900/50">
-                                        <p className="text-sm text-red-600 dark:text-red-400">Prêmios Pagos</p>
-                                        <p className="text-2xl font-bold text-red-700 dark:text-red-300">R$ {resumo.premiosPagos.toFixed(2).replace('.', ',')}</p>
-                                    </div>
-                                    <div className="p-4 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-                                        <p className="text-sm text-blue-600 dark:text-blue-400">Minha Comissão (10%)</p>
-                                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">R$ {resumo.comissao.toFixed(2).replace('.', ',')}</p>
-                                    </div>
-                                    <div className="p-4 rounded-lg bg-green-100 dark:bg-green-900/50">
-                                        <p className="text-sm text-green-600 dark:text-green-400">Fechamento</p>
-                                        <p className={`text-2xl font-bold ${resumo.fechamento >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>R$ {resumo.fechamento.toFixed(2).replace('.', ',')}</p>
-                                    </div>
-                                </div>
-                                <div className="mt-6 text-right">
-                                    <Dialog open={isCaixaDialogOpen} onOpenChange={(open) => {
-                                        setIsCaixaDialogOpen(open);
-                                        if (!open) {
-                                            resetCaixaDialog();
-                                        }
-                                    }}>
-                                        <DialogTrigger asChild>
-                                            <Button>Fechar Caixa</Button>
-                                        </DialogTrigger>
-                                        <DialogContent className="sm:max-w-[425px]">
-                                            {caixaStep === 'password' ? (
-                                                <>
-                                                    <DialogHeader>
-                                                        <DialogTitle>Senha de Segurança</DialogTitle>
-                                                        <DialogDescription>
-                                                            Digite a senha para continuar com o fechamento do caixa.
-                                                        </DialogDescription>
-                                                    </DialogHeader>
-                                                    <div className="grid gap-4 py-4">
-                                                        <div className="grid grid-cols-4 items-center gap-4">
-                                                            <Label htmlFor="password" className="text-right">
-                                                                Senha
-                                                            </Label>
-                                                            <Input
-                                                                id="password"
-                                                                type="password"
-                                                                value={passwordInput}
-                                                                onChange={(e) => setPasswordInput(e.target.value)}
-                                                                className="col-span-3"
-                                                            />
-                                                        </div>
-                                                        {passwordError && (
-                                                            <p className="col-span-4 text-center text-sm text-destructive">Senha incorreta. Tente novamente.</p>
-                                                        )}
-                                                    </div>
-                                                    <DialogFooter>
-                                                        <Button onClick={handleVerifyPassword}>Verificar</Button>
-                                                    </DialogFooter>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <DialogHeader>
-                                                        <DialogTitle>Ação de Caixa</DialogTitle>
-                                                        <DialogDescription>
-                                                            O fechamento é de <span className={`font-bold ${resumo.fechamento >= 0 ? 'text-green-600' : 'text-red-600'}`}>R$ {resumo.fechamento.toFixed(2).replace('.', ',')}</span>. Escolha a ação a ser realizada.
-                                                        </DialogDescription>
-                                                    </DialogHeader>
-                                                    <div className="grid gap-4 py-4">
-                                                        <RadioGroup value={caixaAction} onValueChange={(value: 'pagar' | 'retirar') => setCaixaAction(value)} className="m-auto grid grid-cols-2 gap-4">
-                                                            <div className="flex items-center space-x-2">
-                                                                <RadioGroupItem value="pagar" id="pagar" />
-                                                                <Label htmlFor="pagar">Pagar</Label>
-                                                            </div>
-                                                            <div className="flex items-center space-x-2">
-                                                                <RadioGroupItem value="retirar" id="retirar" />
-                                                                <Label htmlFor="retirar">Retirar</Label>
-                                                            </div>
-                                                        </RadioGroup>
-                                                    </div>
-                                                    <DialogFooter>
-                                                        <Button onClick={handleConfirmCaixa}>Confirmar Ação</Button>
-                                                    </DialogFooter>
-                                                </>
-                                            )}
-                                        </DialogContent>
-                                    </Dialog>
-                                </div>
-                            </>
-                        )}
-                    </CardContent>
-                </Card>
-            </main>
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Meu Extrato</h1>
+            <p className="text-muted-foreground text-xs uppercase font-bold">Histórico detalhado de transações</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter size={16} className="text-primary" />
+            <select 
+              value={filter} 
+              onChange={e => setFilter(e.target.value)}
+              className="bg-slate-900 border border-white/10 text-[10px] uppercase font-bold p-2 rounded-lg"
+            >
+              <option value="all">Todas as Operações</option>
+              <option value="BET_PLACED">Apostas Realizadas</option>
+              <option value="BET_WIN">Prêmios Recebidos</option>
+              <option value="COMMISSION_EARNED">Comissões Ganhas</option>
+              <option value="CREDIT_RECEIVED">Créditos Recebidos</option>
+            </select>
+          </div>
         </div>
-    );
+
+        <Card className="border-white/5 bg-slate-900/50 overflow-hidden shadow-2xl">
+          <CardHeader className="bg-white/5 border-b border-white/5">
+            <CardTitle className="text-sm font-black uppercase italic tracking-widest flex items-center gap-2">
+              <History size={16} className="text-primary" /> Lançamentos
+            </CardTitle>
+          </CardHeader>
+          <Table>
+            <TableHeader className="bg-slate-950/50">
+              <TableRow className="border-white/5 h-10">
+                <TableHead className="text-[9px] uppercase font-black px-4">Data/Hora</TableHead>
+                <TableHead className="text-[9px] uppercase font-black">Tipo</TableHead>
+                <TableHead className="text-[9px] uppercase font-black">Descrição</TableHead>
+                <TableHead className="text-[9px] uppercase font-black text-right px-4">Valor</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {myLedger.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-24 text-muted-foreground italic">Nenhuma transação encontrada.</TableCell>
+                </TableRow>
+              ) : (
+                myLedger.map((entry) => (
+                  <TableRow key={entry.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                    <TableCell className="px-4">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-bold text-white">{new Date(entry.createdAt).toLocaleDateString('pt-BR')}</span>
+                        <span className="text-[9px] text-muted-foreground">{new Date(entry.createdAt).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={`text-[8px] h-4 uppercase font-black ${
+                        entry.amount > 0 ? 'border-green-500/20 text-green-500 bg-green-500/5' : 'border-red-500/20 text-red-500 bg-red-500/5'
+                      }`}>
+                        {entry.type.replace('_', ' ')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-[10px] font-bold text-slate-300 uppercase italic">{entry.description}</span>
+                    </TableCell>
+                    <TableCell className="text-right px-4">
+                      <div className="flex flex-col items-end">
+                        <span className={`text-xs font-black ${entry.amount > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {entry.amount > 0 ? '+' : ''}{formatBRL(entry.amount)}
+                        </span>
+                        <span className="text-[8px] text-muted-foreground uppercase">Saldo: {formatBRL(entry.balanceAfter)}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+      </main>
+    </div>
+  );
 }
