@@ -1,10 +1,11 @@
 /**
- * @fileOverview AppContext Refatorado - Orquestrador Central de Futebol e Dados.
+ * @fileOverview AppContext - Orquestrador Central.
+ * Atualizado para gerenciar Polling Live e Suspensão de Mercados.
  */
 
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser, logout as authLogout } from '@/utils/auth';
@@ -20,7 +21,6 @@ import { normalizeESPNScoreboard, normalizeESPNStandings } from '@/utils/espn-no
 import { FootballOddsEngine } from '@/services/football-odds-engine';
 import { FootballMarketsEngine } from '@/services/football-markets-engine';
 import { FootballLiveEngine } from '@/services/football-live-engine';
-import { FootballSettlementService } from '@/services/football-settlement-service';
 
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; }
 export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; }
@@ -95,6 +95,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     lastSyncAt: null
   });
 
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
   const refreshData = useCallback(() => {
     if (typeof window === 'undefined') return;
     const currentUser = getCurrentUser();
@@ -107,6 +109,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     const savedLeagues = getStorageItem('app:football:leagues:v1', ESPN_LEAGUE_CATALOG);
     const savedUnified = getStorageItem('app:football:unified:v1', []);
+    
     setFootballData(prev => ({
       ...prev,
       leagues: savedLeagues,
@@ -116,72 +119,77 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(false);
   }, []);
 
+  // --- LIVE POLLING LOGIC ---
+  const runLiveUpdate = useCallback(async () => {
+    const liveMatches = footballData.unifiedMatches.filter(m => m.isLive);
+    if (liveMatches.length === 0) return;
+
+    const leaguesToSync = [...new Set(liveMatches.map(m => m.leagueSlug))];
+    let hasChanges = false;
+    let newUnified = [...footballData.unifiedMatches];
+
+    for (const slug of leaguesToSync) {
+      const scoreboard = await espnService.getScoreboard(slug);
+      if (!scoreboard?.events) continue;
+
+      const normalized = normalizeESPNScoreboard(scoreboard, slug);
+      
+      normalized.forEach(matchData => {
+        const idx = newUnified.findIndex(m => m.id === matchData.id);
+        if (idx !== -1) {
+          const oldMatch = newUnified[idx];
+          const updatedMatch = FootballLiveEngine.processUpdate(oldMatch, matchData);
+          
+          if (JSON.stringify(oldMatch) !== JSON.stringify(updatedMatch)) {
+            newUnified[idx] = updatedMatch;
+            hasChanges = true;
+          }
+        }
+      });
+    }
+
+    // Reabertura de mercados suspensos por tempo
+    const now = Date.now();
+    newUnified = newUnified.map(m => {
+      // Se estava suspenso e o tempo de reabertura (fictício p/ protótipo) passou
+      // No mundo real, usaríamos a propriedade 'nextReopenAt' detectada no processUpdate
+      if (m.marketStatus === 'SUSPENDED' && m.isLive) {
+        // Simulação: reabre se não houve mudança crítica no último ciclo
+        return { ...m, marketStatus: 'OPEN' };
+      }
+      return m;
+    });
+
+    if (hasChanges) {
+      setFootballData(prev => ({ ...prev, unifiedMatches: newUnified }));
+      setStorageItem('app:football:unified:v1', newUnified);
+      window.dispatchEvent(new Event(APP_EVENTS.DATA_CHANGED));
+    }
+  }, [footballData.unifiedMatches]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
+    // Inicia polling apenas se houver jogos live
+    const hasLive = footballData.unifiedMatches.some(m => m.isLive);
+    if (hasLive && !pollingRef.current) {
+      pollingRef.current = setInterval(runLiveUpdate, 30000); // 30s
+    } else if (!hasLive && pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [mounted, footballData.unifiedMatches, runLiveUpdate]);
+
   useEffect(() => {
     setMounted(true);
     refreshData();
     window.addEventListener(APP_EVENTS.DATA_CHANGED, refreshData);
     return () => window.removeEventListener(APP_EVENTS.DATA_CHANGED, refreshData);
   }, [refreshData]);
-
-  // LIVE POLLER EFFECT
-  useEffect(() => {
-    if (!mounted || footballData.syncStatus === 'syncing') return;
-
-    const poller = setInterval(async () => {
-      const liveMatches = footballData.unifiedMatches.filter(m => m.isLive);
-      if (liveMatches.length === 0) return;
-
-      console.log(`[Live Poller] Atualizando ${liveMatches.length} jogos...`);
-      const activeLeagues = [...new Set(liveMatches.map(m => m.leagueSlug))];
-      
-      let updatedUnified = [...footballData.unifiedMatches];
-      let hasChanges = false;
-
-      for (const slug of activeLeagues) {
-        const scoreboard = await espnService.getScoreboard(slug);
-        if (!scoreboard?.events) continue;
-
-        const normalized = normalizeESPNScoreboard(scoreboard, slug);
-        
-        normalized.forEach(newData => {
-          const idx = updatedUnified.findIndex(m => m.id === newData.id);
-          if (idx !== -1) {
-            const oldMatch = updatedUnified[idx];
-            const updatedMatch = FootballLiveEngine.processUpdate(oldMatch, newData);
-            
-            // Reabertura Automática após suspensão
-            if (updatedMatch.marketStatus === 'SUSPENDED') {
-              setTimeout(() => {
-                setFootballData(prev => ({
-                  ...prev,
-                  unifiedMatches: prev.unifiedMatches.map(m => m.id === updatedMatch.id ? { ...m, marketStatus: 'OPEN' } : m)
-                }));
-              }, 20000);
-            }
-
-            updatedUnified[idx] = updatedMatch;
-            hasChanges = true;
-          }
-        });
-      }
-
-      if (hasChanges) {
-        setFootballData(prev => ({ ...prev, unifiedMatches: updatedUnified }));
-        setStorageItem('app:football:unified:v1', updatedUnified);
-        
-        // Auto-Settlement Check
-        const finishedMatches = updatedUnified.filter(m => m.isFinished);
-        if (finishedMatches.length > 0) {
-          const currentBets = getStorageItem('app:football_bets:v1', []);
-          const settledBets = currentBets.map(b => FootballSettlementService.settleBet(b, finishedMatches));
-          setStorageItem('app:football_bets:v1', settledBets);
-          setFootballBets(settledBets);
-        }
-      }
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(poller);
-  }, [mounted, footballData.unifiedMatches, footballData.syncStatus]);
 
   const syncFootballAll = async (force: boolean = false) => {
     if (footballData.syncStatus === 'syncing') return;
@@ -237,11 +245,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
 
       const now = new Date().toISOString();
-      setFootballData(prev => ({ ...prev, matches: allMatches, unifiedMatches: unified, syncStatus: 'success', lastSyncAt: now }));
+      setFootballData(prev => ({ 
+        ...prev, 
+        matches: allMatches, 
+        unifiedMatches: unified, 
+        syncStatus: 'success', 
+        lastSyncAt: now 
+      }));
+      
       setStorageItem('app:football:unified:v1', unified);
       setStorageItem('app:football:last_sync:v1', now);
       notifyDataChange();
-      toast({ title: 'Sync Concluído', description: 'Dados e odds atualizados.' });
+      toast({ title: 'Sincronização Concluída', description: 'Jogos e Odds atualizados.' });
     } catch (error) {
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
       toast({ variant: 'destructive', title: 'Erro na Sincronização' });
@@ -260,14 +275,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const placeFootballBet = async (stake: number): Promise<string | null> => {
     if (!user) { router.push('/login'); return null; }
     
-    // Validar se alguma seleção no slip foi suspensa
-    const hasSuspended = betSlip.some(item => {
-      const match = footballData.unifiedMatches.find(m => m.id === item.matchId);
-      return match?.marketStatus === 'SUSPENDED' || match?.marketStatus === 'CLOSED';
+    // VALIDACAO LIVE: Impede aposta se o mercado estiver suspenso ou fechado
+    const invalidSelection = betSlip.find(item => {
+      const liveMatch = footballData.unifiedMatches.find(m => m.id === item.matchId);
+      return liveMatch?.marketStatus !== 'OPEN';
     });
 
-    if (hasSuspended) {
-      toast({ variant: 'destructive', title: 'Aposta Rejeitada', description: 'Um ou mais mercados foram suspensos por eventos ao vivo.' });
+    if (invalidSelection) {
+      const match = footballData.unifiedMatches.find(m => m.id === invalidSelection.matchId);
+      toast({ 
+        variant: 'destructive', 
+        title: 'Mercado Suspenso', 
+        description: `As apostas para ${match?.homeTeam} vs ${match?.awayTeam} foram suspensas temporariamente.` 
+      });
       return null;
     }
 

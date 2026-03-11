@@ -1,5 +1,6 @@
 /**
  * @fileOverview Card de partida refinado para Sportsbook Live.
+ * Atualizado para exibir status do mercado e alertas de suspensão.
  */
 
 'use client';
@@ -8,7 +9,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Radio, Calendar, Info, TrendingUp, Lock } from 'lucide-react';
+import { Radio, Calendar, Info, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MatchCardProps {
@@ -39,7 +40,7 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           {match.isLive ? (
             <>
               <Radio size={10} className="text-red-500 animate-pulse" />
-              <span className="text-[9px] font-black uppercase text-red-500 italic">AO VIVO • {match.minute}'</span>
+              <span className="text-[9px] font-black uppercase text-red-500 italic">AO VIVO • {match.minute}</span>
             </>
           ) : (
             <>
