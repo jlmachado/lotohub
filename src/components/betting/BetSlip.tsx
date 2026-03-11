@@ -1,5 +1,5 @@
 /**
- * @fileOverview Carrinho de Apostas Profissional refinado.
+ * @fileOverview Carrinho de Apostas Profissional refinado com finalização e exibição de bilhete.
  */
 
 'use client';
@@ -13,37 +13,85 @@ import { X, Trash2, ReceiptText, TrendingUp, Wallet, ArrowRight, ShoppingCart, L
 import { formatBRL } from '@/utils/currency';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { TicketDialog } from '../ticket-dialog';
 
 export function BetSlip() {
   const { betSlip, removeBetFromSlip, clearBetSlip, placeFootballBet, balance, user } = useAppContext();
   const [stakeInput, setStakeInput] = useState<string>('10');
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  
+  // Success Ticket Modal
+  const [isTicketOpen, setIsTicketOpen] = useState(false);
+  const [lastTicketId, setLastTicketId] = useState<string | null>(null);
+  const [lastTicketTime, setLastTicketTime] = useState<string | null>(null);
+  const [lastTicketItems, setLastTicketItems] = useState<any[]>([]);
+  const [lastTicketStake, setLastTicketStake] = useState(0);
+  const [lastTicketPossibleReturn, setLastTicketPossibleReturn] = useState(0);
 
   const totalOdds = useMemo(() => {
-    if (betSlip.length === 0) return 0;
-    const prod = betSlip.reduce((acc, item) => acc * (item.odd || 1), 1);
+    const prod = (betSlip || []).reduce((acc, item) => acc * (item.odd || 1), 1);
     return parseFloat(prod.toFixed(2));
   }, [betSlip]);
-
-  if (betSlip.length === 0) return null;
 
   const stake = parseFloat(stakeInput) || 0;
   const potentialWin = parseFloat((stake * totalOdds).toFixed(2));
   
-  const isMultiple = betSlip.length > 1;
-  const canPlaceBet = stake >= 1 && stake <= balance && !isFinalizing;
+  const isMultiple = (betSlip || []).length > 1;
+  const canPlaceBet = stake >= 1 && stake <= (user?.tipoUsuario === 'CAMBISTA' ? 999999 : balance) && !isFinalizing;
 
   const handlePlaceBet = async () => {
     if (!canPlaceBet) return;
     setIsFinalizing(true);
-    const success = await placeFootballBet(stake);
+    
+    // Capturar dados para o bilhete ANTES de limpar o slip
+    const itemsSnapshot = [...betSlip];
+    const stakeSnapshot = stake;
+    const winSnapshot = potentialWin;
+    
+    const pouleId = await placeFootballBet(stake);
     setIsFinalizing(false);
-    if (success) setIsOpen(false);
+    
+    if (pouleId) {
+      setLastTicketId(pouleId);
+      setLastTicketTime(new Date().toLocaleString('pt-BR'));
+      setLastTicketItems(itemsSnapshot);
+      setLastTicketStake(stakeSnapshot);
+      setLastTicketPossibleReturn(winSnapshot);
+      
+      setIsOpen(false);
+      setIsTicketOpen(true);
+    }
   };
+
+  if (!betSlip || betSlip.length === 0) return (
+    <TicketDialog 
+      isOpen={isTicketOpen} 
+      onOpenChange={setIsTicketOpen} 
+      onNewBet={() => setIsTicketOpen(false)}
+      ticketId={lastTicketId}
+      generationTime={lastTicketTime}
+      lotteryName="Futebol"
+      ticketItems={lastTicketItems}
+      totalValue={lastTicketStake}
+      possibleReturn={lastTicketPossibleReturn}
+    />
+  );
 
   return (
     <>
+      <TicketDialog 
+        isOpen={isTicketOpen} 
+        onOpenChange={setIsTicketOpen} 
+        onNewBet={() => setIsTicketOpen(false)}
+        ticketId={lastTicketId}
+        generationTime={lastTicketTime}
+        lotteryName="Futebol"
+        ticketItems={lastTicketItems}
+        totalValue={lastTicketStake}
+        possibleReturn={lastTicketPossibleReturn}
+      />
+
       {/* Botão Flutuante (quando fechado) */}
       {!isOpen && (
         <button 
@@ -172,7 +220,7 @@ export function BetSlip() {
                 canPlaceBet ? "lux-shine bg-primary text-black" : "bg-slate-800 text-slate-500 grayscale cursor-not-allowed"
               )}
             >
-              {isFinalizing ? <Loader2 className="animate-spin" /> : (stake > balance ? 'Saldo Insuficiente' : 'Confirmar Aposta')}
+              {isFinalizing ? <Loader2 className="animate-spin" /> : (stake > (user?.tipoUsuario === 'CAMBISTA' ? 999999 : balance) ? 'Saldo Insuficiente' : 'Confirmar Aposta')}
               {!isFinalizing && <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />}
             </Button>
           </CardFooter>

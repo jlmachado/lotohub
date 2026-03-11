@@ -11,6 +11,8 @@ import { MatchMapperService, MatchModel } from '@/services/match-mapper-service'
 import { BetPermissionService } from '@/services/bet-permission-service';
 import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
 import { INITIAL_GENERIC_LOTTERIES, INITIAL_JDB_LOTERIAS } from '@/constants/lottery-configs';
+import { generatePoule } from '@/utils/generatePoule';
+import { upsertUser } from '@/utils/usersStorage';
 
 // --- BINGO INTERFACES ---
 export interface BingoWinner {
@@ -124,6 +126,20 @@ export interface UserCommission {
   bancaId?: string;
 }
 
+export interface FootballBet {
+  id: string;
+  userId: string;
+  terminal: string;
+  bancaId: string;
+  stake: number;
+  potentialWin: number;
+  totalOdds: number;
+  status: 'OPEN' | 'WON' | 'LOST' | 'CANCELLED';
+  createdAt: string;
+  items: any[];
+  isDescarga?: boolean;
+}
+
 interface FootballSyncData {
   matches: any[];
   unifiedMatches: MatchModel[];
@@ -142,12 +158,12 @@ interface AppContextType {
   logout: () => void;
   refreshUser: () => void;
   footballData: FootballSyncData;
-  footballBets: any[];
+  footballBets: FootballBet[];
   betSlip: any[];
   addBetToSlip: (bet: any) => void;
   removeBetFromSlip: (id: string) => void;
   clearBetSlip: () => void;
-  placeFootballBet: (stake: number) => Promise<boolean>;
+  placeFootballBet: (stake: number) => Promise<string | null>;
   syncFootballAll: (manual?: boolean) => Promise<void>;
   updateLeagueConfig: (id: string, config: Partial<ESPNLeagueConfig>) => void;
   banners: any[];
@@ -208,7 +224,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // States
   const [betSlip, setBetSlip] = useState<any[]>([]);
-  const [footballBets, setFootballBets] = useState<any[]>([]);
+  const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
   const [footballData, setFootballData] = useState<FootballSyncData>({
     matches: [], unifiedMatches: [], standings: {}, leagues: ESPN_LEAGUE_CATALOG, lastSync: null, syncStatus: 'idle'
   });
@@ -243,7 +259,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setMounted(true);
     refreshUser();
     
-    // Carregar do Storage Seguro com Fallbacks Iniciais Restaurados
+    // Carregar do Storage Seguro
     setBingoDraws(getStorageItem('app:bingo_draws:v1', []));
     setBingoTickets(getStorageItem('app:bingo_tickets:v1', []));
     setBingoSettings(getStorageItem('app:bingo_settings:v1', {
@@ -251,6 +267,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       preDrawHoldSeconds: 10, prizeDefaults: { quadra: 60, kina: 90, keno: 150 }, scheduleMode: 'manual',
       autoSchedule: { everyMinutes: 5, startHour: 8, endHour: 23 }, rtpEnabled: false, rtpPercent: 20
     }));
+    
+    setFootballBets(getStorageItem('app:football_bets:v1', []));
+    setUserCommissions(getStorageItem('app:user_commissions:v1', []));
+    setApostas(getStorageItem('app:apostas:v1', []));
 
     // RESTAURAÇÃO DE LOTERIAS PADRÃO
     const storedJdb = getStorageItem('jogo_bicho:loterias:v1', []);
@@ -271,6 +291,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { if (mounted) setStorageItem('app:bingo_settings:v1', bingoSettings); }, [bingoSettings, mounted]);
   useEffect(() => { if (mounted) setStorageItem('app:generic_lotteries:v1', genericLotteryConfigs); }, [genericLotteryConfigs, mounted]);
   useEffect(() => { if (mounted) setStorageItem('jogo_bicho:loterias:v1', jdbLoterias); }, [jdbLoterias, mounted]);
+  useEffect(() => { if (mounted) setStorageItem('app:football_bets:v1', footballBets); }, [footballBets, mounted]);
+  useEffect(() => { if (mounted) setStorageItem('app:user_commissions:v1', userCommissions); }, [userCommissions, mounted]);
+  useEffect(() => { if (mounted) setStorageItem('app:apostas:v1', apostas); }, [apostas, mounted]);
 
   const syncFootballAll = useCallback(async (manual = false) => {
     if (syncInProgress.current) return;
@@ -289,18 +312,110 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     finally { syncInProgress.current = false; }
   }, [footballData.leagues, toast]);
 
-  const placeFootballBet = async (stake: number) => {
-    if (!user) { router.push('/login'); return false; }
+  const placeFootballBet = async (stake: number): Promise<string | null> => {
+    if (!user) { router.push('/login'); return null; }
+    
     const permission = BetPermissionService.validate(user.tipoUsuario, balance, bonus, stake);
-    if (!permission.allowed) { toast({ variant: 'destructive', title: 'Aposta Recusada', description: permission.reason }); return false; }
-    toast({ title: 'Aposta Realizada!' });
-    return true;
+    if (!permission.allowed) { 
+      toast({ variant: 'destructive', title: 'Aposta Recusada', description: permission.reason }); 
+      return null; 
+    }
+
+    const pouleId = generatePoule();
+    const totalOdds = parseFloat(betSlip.reduce((acc, item) => acc * (item.odd || 1), 1).toFixed(2));
+    const potentialWin = parseFloat((stake * totalOdds).toFixed(2));
+    const now = new Date().toISOString();
+
+    const newBet: FootballBet = {
+      id: pouleId,
+      userId: user.id,
+      terminal: user.terminal,
+      bancaId: user.bancaId || 'default',
+      stake,
+      potentialWin,
+      totalOdds,
+      status: 'OPEN',
+      createdAt: now,
+      items: [...betSlip]
+    };
+
+    // Atualizar saldos se não for cambista
+    if (user.tipoUsuario !== 'CAMBISTA') {
+      let newBalance = balance;
+      let newBonus = bonus;
+      
+      if (bonus >= stake) {
+        newBonus -= stake;
+      } else {
+        const diff = stake - bonus;
+        newBonus = 0;
+        newBalance -= diff;
+      }
+      
+      upsertUser({ terminal: user.terminal, saldo: newBalance, bonus: newBonus });
+      refreshUser();
+    }
+
+    // Registrar Comissão se aplicável
+    if (user.tipoUsuario === 'PROMOTOR' || user.tipoUsuario === 'CAMBISTA') {
+      const perc = user.promotorConfig?.porcentagemComissao || 0;
+      const commissionAmount = (stake * perc) / 100;
+      if (commissionAmount > 0) {
+        const newComm: UserCommission = {
+          id: `comm-fb-${Date.now()}`,
+          userId: user.id,
+          modulo: 'Futebol',
+          valorAposta: stake,
+          valorComissao: commissionAmount,
+          porcentagem: perc,
+          createdAt: now,
+          bancaId: user.bancaId
+        };
+        setUserCommissions(prev => [newComm, ...prev]);
+      }
+    }
+
+    setFootballBets(prev => [newBet, ...prev]);
+    
+    // Adicionar à listagem unificada de apostas para o perfil do usuário ver
+    const apostaUnificada = {
+      id: pouleId,
+      userId: user.id,
+      bancaId: user.bancaId || 'default',
+      loteria: 'Futebol',
+      concurso: 'Sportsbook',
+      data: new Date().toLocaleString('pt-BR'),
+      createdAt: now,
+      valor: `R$ ${stake.toFixed(2).replace('.', ',')}`,
+      numeros: betSlip.map(i => `${i.matchName}: ${i.pickLabel}`).join('; '),
+      status: 'aguardando',
+      detalhes: {
+        selections: betSlip,
+        totalOdds,
+        potentialWin
+      }
+    };
+    setApostas(prev => [apostaUnificada, ...prev]);
+    
+    setBetSlip([]);
+    toast({ title: 'Aposta Realizada com Sucesso!' });
+    return pouleId;
   };
 
   const logout = () => { authLogout(); setUser(null); setBalance(0); router.push('/'); };
   const toggleFullscreen = () => { 
     if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); setIsFullscreen(true); }
     else { document.exitFullscreen(); setIsFullscreen(false); }
+  };
+
+  const handleFinalizarAposta = (a: any, totalValue: number): string | null => {
+    if (!user) return null;
+    const pouleId = generatePoule();
+    const now = new Date().toISOString();
+    
+    setApostas(prev => [{ ...a, id: pouleId, createdAt: now, userId: user.id, bancaId: user.bancaId || 'default', status: 'aguardando' }, ...prev]);
+    toast({ title: 'Aposta Confirmada!' });
+    return pouleId;
   };
 
   // --- Bingo Functions ---
@@ -333,7 +448,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }));
     setBingoTickets(prev => [...(prev || []), ...newTickets]);
     setBingoDraws(prev => prev.map(d => d.id === drawId ? { ...d, totalTickets: d.totalTickets + count, totalRevenue: d.totalRevenue + total } : d));
-    setBalance(prev => prev - total);
+    
+    if (user.tipoUsuario !== 'CAMBISTA') {
+      const newBal = balance - total;
+      upsertUser({ terminal: user.terminal, saldo: newBal });
+      refreshUser();
+    }
+    
     toast({ title: 'Cartelas compradas!' });
     return true;
   };
@@ -352,9 +473,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       soundEnabled, toggleSound: () => setSoundEnabled(!soundEnabled),
       registerCambistaMovement: () => {}, cambistaMovements: [], userCommissions, promoterCredits: [],
       apostas, postedResults: [], jdbLoterias, genericLotteryConfigs,
-      handleFinalizarAposta: (a) => {
-        const id = `ap-${Date.now()}`; setApostas(prev => [{ ...a, id }, ...(prev || [])]); return id;
-      },
+      handleFinalizarAposta,
       processarResultados: () => {}, activeBancaId: user?.bancaId || null,
       updateGenericLottery: (cfg) => setGenericLotteryConfigs(prev => (prev || []).map(c => c.id === cfg.id ? cfg : c)),
       addJDBLoteria: (l) => setJdbLoterias(prev => [l, ...(prev || [])]),

@@ -1,3 +1,8 @@
+/**
+ * @fileOverview Modal de sucesso pós-aposta com opções de impressão e compartilhamento.
+ * Implementa restrição de visibilidade de ações por perfil de usuário.
+ */
+
 'use client';
 
 import { useState } from 'react';
@@ -39,15 +44,18 @@ export function TicketDialog({
   totalValue,
   possibleReturn,
 }: TicketDialogProps) {
-  const { terminal } = useAppContext();
+  const { terminal, user } = useAppContext();
   const { toast } = useToast();
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
+  // Regra de perfil para exibição das ações de administrador (Cambista/Promotor)
+  const isAgent = user?.tipoUsuario === 'CAMBISTA' || user?.tipoUsuario === 'PROMOTOR' || user?.tipoUsuario === 'ADMIN' || user?.tipoUsuario === 'SUPER_ADMIN';
+
   const getSummaryText = () => {
     const isFootball = lotteryName === 'Futebol';
-    return ticketItems.map(i => {
+    return (ticketItems || []).map(i => {
       if (isFootball) {
-        return `${i.match?.homeTeamName} vs ${i.match?.awayTeamName}: ${i.pickLabel} (@${i.odd?.toFixed(2)})`;
+        return `${i.matchName || 'Jogo'}: ${i.pickLabel} (@${i.odd?.toFixed(2)})`;
       }
       return `${i.modalabilityLabel || i.modalidadeLabel}: ${Array.isArray(i.numeros) ? i.numeros.join(',') : i.numero}`;
     }).join('; ');
@@ -108,9 +116,9 @@ export function TicketDialog({
       apostas: (ticketItems || []).map((item) => {
         if (isFootball) {
           return {
-            modalidade: `${item.match?.homeTeamName} vs ${item.match?.awayTeamName}`,
+            modalidade: item.matchName || 'Sportsbook',
             numero: `Vencedor: ${item.pickLabel} (@${item.odd?.toFixed(2)})`,
-            valor: (item.value || 0).toFixed(2),
+            valor: (item.stake || totalValue).toFixed(2),
           };
         }
         return {
@@ -167,18 +175,23 @@ export function TicketDialog({
         </div>
 
         <div className="p-6 border-t bg-card shadow-[0_-15px_30px_rgba(0,0,0,0.3)] flex-shrink-0">
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <Button variant="outline" onClick={handleDownloadImage} disabled={isGeneratingImage} className="h-12 rounded-xl font-bold gap-2">
-              <Download size={18} /> {isGeneratingImage ? 'Gerando...' : 'Imagem'}
-            </Button>
-            <Button onClick={handleShareWhatsApp} className="h-12 rounded-xl font-bold bg-[#25D366] hover:bg-[#128C7E] text-white gap-2 border-0">
-              <MessageCircle size={18} /> WhatsApp
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" onClick={handlePrint} className="h-12 rounded-xl font-bold gap-2">
-              <Printer size={18} /> Imprimir
-            </Button>
+          {isAgent && (
+            <div className="grid grid-cols-2 gap-3 mb-3 animate-in slide-in-from-bottom-2 duration-500">
+              <Button variant="outline" onClick={handleDownloadImage} disabled={isGeneratingImage} className="h-12 rounded-xl font-bold gap-2">
+                <Download size={18} /> {isGeneratingImage ? 'Gerando...' : 'Imagem'}
+              </Button>
+              <Button onClick={handleShareWhatsApp} className="h-12 rounded-xl font-bold bg-[#25D366] hover:bg-[#128C7E] text-white gap-2 border-0">
+                <MessageCircle size={18} /> WhatsApp
+              </Button>
+            </div>
+          )}
+          
+          <div className={cn("grid gap-3", isAgent ? "grid-cols-2" : "grid-cols-1")}>
+            {isAgent && (
+              <Button variant="outline" onClick={handlePrint} className="h-12 rounded-xl font-bold gap-2">
+                <Printer size={18} /> Imprimir
+              </Button>
+            )}
             <Button size="lg" className="h-12 rounded-xl font-black uppercase italic text-lg lux-shine" onClick={onNewBet}>
               Nova Aposta
             </Button>
