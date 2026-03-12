@@ -33,6 +33,7 @@ export interface Banca {
   nome: string;
   cidade?: string;
   whatsapp?: string;
+  baseTerminal: number; // Base numérica para geração de terminais
   modulos: BancaModulos;
   descargaConfig: DescargaConfig;
   status: 'ACTIVE' | 'INACTIVE';
@@ -63,6 +64,7 @@ export const getBancas = (): Banca[] => {
       adminLogin: 'admin',
       adminPassword: 'password',
       status: 'ACTIVE',
+      baseTerminal: 10000, // Matriz começa em 10000
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       modulos: {
@@ -96,12 +98,17 @@ export const upsertBanca = (bancaData: Partial<Banca> & { subdomain: string }) =
   if (index >= 0) {
     bancas[index] = { ...bancas[index], ...bancaData, updatedAt: now };
   } else {
+    // Definir base terminal para novas bancas (incrementos de 10000)
+    const lastBase = bancas.length > 0 ? Math.max(...bancas.map(b => b.baseTerminal)) : 0;
+    const newBase = lastBase + 10000;
+
     const newBanca: Banca = {
       ...bancaData,
       id: bancaData.id || `banca-${bancaData.subdomain}-${Date.now()}`,
       adminLogin: bancaData.adminLogin || 'admin',
       adminPassword: bancaData.adminPassword || '1234',
       nome: bancaData.nome || 'Nova Banca',
+      baseTerminal: bancaData.baseTerminal || newBase,
       modulos: bancaData.modulos || {
         bingo: true, cassino: true, jogoDoBicho: true, seninha: true,
         quininha: true, lotinha: true, futebol: true, sinucaAoVivo: true, loteriaUruguai: true

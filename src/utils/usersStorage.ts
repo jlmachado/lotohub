@@ -6,6 +6,7 @@
  */
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
+import { getBancas } from './bancasStorage';
 
 export type UserStatus = 'ACTIVE' | 'BLOCKED';
 export type UserType = 'USUARIO' | 'PROMOTOR' | 'CAMBISTA' | 'ADMIN' | 'SUPER_ADMIN';
@@ -28,6 +29,7 @@ export interface User {
   email?: string;
   password: string;
   nome?: string;
+  cpf?: string;
   cidade?: string;
   whatsapp?: string;
   status: UserStatus;
@@ -151,6 +153,32 @@ export const getUsers = (bancaId?: string | null): User[] => {
   }
   
   return users;
+};
+
+/**
+ * Gera o próximo terminal disponível para uma banca específica.
+ */
+export const generateNextTerminalForBanca = (bancaId: string): string => {
+  const bancas = getBancas();
+  const banca = bancas.find(b => b.id === bancaId || b.subdomain === bancaId);
+  if (!banca) return String(Date.now()).slice(-5);
+
+  const users = getStorageItem<User[]>(USERS_KEY, []);
+  const bancaUsers = users.filter(u => u.bancaId === banca.id);
+  
+  const terminalNumbers = bancaUsers
+    .map(u => parseInt(u.terminal))
+    .filter(n => !isNaN(n) && n > banca.baseTerminal);
+
+  const highest = terminalNumbers.length > 0 ? Math.max(...terminalNumbers) : banca.baseTerminal;
+  
+  // Garantir que não colidimos com terminais especiais
+  let next = highest + 1;
+  while (users.some(u => u.terminal === String(next))) {
+    next++;
+  }
+
+  return String(next);
 };
 
 export const getUserByTerminal = (terminal: string): User | null => {

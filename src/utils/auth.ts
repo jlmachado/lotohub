@@ -5,7 +5,8 @@
  * Totalmente compatível com a arquitetura Multi-Banca.
  */
 
-import { User, getUserByTerminal, upsertUser, getDefaultPermissions } from './usersStorage';
+import { User, getUserByTerminal, upsertUser, getDefaultPermissions, generateNextTerminalForBanca, getUsers } from './usersStorage';
+import { resolveCurrentBanca } from './bancaContext';
 
 export interface Session {
   userId: string;
@@ -20,7 +21,7 @@ const SESSION_KEY = 'app:session:v1';
 export const login = (identifier: string, password: string): { success: boolean; message: string; user?: User } => {
   if (typeof window === 'undefined') return { success: false, message: 'Ambiente inválido' };
 
-  // Busca o usuário globalmente (o terminal deve ser único no sistema prototype)
+  // Busca o usuário globalmente (o terminal ou email deve ser único no sistema prototype)
   const user = getUserByTerminal(identifier);
 
   if (!user) {
@@ -51,28 +52,43 @@ export const login = (identifier: string, password: string): { success: boolean;
   return { success: true, message: 'Logado com sucesso!', user };
 };
 
-export const register = (data: Partial<User>): { success: boolean; message: string } => {
-  if (!data.terminal || !data.password) {
-    return { success: false, message: 'Dados obrigatórios ausentes.' };
+export const register = (data: Omit<Partial<User>, 'terminal'>): { success: boolean; message: string; terminal?: string } => {
+  if (!data.nome || !data.password || !data.email) {
+    return { success: false, message: 'Dados obrigatórios ausentes (Nome, E-mail e Senha).' };
   }
 
-  if (getUserByTerminal(data.terminal)) {
-    return { success: false, message: 'Este terminal já existe no sistema.' };
+  // Verificar se e-mail já existe
+  const allUsers = getUsers();
+  if (allUsers.some(u => u.email === data.email)) {
+    return { success: false, message: 'Este e-mail já está cadastrado.' };
   }
+
+  // Resolver banca atual
+  const banca = resolveCurrentBanca();
+  const bancaId = banca?.id || 'default';
+
+  // Gerar terminal automático
+  const terminal = generateNextTerminalForBanca(bancaId);
 
   upsertUser({
     ...data,
-    terminal: data.terminal,
+    terminal,
     password: data.password,
     tipoUsuario: 'USUARIO', 
     saldo: 0,
     bonus: 0,
     status: 'ACTIVE',
-    bancaId: data.bancaId || 'default',
-    permissoes: getDefaultPermissions('USUARIO')
+    bancaId,
+    permissoes: getDefaultPermissions('USUARIO'),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   } as any);
 
-  return { success: true, message: 'Cadastro concluído! Agora você pode fazer login.' };
+  return { 
+    success: true, 
+    message: 'Cadastro concluído com sucesso!', 
+    terminal 
+  };
 };
 
 export const logout = () => {
