@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview Persistência de Usuários via LocalStorage com Seeding Automático Síncrono.
- * Suporta Multi-Banca.
+ * Suporta Multi-Banca e todos os perfis de acesso.
  */
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
@@ -77,7 +77,21 @@ const seedInitialUsers = (): User[] => {
       updatedAt: now
     },
     {
-      id: 'u-20002',
+      id: 'u-admin-matriz',
+      terminal: 'admin',
+      password: 'admin',
+      nome: 'Admin Matriz',
+      status: 'ACTIVE',
+      tipoUsuario: 'ADMIN',
+      permissoes: getDefaultPermissions('ADMIN'),
+      saldo: 0,
+      bonus: 0,
+      bancaId: 'default',
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'u-caixa-matriz',
       terminal: '20002',
       password: '1234',
       nome: 'Caixa Matriz',
@@ -88,6 +102,35 @@ const seedInitialUsers = (): User[] => {
       promotorConfig: { porcentagemComissao: 10 },
       saldo: 5000,
       bonus: 0,
+      bancaId: 'default',
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'u-promotor-01',
+      terminal: '30001',
+      password: '1234',
+      nome: 'Promotor Gold',
+      status: 'ACTIVE',
+      tipoUsuario: 'PROMOTOR',
+      permissoes: getDefaultPermissions('PROMOTOR'),
+      promotorConfig: { porcentagemComissao: 15 },
+      saldo: 1000,
+      bonus: 0,
+      bancaId: 'default',
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'u-player-01',
+      terminal: '12345',
+      password: '1234',
+      nome: 'Jogador Demo',
+      status: 'ACTIVE',
+      tipoUsuario: 'USUARIO',
+      permissoes: getDefaultPermissions('USUARIO'),
+      saldo: 500,
+      bonus: 100,
       bancaId: 'default',
       createdAt: now,
       updatedAt: now
@@ -103,7 +146,7 @@ export const getUsers = (bancaId?: string | null): User[] => {
     return seedInitialUsers();
   }
   
-  if (bancaId) {
+  if (bancaId && bancaId !== 'all') {
     return users.filter(u => u.bancaId === bancaId || u.tipoUsuario === 'SUPER_ADMIN');
   }
   
@@ -144,6 +187,11 @@ export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
     allUsers.push(newUser);
   }
   saveUsers(allUsers);
+  
+  // Sincroniza evento global
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('app:data-changed'));
+  }
 };
 
 export interface AdminLog {
@@ -171,20 +219,20 @@ export const logAdminAction = (log: Omit<AdminLog, 'id' | 'at'>) => {
 
 export const getAuditLogs = (bancaId: string, terminal?: string): AdminLog[] => {
   const logs = getStorageItem<AdminLog[]>(AUDIT_KEY, []);
-  return logs.filter(l => l.bancaId === bancaId && (!terminal || l.terminal === terminal));
+  return logs.filter(l => (!bancaId || l.bancaId === bancaId) && (!terminal || l.terminal === terminal));
 };
 
-export const addPromoterCredit = (terminal: string, amount: number, reason: string, bancaId: string) => {
+export const addPromoterCredit = (terminal: string, amount: number, reason: string) => {
   const user = getUserByTerminal(terminal);
   if (user) {
-    upsertUser({ terminal, saldo: user.saldo + amount, bancaId: user.bancaId });
+    upsertUser({ terminal, saldo: user.saldo + amount });
     logAdminAction({
       adminUser: 'admin',
       action: 'CREDIT_ADDED',
       terminal,
       delta: amount,
       reason,
-      bancaId
+      bancaId: user.bancaId
     });
   }
 };

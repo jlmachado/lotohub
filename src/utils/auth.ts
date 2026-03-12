@@ -1,9 +1,8 @@
-
 'use client';
 
 /**
  * @fileOverview Lógica de autenticação síncrona baseada em Storage Local.
- * Mantém o funcionamento idêntico ao "preview" original.
+ * Totalmente compatível com a arquitetura Multi-Banca.
  */
 
 import { User, getUserByTerminal, upsertUser, getDefaultPermissions } from './usersStorage';
@@ -12,7 +11,7 @@ export interface Session {
   userId: string;
   terminal: string;
   tipoUsuario: User['tipoUsuario'];
-  bancaId?: string;
+  bancaId: string;
   loggedAt: number;
 }
 
@@ -21,6 +20,7 @@ const SESSION_KEY = 'app:session:v1';
 export const login = (identifier: string, password: string): { success: boolean; message: string; user?: User } => {
   if (typeof window === 'undefined') return { success: false, message: 'Ambiente inválido' };
 
+  // Busca o usuário globalmente (o terminal deve ser único no sistema prototype)
   const user = getUserByTerminal(identifier);
 
   if (!user) {
@@ -32,18 +32,20 @@ export const login = (identifier: string, password: string): { success: boolean;
   }
 
   if (user.status === 'BLOCKED') {
-    return { success: false, message: 'Terminal bloqueado.' };
+    return { success: false, message: 'Seu acesso está bloqueado. Entre em contato com o suporte.' };
   }
 
   const session: Session = {
     userId: user.id,
     terminal: user.terminal,
     tipoUsuario: user.tipoUsuario,
-    bancaId: user.bancaId,
+    bancaId: user.bancaId || 'default',
     loggedAt: Date.now()
   };
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  
+  // Notifica o sistema da mudança de autenticação
   window.dispatchEvent(new Event('auth-change'));
 
   return { success: true, message: 'Logado com sucesso!', user };
@@ -55,7 +57,7 @@ export const register = (data: Partial<User>): { success: boolean; message: stri
   }
 
   if (getUserByTerminal(data.terminal)) {
-    return { success: false, message: 'Este terminal já existe.' };
+    return { success: false, message: 'Este terminal já existe no sistema.' };
   }
 
   upsertUser({
@@ -66,10 +68,11 @@ export const register = (data: Partial<User>): { success: boolean; message: stri
     saldo: 0,
     bonus: 0,
     status: 'ACTIVE',
+    bancaId: data.bancaId || 'default',
     permissoes: getDefaultPermissions('USUARIO')
   } as any);
 
-  return { success: true, message: 'Cadastro concluído!' };
+  return { success: true, message: 'Cadastro concluído! Agora você pode fazer login.' };
 };
 
 export const logout = () => {
@@ -96,5 +99,5 @@ export const getCurrentUser = (): Session | null => {
 
 export const canAccessAdmin = (user: Session | null): boolean => {
   if (!user) return false;
-  return user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN';
+  return ['ADMIN', 'SUPER_ADMIN'].includes(user.tipoUsuario);
 };

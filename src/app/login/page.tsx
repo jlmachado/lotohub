@@ -11,7 +11,7 @@ import { Logo } from '@/components/Logo';
 import { login, getSession } from '@/utils/auth';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn, ArrowLeft, Loader2 } from 'lucide-react';
-import { getBancas, setBancaContextBanca } from '@/utils/bancasStorage';
+import { getBancas, setBancaContextBanca, setBancaContextGlobal } from '@/utils/bancasStorage';
 import { useAppContext } from '@/context/AppContext';
 
 export default function LoginPage() {
@@ -27,17 +27,23 @@ export default function LoginPage() {
   useEffect(() => {
     const session = getSession();
     if (session) {
-      if (['ADMIN', 'SUPER_ADMIN'].includes(session.tipoUsuario)) {
-        router.push('/admin');
-      } else if (session.tipoUsuario === 'CAMBISTA') {
-        router.push('/cambista/caixa');
-      } else if (session.tipoUsuario === 'PROMOTOR') {
-        router.push('/promotor/comissao');
-      } else {
-        router.push('/');
-      }
+      handleRedirect(session);
     }
   }, [router]);
+
+  const handleRedirect = (session: any) => {
+    if (session.tipoUsuario === 'SUPER_ADMIN') {
+      router.push('/admin');
+    } else if (session.tipoUsuario === 'ADMIN') {
+      router.push('/admin');
+    } else if (session.tipoUsuario === 'CAMBISTA') {
+      router.push('/cambista/caixa');
+    } else if (session.tipoUsuario === 'PROMOTOR') {
+      router.push('/promotor/comissao');
+    } else {
+      router.push('/');
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,11 +57,13 @@ export default function LoginPage() {
     // Processamento imediato síncrono
     const result = login(terminal, password);
 
-    if (result.success) {
+    if (result.success && result.user) {
       const user = result.user;
 
-      // Sincroniza contexto de banca se o usuário pertencer a uma
-      if (user?.bancaId) {
+      // 1. Sincroniza contexto de banca se o usuário pertencer a uma
+      if (user.tipoUsuario === 'SUPER_ADMIN') {
+        setBancaContextGlobal();
+      } else if (user.bancaId) {
         const bancas = getBancas();
         const targetBanca = bancas.find(b => b.id === user.bancaId);
         if (targetBanca) {
@@ -63,19 +71,13 @@ export default function LoginPage() {
         }
       }
 
+      // 2. Atualiza estado global do AppContext
       refreshData();
-      toast({ title: 'Acesso autorizado!', description: `Bem-vindo, ${user?.nome}` });
+      
+      toast({ title: 'Acesso autorizado!', description: `Bem-vindo de volta, ${user.nome || user.terminal}` });
 
-      // Redirecionamento baseado no perfil
-      if (user?.tipoUsuario === 'ADMIN' || user?.tipoUsuario === 'SUPER_ADMIN') {
-        router.push('/admin');
-      } else if (user?.tipoUsuario === 'CAMBISTA') {
-        router.push('/cambista/caixa');
-      } else if (user?.tipoUsuario === 'PROMOTOR') {
-        router.push('/promotor/comissao');
-      } else {
-        router.push('/');
-      }
+      // 3. Executa redirecionamento
+      handleRedirect(user);
     } else {
       toast({ variant: 'destructive', title: 'Falha no login', description: result.message });
       setLoading(false);

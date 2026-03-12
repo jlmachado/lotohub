@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Integração plena dos módulos de Sinuca, Futebol, Bingo, Loterias e Cassino com persistência local.
+ * Integração plena dos módulos com suporte a Multi-Tenant e Autenticação.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -409,10 +409,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (typeof window === 'undefined') return;
     
     const session = getSession();
+    let currentUser = null;
     if (session) {
-      const u = getUserByTerminal(session.terminal);
-      setUser(u);
-      if (u) setLedger(LedgerService.getByUser(u.id));
+      currentUser = getUserByTerminal(session.terminal);
+      setUser(currentUser);
+      if (currentUser) setLedger(LedgerService.getByUser(currentUser.id));
     } else {
       setUser(null);
       setLedger([]);
@@ -516,7 +517,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     if (result.success) {
       const newBet: SnookerBet = {
-        ...bet, id: `bet-sno-${Date.now()}`, userId: user.id, userName: user.nome || 'Usuário',
+        ...bet, id: `bet-sno-${Date.now()}`, userId: user.id, userName: user.nome || user.terminal,
         status: 'open', createdAt: new Date().toISOString()
       };
       
@@ -529,7 +530,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         id: `feed-${Date.now()}`,
         channelId: bet.channelId,
         userId: user.id,
-        userName: user.nome || 'Alguém',
+        userName: user.nome || user.terminal,
         text: `apostou R$ ${bet.amount.toFixed(2)} em ${bet.pick}`,
         createdAt: new Date().toISOString()
       };
@@ -553,7 +554,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const channel = currentChannels.find(c => c.id === bet.channelId);
     if (!channel) return;
 
-    // Cálculo manual
     const oddsMap = { A: channel.odds.A, B: channel.odds.B, EMPATE: channel.odds.D };
     const currentOdd = oddsMap[bet.pick];
     const originalOdd = { A: bet.oddsA, B: bet.oddsB, EMPATE: bet.oddsD }[bet.pick];
@@ -562,13 +562,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const margin = (snookerLiveConfig.cashOutMargin || 8) / 100;
     const cashOutValue = Math.max(0.01, fairValue * (1 - margin));
 
-    // 1. Atualizar Saldo
     const u = getUserByTerminal(user.terminal);
     if (u) {
       const newBal = u.saldo + cashOutValue;
       upsertUser({ terminal: u.terminal, saldo: newBal });
       
-      // 2. Registrar Ledger
       LedgerService.addEntry({
         bancaId: u.bancaId || 'default', userId: u.id, terminal: u.terminal,
         tipoUsuario: u.tipoUsuario, modulo: 'Sinuca', type: 'CASH_OUT_RECOLHE',
@@ -577,24 +575,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
     }
 
-    // 3. Registrar Log de Cash Out
     const logEntry = {
-      id: `co-${Date.now()}`,
-      userId: user.id,
-      userName: user.nome || 'Usuário',
-      channelId: bet.channelId,
-      channelTitle: channel.title,
-      originalAmount: bet.amount,
-      originalOdd,
-      cashOutOdd: currentOdd,
-      cashOutAmount: cashOutValue,
-      houseProfit: bet.amount - cashOutValue,
-      createdAt: new Date().toISOString()
+      id: `co-${Date.now()}`, userId: user.id, userName: user.nome || user.terminal,
+      channelId: bet.channelId, channelTitle: channel.title, originalAmount: bet.amount,
+      originalOdd, cashOutOdd: currentOdd, cashOutAmount: cashOutValue,
+      houseProfit: bet.amount - cashOutValue, createdAt: new Date().toISOString()
     };
     const currentLogs = getStorageItem<any[]>('app:snooker_cashout:v1', []);
     setStorageItem('app:snooker_cashout:v1', [logEntry, ...currentLogs]);
 
-    // 4. Atualizar Aposta
     const updatedBets = currentBets.map(b => b.id === betId ? { ...b, status: 'cash_out' as const } : b);
     setStorageItem('app:snooker_bets:v1', updatedBets);
     
@@ -604,119 +593,82 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const sendSnookerChatMessage = useCallback((channelId: string, text: string) => {
     if (!user) return;
-    
-    let filteredText = text;
-    if (snookerLiveConfig.profanityFilterEnabled) {
-      filteredText = filterProfanity(text);
-    }
-
+    let filteredText = snookerLiveConfig.profanityFilterEnabled ? filterProfanity(text) : text;
     const newMessage: SnookerChatMessage = {
-      id: `msg-${Date.now()}`, channelId, userId: user.id, userName: user.nome || 'Usuário',
+      id: `msg-${Date.now()}`, channelId, userId: user.id, userName: user.nome || user.terminal,
       text: filteredText, createdAt: new Date().toISOString(), role: ['ADMIN', 'SUPER_ADMIN'].includes(user.tipoUsuario) ? 'admin' : 'user'
     };
     const currentMsgs = getStorageItem<SnookerChatMessage[]>('app:snooker_chat:v1', []);
-    const items = [newMessage, ...currentMsgs].slice(0, 100);
-    setStorageItem('app:snooker_chat:v1', items);
+    setStorageItem('app:snooker_chat:v1', [newMessage, ...currentMsgs].slice(0, 100));
     notify();
   }, [user, snookerLiveConfig, notify]);
 
   const deleteSnookerChatMessage = useCallback((id: string) => {
     const current = getStorageItem<SnookerChatMessage[]>('app:snooker_chat:v1', []);
-    const updated = current.map(m => m.id === id ? { ...m, deleted: true } : m);
-    setStorageItem('app:snooker_chat:v1', updated);
+    setStorageItem('app:snooker_chat:v1', current.map(m => m.id === id ? { ...m, deleted: true } : m));
     notify();
   }, [notify]);
 
   const sendSnookerReaction = useCallback((channelId: string, reaction: string) => {
     if (!user) return;
-    const text = `${user.nome || 'Alguém'} reagiu com ${reaction}`;
-    const entry = { id: Date.now(), channelId, text, createdAt: new Date().toISOString() };
+    const entry = { id: Date.now(), channelId, text: `${user.nome || user.terminal} reagiu com ${reaction}`, createdAt: new Date().toISOString() };
     const currentFeed = getStorageItem<any[]>('app:snooker_activity_feed:v1', []);
-    const items = [entry, ...currentFeed].slice(0, 50);
-    setStorageItem('app:snooker_activity_feed:v1', items);
+    setStorageItem('app:snooker_activity_feed:v1', [entry, ...currentFeed].slice(0, 50));
     notify();
   }, [user, notify]);
 
   const updateSnookerLiveConfig = useCallback((c: any) => { setStorageItem('app:snooker_cfg:v1', c); notify(); }, [notify]);
-  
   const updateSnookerScoreboard = useCallback((id: string, s: any) => {
     const current = getStorageItem<Record<string, SnookerScoreboard>>('app:snooker_scores:v1', {});
-    const items = { ...current, [id]: s }; 
-    setStorageItem('app:snooker_scores:v1', items); 
-    notify();
+    setStorageItem('app:snooker_scores:v1', { ...current, [id]: s }); notify();
   }, [notify]);
 
   const addSnookerChannel = useCallback((c: any) => {
     const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
-    const newChannel = { ...c, id: `chan-${Date.now()}`, scoreA: 0, scoreB: 0, status: 'scheduled', enabled: true, odds: { A: 1.95, B: 1.95, D: 3.20 } };
-    setStorageItem('app:snooker_channels:v1', [...current, newChannel]); 
+    setStorageItem('app:snooker_channels:v1', [...current, { ...c, id: `chan-${Date.now()}`, scoreA: 0, scoreB: 0, status: 'scheduled', enabled: true, odds: { A: 1.95, B: 1.95, D: 3.20 } }]);
     notify();
   }, [notify]);
 
   const updateSnookerChannel = useCallback((c: any) => {
     const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
-    const items = current.map(i => i.id === c.id ? c : i); 
-    setStorageItem('app:snooker_channels:v1', items); 
-    notify();
+    setStorageItem('app:snooker_channels:v1', current.map(i => i.id === c.id ? c : i)); notify();
   }, [notify]);
 
   const deleteSnookerChannel = useCallback((id: string) => {
     const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
-    const items = current.filter(i => i.id !== id); 
-    setStorageItem('app:snooker_channels:v1', items); 
-    notify();
+    setStorageItem('app:snooker_channels:v1', current.filter(i => i.id !== id)); notify();
   }, [notify]);
 
   const settleSnookerRound = useCallback((channelId: string, winner: string) => {
     const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
     const channel = currentChannels.find(c => c.id === channelId);
-    
     const currentBets = getStorageItem<SnookerBet[]>('app:snooker_bets:v1', []);
     const betsToSettle = currentBets.filter(b => b.channelId === channelId && b.status === 'open');
-    
-    let totalPot = 0;
-    let totalPayout = 0;
+    let totalPot = 0, totalPayout = 0;
 
     betsToSettle.forEach(bet => {
       totalPot += bet.amount;
-      const isWinner = bet.pick === winner;
-      if (isWinner) {
+      if (bet.pick === winner) {
         const oddsMap = { A: bet.oddsA, B: bet.oddsB, EMPATE: bet.oddsD };
         const prize = bet.amount * (oddsMap[bet.pick as keyof typeof oddsMap]);
         totalPayout += prize;
-        
         const realUser = getUserByTerminal(bet.userName) || getUsers().find(u => u.id === bet.userId);
-
         if (realUser) {
-          const newBal = realUser.saldo + prize;
-          upsertUser({ terminal: realUser.terminal, saldo: newBal });
+          upsertUser({ terminal: realUser.terminal, saldo: realUser.saldo + prize });
           LedgerService.addEntry({
             bancaId: realUser.bancaId || 'default', userId: realUser.id, terminal: realUser.terminal,
             tipoUsuario: realUser.tipoUsuario, modulo: 'Sinuca', type: 'BET_WIN',
-            amount: prize, balanceBefore: realUser.saldo, balanceAfter: newBal,
+            amount: prize, balanceBefore: realUser.saldo, balanceAfter: realUser.saldo + prize,
             referenceId: bet.id, description: `Prêmio Sinuca (Odd ${oddsMap[bet.pick as keyof typeof oddsMap].toFixed(2)})`
           });
         }
       }
     });
 
-    // Registrar no histórico financeiro
-    const historyEntry: SnookerFinancialSummary = {
-      id: `fin-${Date.now()}`,
-      channelId,
-      channelTitle: channel?.title || 'Canal',
-      totalPot,
-      totalPayout,
-      houseProfit: totalPot - totalPayout,
-      settledAt: new Date().toISOString()
-    };
-    const currentHistory = getStorageItem<SnookerFinancialSummary[]>('app:snooker_history:v1', []);
+    const historyEntry = { id: `fin-${Date.now()}`, channelId, channelTitle: channel?.title || 'Canal', totalPot, totalPayout, houseProfit: totalPot - totalPayout, settledAt: new Date().toISOString() };
+    const currentHistory = getStorageItem<any[]>('app:snooker_history:v1', []);
     setStorageItem('app:snooker_history:v1', [historyEntry, ...currentHistory]);
-
-    // Atualizar Apostas
-    const updatedBets = currentBets.map(b => b.channelId === channelId && b.status === 'open' ? { ...b, status: b.pick === winner ? 'won' as const : 'lost' as const } : b);
-    setStorageItem('app:snooker_bets:v1', updatedBets); 
-    
+    setStorageItem('app:snooker_bets:v1', currentBets.map(b => b.channelId === channelId && b.status === 'open' ? { ...b, status: b.pick === winner ? 'won' as const : 'lost' as const } : b));
     if (winner !== 'EMPATE') setCelebrationTrigger(true);
     notify();
   }, [notify]);
@@ -727,53 +679,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const syncFootballAll = useCallback(async (force = false) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
     try {
-      const currentLeagues = getStorageItem('app:football:unified:v1', { leagues: ESPN_LEAGUE_CATALOG }).leagues;
-      const activeLeagues = currentLeagues.filter((l: any) => l.active);
+      const activeLeagues = getStorageItem('app:football:unified:v1', { leagues: ESPN_LEAGUE_CATALOG }).leagues.filter((l: any) => l.active);
       let allMatches: any[] = [];
       const leagueStandings: Record<string, any[]> = {};
-
       for (const league of activeLeagues) {
-        const [standingsData, scoreboardData] = await Promise.all([
-          espnService.getStandings(league.slug),
-          espnService.getScoreboard(league.slug)
-        ]);
+        const [standingsData, scoreboardData] = await Promise.all([espnService.getStandings(league.slug), espnService.getScoreboard(league.slug)]);
         if (standingsData) leagueStandings[league.slug] = normalizeESPNStandings(standingsData);
         if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)];
       }
-
-      // Processamento Live e Odds Dinâmicas
       const unified = allMatches.map(match => {
         const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || [], match.id);
         const baseModel = MatchMapperService.transformEspnToBettable(match);
         const markets = FootballMarketsEngine.generateAllMarkets(probs);
-        
-        // Aplica Engine Live
         const processed = FootballLiveEngine.processLiveState(baseModel, match);
-        
-        return { 
-          ...processed, 
-          markets, 
-          hasOdds: true,
-          odds: { 
-            home: markets[0].selections[0].odd, 
-            draw: markets[0].selections[1].odd, 
-            away: markets[0].selections[2].odd 
-          } 
-        };
+        return { ...processed, markets, hasOdds: true, odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } };
       });
-
-      // --- LIQUIDAÇÃO AUTOMÁTICA ---
       const currentBets = getStorageItem<FootballBet[]>('app:football_bets:v1', []);
-      const settledBets = FootballSettlementService.settleBets(currentBets, unified);
-      setStorageItem('app:football_bets:v1', settledBets);
-
-      const data = { leagues: currentLeagues, matches: allMatches, unifiedMatches: unified, lastSyncAt: new Date().toISOString() };
+      setStorageItem('app:football_bets:v1', FootballSettlementService.settleBets(currentBets, unified));
+      const data = { leagues: ESPN_LEAGUE_CATALOG, matches: allMatches, unifiedMatches: unified, lastSyncAt: new Date().toISOString() };
       setStorageItem('app:football:unified:v1', data);
       setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' }));
-      
       if (force) toast({ title: 'Sync Concluído', description: `${unified.length} partidas atualizadas.` });
     } catch (e) {
-      console.error(e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
     }
   }, [toast]);
@@ -793,19 +720,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const pouleId = generatePoule();
     const totalOdds = parseFloat(betSlip.reduce((acc, item) => acc * (item.odd || 1), 1).toFixed(2));
     const potentialWin = parseFloat((stake * totalOdds).toFixed(2));
-
-    const result = BetService.processBet(user, {
-      userId: user.id, modulo: 'Futebol', valor: stake, retornoPotencial: potentialWin,
-      descricao: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`, referenceId: pouleId
-    });
-
+    const result = BetService.processBet(user, { userId: user.id, modulo: 'Futebol', valor: stake, retornoPotencial: potentialWin, descricao: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`, referenceId: pouleId });
     if (result.success) {
-      const newBet: FootballBet = { id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', terminal: user.terminal, stake, potentialWin, items: betSlip, status: 'OPEN', createdAt: new Date().toISOString() };
       const currentBets = getStorageItem<FootballBet[]>('app:football_bets:v1', []);
-      setStorageItem('app:football_bets:v1', [newBet, ...currentBets]);
-      setBetSlip([]);
-      notify();
-      return pouleId;
+      setStorageItem('app:football_bets:v1', [{ id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', terminal: user.terminal, stake, potentialWin, items: betSlip, status: 'OPEN', createdAt: new Date().toISOString() }, ...currentBets]);
+      setBetSlip([]); notify(); return pouleId;
     }
     return null;
   }, [user, betSlip, notify, router]);
@@ -814,243 +733,128 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const handleFinalizarAposta = useCallback((aposta: any, valorTotal: number): string | null => {
     if (!user) { router.push('/login'); return null; }
     const pouleId = generatePoule();
-    const result = BetService.processBet(user, {
-      userId: user.id, modulo: aposta.loteria, valor: valorTotal, retornoPotencial: 0,
-      descricao: `${aposta.loteria}: ${aposta.numeros}`, referenceId: pouleId
-    });
-
+    const result = BetService.processBet(user, { userId: user.id, modulo: aposta.loteria, valor: valorTotal, retornoPotencial: 0, descricao: `${aposta.loteria}: ${aposta.numeros}`, referenceId: pouleId });
     if (result.success) {
-      const newAposta: Aposta = { ...aposta, id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', status: 'aguardando', createdAt: new Date().toISOString() };
       const currentApostas = getStorageItem<Aposta[]>('app:apostas:v1', []);
-      setStorageItem('app:apostas:v1', [newAposta, ...currentApostas]);
-      notify();
-      return pouleId;
+      setStorageItem('app:apostas:v1', [{ ...aposta, id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', status: 'aguardando', createdAt: new Date().toISOString() }, ...currentApostas]);
+      notify(); return pouleId;
     }
     return null;
   }, [user, notify, router]);
 
   const processarResultados = useCallback((dados: any) => {
     const current = getStorageItem<any[]>('app:posted_results:v1', []);
-    setStorageItem('app:posted_results:v1', [dados, ...current]);
-    notify();
+    setStorageItem('app:posted_results:v1', [dados, ...current]); notify();
   }, [notify]);
 
   // --- BINGO METHODS ---
   const updateBingoSettings = useCallback((s: BingoSettings) => { setStorageItem('app:bingo_settings:v1', s); notify(); }, [notify]);
-  
   const createBingoDraw = useCallback((d: Partial<BingoDraw>) => {
     const current = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
-    const newDraw: BingoDraw = {
-      id: `draw-${Date.now()}`,
-      drawNumber: current.length + 1,
-      scheduledAt: d.scheduledAt || new Date().toISOString(),
-      status: 'scheduled',
-      ticketPrice: d.ticketPrice || 0.3,
-      prizeRules: d.prizeRules || { quadra: 60, kina: 90, keno: 150 },
-      housePercent: d.housePercent || 10,
-      totalRevenue: 0,
-      payoutTotal: 0,
-      drawnNumbers: [],
-      winnersFound: {},
-      totalTickets: 0,
-      bancaId: d.bancaId || 'default'
-    };
-    setStorageItem('app:bingo_draws:v1', [...current, newDraw]);
+    setStorageItem('app:bingo_draws:v1', [...current, { id: `draw-${Date.now()}`, drawNumber: current.length + 1, scheduledAt: d.scheduledAt || new Date().toISOString(), status: 'scheduled', ticketPrice: d.ticketPrice || 0.3, prizeRules: d.prizeRules || { quadra: 60, kina: 90, keno: 150 }, housePercent: d.housePercent || 10, totalRevenue: 0, payoutTotal: 0, drawnNumbers: [], winnersFound: {}, totalTickets: 0, bancaId: d.bancaId || 'default' }]);
     notify();
   }, [notify]);
 
   const startBingoDraw = useCallback((id: string) => {
     const current = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
-    const updated = current.map(d => d.id === id ? { ...d, status: 'live' as const, startedAt: new Date().toISOString() } : d);
-    setStorageItem('app:bingo_draws:v1', updated);
-    notify();
+    setStorageItem('app:bingo_draws:v1', current.map(d => d.id === id ? { ...d, status: 'live' as const, startedAt: new Date().toISOString() } : d)); notify();
   }, [notify]);
 
   const drawBingoBall = useCallback((id: string) => {
     const currentDraws = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
     const draw = currentDraws.find(d => d.id === id);
     if (!draw || draw.status !== 'live') return;
-
-    // Gerar nova bola entre 1 e 90
     const available = Array.from({ length: 90 }, (_, i) => i + 1).filter(n => !draw.drawnNumbers.includes(n));
     if (available.length === 0) return;
-    
     const ball = available[Math.floor(Math.random() * available.length)];
     const newDrawn = [...draw.drawnNumbers, ball];
-    
-    // Conferência de Cartelas
     const currentTickets = getStorageItem<BingoTicket[]>('app:bingo_tickets:v1', []);
     const drawTickets = currentTickets.filter(t => t.drawId === id && t.status === 'active');
-    
     const winners = { ...draw.winnersFound };
     let totalPaidInBall = 0;
-
     drawTickets.forEach(ticket => {
       const hits = ticket.ticketNumbers.filter(n => newDrawn.includes(n)).length;
-      
-      // Detecção de Keno (Bingo completo - 15 números)
       if (hits === 15 && !winners.keno) {
-        winners.keno = {
-          category: 'keno', userId: ticket.userId, userName: ticket.userName, terminalId: ticket.terminalId,
-          winAmount: draw.prizeRules.keno, winningNumbers: ticket.ticketNumbers, wonAt: new Date().toISOString(), type: 'USER_WIN'
-        };
+        winners.keno = { category: 'keno', userId: ticket.userId, userName: ticket.userName, terminalId: ticket.terminalId, winAmount: draw.prizeRules.keno, winningNumbers: ticket.ticketNumbers, wonAt: new Date().toISOString(), type: 'USER_WIN' };
         totalPaidInBall += draw.prizeRules.keno;
-        // Pagar prêmio
         const winner = getUserByTerminal(ticket.terminalId);
         if (winner) {
           upsertUser({ terminal: winner.terminal, saldo: winner.saldo + draw.prizeRules.keno });
-          LedgerService.addEntry({
-            bancaId: ticket.bancaId, userId: ticket.userId, terminal: ticket.terminalId, tipoUsuario: winner.tipoUsuario,
-            modulo: 'Bingo', type: 'BET_WIN', amount: draw.prizeRules.keno, balanceBefore: winner.saldo, balanceAfter: winner.saldo + draw.prizeRules.keno,
-            referenceId: ticket.id, description: `Prêmio Keno Bingo #${draw.drawNumber}`
-          });
+          LedgerService.addEntry({ bancaId: ticket.bancaId, userId: ticket.userId, terminal: ticket.terminalId, tipoUsuario: winner.tipoUsuario, modulo: 'Bingo', type: 'BET_WIN', amount: draw.prizeRules.keno, balanceBefore: winner.saldo, balanceAfter: winner.saldo + draw.prizeRules.keno, referenceId: ticket.id, description: `Prêmio Keno Bingo #${draw.drawNumber}` });
         }
-      }
-      // Kina (5 números)
-      else if (hits === 5 && !winners.kina) {
-        winners.kina = {
-          category: 'kina', userId: ticket.userId, userName: ticket.userName, terminalId: ticket.terminalId,
-          winAmount: draw.prizeRules.kina, winningNumbers: ticket.ticketNumbers.filter(n => newDrawn.includes(n)), wonAt: new Date().toISOString(), type: 'USER_WIN'
-        };
+      } else if (hits === 5 && !winners.kina) {
+        winners.kina = { category: 'kina', userId: ticket.userId, userName: ticket.userName, terminalId: ticket.terminalId, winAmount: draw.prizeRules.kina, winningNumbers: ticket.ticketNumbers.filter(n => newDrawn.includes(n)), wonAt: new Date().toISOString(), type: 'USER_WIN' };
         totalPaidInBall += draw.prizeRules.kina;
         const winner = getUserByTerminal(ticket.terminalId);
         if (winner) {
           upsertUser({ terminal: winner.terminal, saldo: winner.saldo + draw.prizeRules.kina });
-          LedgerService.addEntry({
-            bancaId: ticket.bancaId, userId: ticket.userId, terminal: ticket.terminalId, tipoUsuario: winner.tipoUsuario,
-            modulo: 'Bingo', type: 'BET_WIN', amount: draw.prizeRules.kina, balanceBefore: winner.saldo, balanceAfter: winner.saldo + draw.prizeRules.kina,
-            referenceId: ticket.id, description: `Prêmio Kina Bingo #${draw.drawNumber}`
-          });
+          LedgerService.addEntry({ bancaId: ticket.bancaId, userId: ticket.userId, terminal: ticket.terminalId, tipoUsuario: winner.tipoUsuario, modulo: 'Bingo', type: 'BET_WIN', amount: draw.prizeRules.kina, balanceBefore: winner.saldo, balanceAfter: winner.saldo + draw.prizeRules.kina, referenceId: ticket.id, description: `Prêmio Kina Bingo #${draw.drawNumber}` });
         }
-      }
-      // Quadra (4 números)
-      else if (hits === 4 && !winners.quadra) {
-        winners.quadra = {
-          category: 'quadra', userId: ticket.userId, userName: ticket.userName, terminalId: ticket.terminalId,
-          winAmount: draw.prizeRules.quadra, winningNumbers: ticket.ticketNumbers.filter(n => newDrawn.includes(n)), wonAt: new Date().toISOString(), type: 'USER_WIN'
-        };
+      } else if (hits === 4 && !winners.quadra) {
+        winners.quadra = { category: 'quadra', userId: ticket.userId, userName: ticket.userName, terminalId: ticket.terminalId, winAmount: draw.prizeRules.quadra, winningNumbers: ticket.ticketNumbers.filter(n => newDrawn.includes(n)), wonAt: new Date().toISOString(), type: 'USER_WIN' };
         totalPaidInBall += draw.prizeRules.quadra;
         const winner = getUserByTerminal(ticket.terminalId);
         if (winner) {
           upsertUser({ terminal: winner.terminal, saldo: winner.saldo + draw.prizeRules.quadra });
-          LedgerService.addEntry({
-            bancaId: ticket.bancaId, userId: ticket.userId, terminal: ticket.terminalId, tipoUsuario: winner.tipoUsuario,
-            modulo: 'Bingo', type: 'BET_WIN', amount: draw.prizeRules.quadra, balanceBefore: winner.saldo, balanceAfter: winner.saldo + draw.prizeRules.quadra,
-            referenceId: ticket.id, description: `Prêmio Quadra Bingo #${draw.drawNumber}`
-          });
+          LedgerService.addEntry({ bancaId: ticket.bancaId, userId: ticket.userId, terminal: ticket.terminalId, tipoUsuario: winner.tipoUsuario, modulo: 'Bingo', type: 'BET_WIN', amount: draw.prizeRules.quadra, balanceBefore: winner.saldo, balanceAfter: winner.saldo + draw.prizeRules.quadra, referenceId: ticket.id, description: `Prêmio Quadra Bingo #${draw.drawNumber}` });
         }
       }
     });
-
-    const updated = currentDraws.map(d => d.id === id ? { 
-      ...d, 
-      drawnNumbers: newDrawn, 
-      winnersFound: winners,
-      payoutTotal: d.payoutTotal + totalPaidInBall,
-      status: winners.keno ? 'finished' : 'live'
-    } : d);
-    
-    setStorageItem('app:bingo_draws:v1', updated);
+    setStorageItem('app:bingo_draws:v1', currentDraws.map(d => d.id === id ? { ...d, drawnNumbers: newDrawn, winnersFound: winners, payoutTotal: d.payoutTotal + totalPaidInBall, status: winners.keno ? 'finished' : 'live' } : d));
     notify();
   }, [notify]);
 
   const finishBingoDraw = useCallback((id: string) => {
     const current = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
-    const updated = current.map(d => d.id === id ? { ...d, status: 'finished' as const, finishedAt: new Date().toISOString() } : d);
-    setStorageItem('app:bingo_draws:v1', updated);
-    notify();
+    setStorageItem('app:bingo_draws:v1', current.map(d => d.id === id ? { ...d, status: 'finished' as const, finishedAt: new Date().toISOString() } : d)); notify();
   }, [notify]);
 
   const cancelBingoDraw = useCallback((id: string, reason: string) => {
     const currentDraws = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
     const draw = currentDraws.find(d => d.id === id);
     if (!draw) return;
-
-    // Reembolso de Cartelas
     const currentTickets = getStorageItem<BingoTicket[]>('app:bingo_tickets:v1', []);
     const ticketsToRefund = currentTickets.filter(t => t.drawId === id && t.status === 'active');
-    
     ticketsToRefund.forEach(ticket => {
       const u = getUserByTerminal(ticket.terminalId);
       if (u) {
         upsertUser({ terminal: u.terminal, saldo: u.saldo + ticket.amountPaid });
-        LedgerService.addEntry({
-          bancaId: ticket.bancaId, userId: ticket.userId, terminal: ticket.terminalId, tipoUsuario: u.tipoUsuario,
-          modulo: 'Bingo', type: 'WITHDRAW', amount: ticket.amountPaid, balanceBefore: u.saldo, balanceAfter: u.saldo + ticket.amountPaid,
-          referenceId: ticket.id, description: `Estorno Bingo #${draw.drawNumber}: ${reason}`
-        });
+        LedgerService.addEntry({ bancaId: ticket.bancaId, userId: ticket.userId, terminal: ticket.terminalId, tipoUsuario: u.tipoUsuario, modulo: 'Bingo', type: 'WITHDRAW', amount: ticket.amountPaid, balanceBefore: u.saldo, balanceAfter: u.saldo + ticket.amountPaid, referenceId: ticket.id, description: `Estorno Bingo #${draw.drawNumber}: ${reason}` });
       }
     });
-
-    const updatedTickets = currentTickets.map(t => t.drawId === id && t.status === 'active' ? { ...t, status: 'refunded' as const } : t);
-    setStorageItem('app:bingo_tickets:v1', updatedTickets);
-
-    const updatedDraws = currentDraws.map(d => d.id === id ? { ...d, status: 'cancelled' as const } : d);
-    setStorageItem('app:bingo_draws:v1', updatedDraws);
-    notify();
+    setStorageItem('app:bingo_tickets:v1', currentTickets.map(t => t.drawId === id && t.status === 'active' ? { ...t, status: 'refunded' as const } : t));
+    setStorageItem('app:bingo_draws:v1', currentDraws.map(d => d.id === id ? { ...d, status: 'cancelled' as const } : d)); notify();
   }, [notify]);
 
   const buyBingoTickets = useCallback((drawId: string, count: number) => {
     if (!user) { toast({ variant: 'destructive', title: 'Login necessário' }); return false; }
     const currentDraws = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
     const draw = currentDraws.find(d => d.id === drawId);
-    if (!draw || draw.status !== 'scheduled') {
-      toast({ variant: 'destructive', title: 'Vendas Encerradas', description: 'Este sorteio não aceita mais apostas.' });
-      return false;
-    }
-
+    if (!draw || draw.status !== 'scheduled') { toast({ variant: 'destructive', title: 'Vendas Encerradas' }); return false; }
     const totalCost = count * draw.ticketPrice;
-    if (user.saldo < totalCost && user.tipoUsuario !== 'CAMBISTA') {
-      toast({ variant: 'destructive', title: 'Saldo insuficiente' });
-      return false;
-    }
-
-    const result = BetService.processBet(user, {
-      userId: user.id, modulo: 'Bingo', valor: totalCost, retornoPotencial: 0,
-      descricao: `Compra de ${count} cartelas - Sorteio #${draw.drawNumber}`, referenceId: drawId
-    });
-
+    if (user.saldo < totalCost && user.tipoUsuario !== 'CAMBISTA') { toast({ variant: 'destructive', title: 'Saldo insuficiente' }); return false; }
+    const result = BetService.processBet(user, { userId: user.id, modulo: 'Bingo', valor: totalCost, retornoPotencial: 0, descricao: `Compra de ${count} cartelas - Sorteio #${draw.drawNumber}`, referenceId: drawId });
     if (result.success) {
-      const newTickets: BingoTicket[] = Array.from({ length: count }).map((_, i) => {
-        // Gerar 15 números únicos entre 1 e 90
-        const nums: number[] = [];
-        while (nums.length < 15) {
-          const n = Math.floor(Math.random() * 90) + 1;
-          if (!nums.includes(n)) nums.push(n);
-        }
-        return {
-          id: `tkt-${Date.now()}-${i}`, drawId, userId: user.id, userName: user.nome || 'Usuário',
-          terminalId: user.terminal, amountPaid: draw.ticketPrice, status: 'active',
-          ticketNumbers: nums.sort((a,b) => a - b),
-          createdAt: new Date().toISOString(), bancaId: user.bancaId || 'default'
-        };
+      const newTickets = Array.from({ length: count }).map((_, i) => {
+        const nums: number[] = []; while (nums.length < 15) { const n = Math.floor(Math.random() * 90) + 1; if (!nums.includes(n)) nums.push(n); }
+        return { id: `tkt-${Date.now()}-${i}`, drawId, userId: user.id, userName: user.nome || user.terminal, terminalId: user.terminal, amountPaid: draw.ticketPrice, status: 'active', ticketNumbers: nums.sort((a,b) => a - b), createdAt: new Date().toISOString(), bancaId: user.bancaId || 'default' } as BingoTicket;
       });
-      
       const currentTickets = getStorageItem<BingoTicket[]>('app:bingo_tickets:v1', []);
       setStorageItem('app:bingo_tickets:v1', [...currentTickets, ...newTickets]);
-      
-      const updatedDraws = currentDraws.map(d => d.id === drawId ? { ...d, totalRevenue: d.totalRevenue + totalCost, totalTickets: d.totalTickets + count } : d);
-      setStorageItem('app:bingo_draws:v1', updatedDraws);
-      
-      toast({ title: 'Compra realizada!', description: `${count} cartelas geradas com sucesso.` });
-      notify();
-      return true;
+      setStorageItem('app:bingo_draws:v1', currentDraws.map(d => d.id === drawId ? { ...d, totalRevenue: d.totalRevenue + totalCost, totalTickets: d.totalTickets + count } : d));
+      toast({ title: 'Compra realizada!', description: `${count} cartelas geradas.` }); notify(); return true;
     }
     return false;
   }, [user, notify, toast]);
 
   const refundBingoTicket = useCallback((id: string) => {
     const current = getStorageItem<BingoTicket[]>('app:bingo_tickets:v1', []);
-    const updated = current.map(t => t.id === id ? { ...t, status: 'refunded' as const } : t);
-    setStorageItem('app:bingo_tickets:v1', updated);
-    notify();
+    setStorageItem('app:bingo_tickets:v1', current.map(t => t.id === id ? { ...t, status: 'refunded' as const } : t)); notify();
   }, [notify]);
 
   const payBingoPayout = useCallback((id: string) => {
     const current = getStorageItem<BingoPayout[]>('app:bingo_payouts:v1', []);
-    const updated = current.map(p => p.id === id ? { ...p, status: 'paid' as const } : p);
-    setStorageItem('app:bingo_payouts:v1', updated);
-    notify();
+    setStorageItem('app:bingo_payouts:v1', current.map(p => p.id === id ? { ...p, status: 'paid' as const } : p)); notify();
   }, [notify]);
 
   // --- ADMIN METHODS ---
@@ -1069,22 +873,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     activeBancaId: user?.bancaId || 'default', ledger, banners, popups, news, apostas, postedResults, 
     jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
     isFullscreen, toggleFullscreen, casinoSettings, updateCasinoSettings,
-    
-    // Bingo
     bingoSettings, bingoDraws, bingoTickets, bingoPayouts,
     updateBingoSettings, createBingoDraw, startBingoDraw, drawBingoBall, finishBingoDraw, cancelBingoDraw, 
     buyBingoTickets, refundBingoTicket, payBingoPayout,
-
-    // Sinuca
     snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog,
     snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerScoreboards,
     celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet,
     sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig,
     updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel,
     settleSnookerRound, clearCelebration,
-
     refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, 
-    updateLeagueConfig, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId === b.matchId && i.id === b.id), b]),
+    updateLeagueConfig, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId || i.id !== b.id), b]),
     removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
     placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews
   }), [
