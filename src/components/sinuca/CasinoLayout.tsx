@@ -90,7 +90,7 @@ export const CasinoLayout = ({ children }: { children: React.ReactNode }) => {
                                         <Menu className="h-6 w-6 text-white" />
                                     </Button>
                                 </SheetTrigger>
-                                <SheetContent side="left" className="p-0 w-1/2 bg-white text-gray-800 border-r-0">
+                                <SheetContent side="left" className="p-0 w-[40vw] max-w-[40vw] md:w-[35vw] md:max-w-[35vw] bg-white text-gray-800 border-r-0">
                                     <SheetHeader className="sr-only">
                                         <SheetTitle>Menu Principal</SheetTitle>
                                         <SheetDescription>Navegue pelas diferentes seções do site, como cassino, bingo e loterias.</SheetDescription>

@@ -131,7 +131,7 @@ export function Header() {
         </div>
       </header>
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-        <SheetContent side="left" className="p-0 w-[280px] bg-white border-r-0 overflow-hidden">
+        <SheetContent side="left" className="p-0 w-[40vw] max-w-[40vw] md:w-[35vw] md:max-w-[35vw] bg-white border-r-0 overflow-hidden">
             <SheetHeader className="sr-only"><SheetTitle>Menu</SheetTitle></SheetHeader>
             <div className="flex flex-col h-full">
               <div className="p-4 border-b flex items-center justify-between bg-slate-950 text-white shrink-0">
