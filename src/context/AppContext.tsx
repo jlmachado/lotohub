@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Integração plena dos módulos de Sinuca, Futebol, Bingo e Loterias com persistência local.
+ * Integração plena dos módulos de Sinuca, Futebol, Bingo, Loterias e Cassino com persistência local.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -28,6 +28,12 @@ import { formatBRL } from '@/utils/currency';
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
 export interface Popup { id: string; title: string; description: string; imageUrl: string; active: boolean; priority: number; buttonText?: string; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
 export interface NewsMessage { id: string; text: string; order: number; active: boolean; }
+
+export interface CasinoSettings {
+  casinoName: string;
+  casinoStatus: boolean;
+  bannerMessage: string;
+}
 
 export interface Aposta {
   id: string;
@@ -242,6 +248,7 @@ interface AppContextType {
   postedResults: any[];
   jdbLoterias: any[];
   genericLotteryConfigs: any[];
+  casinoSettings: CasinoSettings;
   
   // Bingo
   bingoSettings: BingoSettings;
@@ -283,6 +290,7 @@ interface AppContextType {
   clearBetSlip: () => void;
   placeFootballBet: (stake: number) => Promise<string | null>;
   toggleFullscreen: () => void;
+  updateCasinoSettings: (s: CasinoSettings) => void;
 
   // Bingo Methods
   updateBingoSettings: (s: BingoSettings) => void;
@@ -345,6 +353,12 @@ const DEFAULT_SNOOKER_CFG: SnookerLiveConfig = {
   updatedAt: new Date().toISOString()
 };
 
+const DEFAULT_CASINO_SETTINGS: CasinoSettings = {
+  casinoName: 'LotoHub Casino',
+  casinoStatus: true,
+  bannerMessage: 'Sua sorte está a um clique de distância!'
+};
+
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const router = useRouter();
@@ -362,6 +376,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [postedResults, setPostedResults] = useState<any[]>([]);
   const [jdbLoterias, setJdbLoterias] = useState<any[]>([]);
   const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<any[]>([]);
+  const [casinoSettings, setCasinoSettings] = useState<CasinoSettings>(DEFAULT_CASINO_SETTINGS);
   
   const [bingoSettings, setBingoSettings] = useState<BingoSettings>(DEFAULT_BINGO_SETTINGS);
   const [bingoDraws, setBingoDraws] = useState<BingoDraw[]>([]);
@@ -408,6 +423,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setFootballBets(getStorageItem('app:football_bets:v1', []));
     setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS));
     setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES));
+    setCasinoSettings(getStorageItem('app:casino_settings:v1', DEFAULT_CASINO_SETTINGS));
     
     setBingoSettings(getStorageItem('app:bingo_settings:v1', DEFAULT_BINGO_SETTINGS));
     setBingoDraws(getStorageItem('app:bingo_draws:v1', []));
@@ -464,6 +480,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
     }
   }, []);
+
+  // --- CASINO METHODS ---
+  const updateCasinoSettings = useCallback((s: CasinoSettings) => {
+    setStorageItem('app:casino_settings:v1', s);
+    notify();
+  }, [notify]);
 
   // --- SINUCA METHODS ---
   const joinChannel = useCallback((channelId: string, userId: string) => {
@@ -1028,7 +1050,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
     activeBancaId: user?.bancaId || 'default', ledger, banners, popups, news, apostas, postedResults, 
     jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
-    isFullscreen, toggleFullscreen,
+    isFullscreen, toggleFullscreen, casinoSettings, updateCasinoSettings,
     
     // Bingo
     bingoSettings, bingoDraws, bingoTickets, bingoPayouts,
@@ -1057,7 +1079,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, 
     settleSnookerRound, clearCelebration, loadLocalData, logout, handleFinalizarAposta, processarResultados, 
     syncFootballAll, updateLeagueConfig, placeFootballBet, addBanner, updateBanner, deleteBanner, 
-    addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall
+    addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall,
+    casinoSettings, updateCasinoSettings
   ]);
 
   return (
