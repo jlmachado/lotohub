@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Maximize2, Trophy } from 'lucide-react';
+import { ArrowLeft, Maximize2, Trophy, Ticket, AlertCircle } from 'lucide-react';
 import { useAppContext, BingoWinner } from '@/context/AppContext';
 import { getBingoWaitingState, getBingoUiState, BingoUiState } from '@/lib/bingoUiAdapter';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 
 // --- COMPONENTE DE POP-UP DE VENCEDOR ---
 
@@ -27,7 +28,7 @@ const WinnerPopup = ({
         <div className="bg-[#b30000] p-4 text-center">
           <Trophy className="h-12 w-12 text-[#ffd400] mx-auto mb-2" />
           <h2 className="text-white font-black italic uppercase text-2xl tracking-tighter">
-            {isKeno ? "🏆 RESUMO DA RODADA 🏆" : `🎉 GANHADOR DA ${phase} 🎉`}
+            {isKeno ? "🏆 BINGO! KENO CONCLUÍDO 🏆" : `🎉 GANHADOR DA ${phase} 🎉`}
           </h2>
         </div>
 
@@ -41,9 +42,10 @@ const WinnerPopup = ({
                     <p className="font-bold text-gray-700">{w.terminalId} - {w.userName}</p>
                   </div>
                   <div className="flex gap-1">
-                    {w.winningNumbers.map((n, idx) => (
+                    {w.winningNumbers.slice(0, 5).map((n, idx) => (
                       <span key={`sum-num-${idx}`} className="w-6 h-6 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-[10px] font-bold border border-green-200">{n}</span>
                     ))}
+                    {w.winningNumbers.length > 5 && <span className="text-[10px] text-muted-foreground font-bold">...</span>}
                   </div>
                 </div>
               ))}
@@ -59,7 +61,7 @@ const WinnerPopup = ({
                     <span className="text-gray-800 font-bold text-lg">{w.userName}</span>
                   </div>
                   <div className="flex flex-wrap gap-2 justify-center">
-                    {w.winningNumbers.map((n, idx) => (
+                    {w.winningNumbers.slice(0, 15).map((n, idx) => (
                       <div key={`winner-n-${idx}`} className="w-10 h-10 rounded-full bg-[#2ecc71] text-white flex items-center justify-center font-black shadow-md border-2 border-white">
                         {n}
                       </div>
@@ -71,7 +73,7 @@ const WinnerPopup = ({
           )}
         </div>
         <div className="bg-gray-100 p-3 text-center">
-          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">Retornando ao jogo...</p>
+          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">O jogo continua...</p>
         </div>
       </div>
     </div>
@@ -99,7 +101,7 @@ const WinnerPopupController = ({ ui }: { ui: BingoUiState }) => {
         winners: [winner] 
       });
 
-      const timer = setTimeout(() => setActivePopup(null), 3000);
+      const timer = setTimeout(() => setActivePopup(null), 4000);
       return () => clearTimeout(timer);
     }
   }, [ui.roundWinners, ui.drawId, ui.status, shownWinners]);
@@ -123,14 +125,16 @@ const BingoWaitingScreen = ({
   numCartelas, 
   setNumCartelas,
   purchaseStep,
-  setPurchaseStep
+  setPurchaseStep,
+  user
 }: { 
   ui: any, 
   onBuy: () => void, 
   numCartelas: number, 
   setNumCartelas: (n: number) => void,
   purchaseStep: number,
-  setPurchaseStep: (n: number) => void
+  setPurchaseStep: (n: number) => void,
+  user: any
 }) => {
   const isHold = ui.status === 'PRE_DRAW_HOLD';
 
@@ -145,11 +149,11 @@ const BingoWaitingScreen = ({
           isHold ? "text-2xl md:text-4xl" : "text-6xl md:text-7xl"
         )}>
           {isHold ? (
-            <span className="text-[#ffd400] animate-pulse uppercase">AGUARDANDO SORTEIO</span>
+            <span className="text-[#ffd400] animate-pulse uppercase">SORTEIO EM ANDAMENTO</span>
           ) : (
             ui.countdownSeconds > 0 
               ? `${Math.floor(ui.countdownSeconds / 60).toString().padStart(2, '0')}:${(ui.countdownSeconds % 60).toString().padStart(2, '0')}`
-              : "00:00"
+              : "AGUARDE"
           )}
         </div>
       </div>
@@ -178,73 +182,83 @@ const BingoWaitingScreen = ({
         </div>
       </div>
 
-      <div className="w-full max-w-lg grid grid-cols-3 gap-2">
-        <div className="bg-[#0f3460] p-1.5 md:p-2 rounded-xl border border-white/10 text-center">
-          <p className="text-white/50 text-[9px] uppercase font-bold">Sorteio</p>
-          <p className="text-white font-bold text-xs md:sm">#{ui.drawNumberText}</p>
+      {!user ? (
+        <div className="w-full max-w-lg bg-black/40 p-6 rounded-2xl border border-white/5 text-center space-y-4">
+          <AlertCircle className="h-10 w-10 text-amber-500 mx-auto" />
+          <p className="text-white font-bold">Faça login para comprar cartelas e participar dos prêmios!</p>
+          <button onClick={() => window.location.href='/login'} className="bg-primary text-black font-black uppercase px-8 py-3 rounded-xl">Entrar Agora</button>
         </div>
-        <div className="bg-[#0f3460] p-1.5 md:p-2 rounded-xl border border-white/10 text-center">
-          <p className="text-white/50 text-[9px] uppercase font-bold">Dia-Hora</p>
-          <p className="text-white font-bold text-xs md:sm">{ui.dayHourText}</p>
-        </div>
-        <div className="bg-[#0f3460] p-1.5 md:p-2 rounded-xl border border-white/10 text-center">
-          <p className="text-white/50 text-[9px] uppercase font-bold">Doação</p>
-          <p className="text-white font-bold text-xs md:sm">R$ {ui.donationValue}</p>
-        </div>
-      </div>
-
-      <div className="w-full max-w-lg space-y-3">
-        <div className="flex flex-wrap justify-center gap-1.5">
-          {[10, 20, 30, 40, 50, 100, 200].map((v: number) => (
-            <button 
-              key={v} 
-              disabled={isHold}
-              onClick={() => setPurchaseStep(v)}
-              className={cn(
-                "font-bold py-1.5 px-3 md:px-4 rounded-lg border transition-colors text-xs md:text-sm",
-                purchaseStep === v 
-                  ? "bg-amber-500 border-amber-400 text-black" 
-                  : "bg-[#0f3460] text-white border-white/10 hover:bg-[#1a5fb4]",
-                isHold && "opacity-50 grayscale cursor-not-allowed"
-              )}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center bg-white/10 rounded-xl p-1 border border-white/10">
-            <button 
-              disabled={isHold}
-              onClick={() => setNumCartelas(Math.max(0, numCartelas - purchaseStep))} 
-              className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-[#ffd400] text-2xl md:text-3xl font-black hover:bg-white/5 rounded-l-lg transition-colors"
-            >
-              −
-            </button>
-            <div className="w-12 md:w-16 text-center text-white font-black text-xl md:text-2xl">{numCartelas}</div>
-            <button 
-              disabled={isHold}
-              onClick={() => setNumCartelas(numCartelas + purchaseStep)} 
-              className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-[#ffd400] text-2xl md:text-3xl font-black hover:bg-white/5 rounded-r-lg transition-colors"
-            >
-              +
-            </button>
-          </div>
-          
-          <div className="flex-1 bg-white h-12 md:h-14 rounded-xl flex items-center justify-center shadow-inner px-2">
-            <span className="text-[#1a1a2e] font-black text-xl md:text-2xl tracking-tight">R$ {(ui.ticketPrice * numCartelas).toFixed(2).replace('.', ',')}</span>
+      ) : (
+        <>
+          <div className="w-full max-w-lg grid grid-cols-3 gap-2">
+            <div className="bg-[#0f3460] p-1.5 md:p-2 rounded-xl border border-white/10 text-center">
+              <p className="text-white/50 text-[9px] uppercase font-bold">Sorteio</p>
+              <p className="text-white font-bold text-xs md:sm">#{ui.drawNumberText}</p>
+            </div>
+            <div className="bg-[#0f3460] p-1.5 md:p-2 rounded-xl border border-white/10 text-center">
+              <p className="text-white/50 text-[9px] uppercase font-bold">Início</p>
+              <p className="text-white font-bold text-xs md:sm">{ui.drawTimeText}</p>
+            </div>
+            <div className="bg-[#0f3460] p-1.5 md:p-2 rounded-xl border border-white/10 text-center">
+              <p className="text-white/50 text-[9px] uppercase font-bold">Doação</p>
+              <p className="text-white font-bold text-xs md:sm">R$ {ui.donationValue}</p>
+            </div>
           </div>
 
-          <button 
-            onClick={onBuy}
-            disabled={numCartelas === 0 || isHold}
-            className="h-12 md:h-14 px-6 md:px-8 bg-[#2ecc71] hover:bg-[#27ae60] text-white font-black text-lg md:text-xl italic rounded-xl shadow-[0_4px_0_rgb(39,174,96)] active:translate-y-1 active:shadow-none transition-all"
-          >
-            DOAR
-          </button>
-        </div>
-      </div>
+          <div className="w-full max-w-lg space-y-3">
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {[1, 5, 10, 20, 50, 100].map((v: number) => (
+                <button 
+                  key={v} 
+                  disabled={isHold}
+                  onClick={() => setPurchaseStep(v)}
+                  className={cn(
+                    "font-bold py-1.5 px-3 md:px-4 rounded-lg border transition-colors text-xs md:text-sm",
+                    purchaseStep === v 
+                      ? "bg-amber-500 border-amber-400 text-black" 
+                      : "bg-[#0f3460] text-white border-white/10 hover:bg-[#1a5fb4]",
+                    isHold && "opacity-50 grayscale cursor-not-allowed"
+                  )}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center bg-white/10 rounded-xl p-1 border border-white/10">
+                <button 
+                  disabled={isHold}
+                  onClick={() => setNumCartelas(Math.max(0, numCartelas - purchaseStep))} 
+                  className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-[#ffd400] text-2xl md:text-3xl font-black hover:bg-white/5 rounded-l-lg transition-colors"
+                >
+                  −
+                </button>
+                <div className="w-12 md:w-16 text-center text-white font-black text-xl md:text-2xl">{numCartelas}</div>
+                <button 
+                  disabled={isHold}
+                  onClick={() => setNumCartelas(numCartelas + purchaseStep)} 
+                  className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-[#ffd400] text-2xl md:text-3xl font-black hover:bg-white/5 rounded-r-lg transition-colors"
+                >
+                  +
+                </button>
+              </div>
+              
+              <div className="flex-1 bg-white h-12 md:h-14 rounded-xl flex items-center justify-center shadow-inner px-2">
+                <span className="text-[#1a1a2e] font-black text-xl md:text-2xl tracking-tight">R$ {(ui.ticketPrice * numCartelas).toFixed(2).replace('.', ',')}</span>
+              </div>
+
+              <button 
+                onClick={onBuy}
+                disabled={numCartelas === 0 || isHold}
+                className="h-12 md:h-14 px-6 md:px-8 bg-[#2ecc71] hover:bg-[#27ae60] text-white font-black text-lg md:text-xl italic rounded-xl shadow-[0_4px_0_rgb(39,174,96)] active:translate-y-1 active:shadow-none transition-all"
+              >
+                DOAR
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -328,10 +342,9 @@ const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
           <table className="w-full text-[10px] border-collapse">
             <thead className="bg-blue-50 sticky top-0">
               <tr>
-                <th className="p-1 text-left font-bold text-gray-500">CATEGORIA</th>
+                <th className="p-1 text-left font-bold text-gray-500">FASE</th>
                 <th className="p-1 text-left font-bold text-gray-500">TERMINAL</th>
                 <th className="p-1 text-left font-bold text-gray-500">NOME</th>
-                <th className="p-1 text-left font-bold text-gray-500">TIPO</th>
                 <th className="p-1 text-right font-bold text-gray-500">VALOR</th>
               </tr>
             </thead>
@@ -341,16 +354,11 @@ const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
                   <td className="p-1"><Badge variant="outline" className="text-[8px] h-4 uppercase">{w.category}</Badge></td>
                   <td className="p-1 font-mono text-gray-600">{w.terminalId}</td>
                   <td className="p-1 font-bold text-gray-800 uppercase">{w.userName}</td>
-                  <td className="p-1">
-                    <Badge className={cn("text-[8px] h-4", w.type === 'BOT_WIN' ? "bg-gray-400" : "bg-green-600")}>
-                      {w.type === 'BOT_WIN' ? 'BOT' : 'REAL'}
-                    </Badge>
-                  </td>
                   <td className="p-1 text-right font-black text-green-700">R$ {w.winAmount.toFixed(2)}</td>
                 </tr>
               ))}
               {(ui.roundWinners || []).length === 0 && (
-                <tr><td colSpan={5} className="p-4 text-center text-gray-400 italic">Aguardando primeiros resultados...</td></tr>
+                <tr><td colSpan={4} className="p-4 text-center text-gray-400 italic">Aguardando sorteio...</td></tr>
               )}
             </tbody>
           </table>
@@ -363,7 +371,7 @@ const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
           <span>Doação R$ {ui.donationValue}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-white text-[9px] font-black uppercase italic">Ordem</span>
+          <span className="text-white text-[9px] font-black uppercase italic">Bolas</span>
           <div className="bg-[#ffd400] text-black font-black px-2 py-0.5 rounded shadow-sm text-xs">
             {ui.orderNumber}
           </div>
@@ -377,10 +385,11 @@ const BingoDrawScreen = ({ ui }: { ui: BingoUiState }) => {
 
 export default function BingoPage() {
   const router = useRouter();
-  const { bingoDraws, bingoTickets, bingoSettings, buyBingoTickets } = useAppContext();
+  const { user, bingoDraws, bingoTickets, bingoSettings, buyBingoTickets, refreshData } = useAppContext();
+  const { toast } = useToast();
   
   const [numCartelas, setNumCartelas] = useState(0);
-  const [purchaseStep, setPurchaseStep] = useState(10);
+  const [purchaseStep, setPurchaseStep] = useState(1);
   const [ticker, setTicker] = useState(0);
   const [isClient, setIsClient] = useState(false);
   
@@ -394,20 +403,29 @@ export default function BingoPage() {
     const draws = bingoDraws || [];
     const live = draws.find(d => d.status === 'live');
     if (live) return live;
-    return draws
-      .filter(d => d.status === 'scheduled')
+    return [...draws]
+      .filter(d => d.status === 'scheduled' || d.status === 'waiting')
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
   }, [bingoDraws]);
 
   const ui = useMemo(() => {
-    const draws = bingoDraws || [];
-    const tickets = bingoTickets || [];
-    const settings = bingoSettings || { enabled: true, ticketPriceDefault: 0.3, preDrawHoldSeconds: 10 } as any;
+    const safeTickets = bingoTickets || [];
+    const myCount = user ? safeTickets.filter(t => t.drawId === activeDraw?.id && t.userId === user.id).length : 0;
     
-    const myCount = tickets.filter(t => t.drawId === activeDraw?.id && t.userId === 'user-01').length;
-    if (activeDraw?.status === 'live') return getBingoUiState(activeDraw, tickets, myCount, settings);
-    return getBingoWaitingState(activeDraw, myCount, settings);
-  }, [activeDraw, bingoDraws, bingoTickets, bingoSettings, ticker]);
+    if (activeDraw?.status === 'live' || activeDraw?.status === 'finished') {
+      return getBingoUiState(activeDraw, safeTickets, myCount, bingoSettings);
+    }
+    return getBingoWaitingState(activeDraw, myCount, bingoSettings);
+  }, [activeDraw, bingoTickets, bingoSettings, user, ticker]);
+
+  const handleBuy = () => {
+    if (!activeDraw) return;
+    const success = buyBingoTickets(activeDraw.id, numCartelas);
+    if (success) {
+      setNumCartelas(0);
+      refreshData();
+    }
+  };
 
   const handleFullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen();
@@ -436,7 +454,8 @@ export default function BingoPage() {
         ) : (
           <BingoWaitingScreen 
             ui={ui} 
-            onBuy={() => buyBingoTickets?.(activeDraw?.id || '', numCartelas) && setNumCartelas(0)} 
+            user={user}
+            onBuy={handleBuy} 
             numCartelas={numCartelas} 
             setNumCartelas={setNumCartelas}
             purchaseStep={purchaseStep}
@@ -448,8 +467,11 @@ export default function BingoPage() {
       <footer className="bg-[#b30000] text-white h-12 flex items-center justify-between px-4 shadow-inner shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex flex-col">
-            <span className="text-white/60 text-[8px] uppercase font-black leading-none">Cartelas</span>
-            <span className="text-white font-black text-lg leading-tight">{ui.cartelasCount}</span>
+            <span className="text-white/60 text-[8px] uppercase font-black leading-none">Minhas Cartelas</span>
+            <span className="text-white font-black text-lg leading-tight flex items-center gap-2">
+              <Ticket className="h-4 w-4 text-amber-400" />
+              {ui.cartelasCount}
+            </span>
           </div>
           <div className="px-3 py-0.5 bg-[#ffd400] text-black rounded-full">
             <span className="text-[10px] font-black uppercase italic animate-pulse">
@@ -457,10 +479,14 @@ export default function BingoPage() {
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-            <button onClick={() => setNumCartelas(Math.max(0, numCartelas - purchaseStep))} className="w-8 h-8 bg-[#ffd400] text-black font-black rounded flex items-center justify-center">−</button>
-            <button onClick={() => setNumCartelas(numCartelas + purchaseStep)} className="w-8 h-8 bg-[#ffd400] text-black font-black rounded flex items-center justify-center">+</button>
-        </div>
+        
+        {ui.status === 'WAITING' && user && (
+          <div className="flex items-center gap-2">
+              <button onClick={() => setNumCartelas(Math.max(0, numCartelas - purchaseStep))} className="w-8 h-8 bg-white/10 hover:bg-white/20 text-white font-black rounded flex items-center justify-center">−</button>
+              <div className="w-8 text-center font-black text-primary">{numCartelas}</div>
+              <button onClick={() => setNumCartelas(numCartelas + purchaseStep)} className="w-8 h-8 bg-white/10 hover:bg-white/20 text-white font-black rounded flex items-center justify-center">+</button>
+          </div>
+        )}
       </footer>
     </div>
   );

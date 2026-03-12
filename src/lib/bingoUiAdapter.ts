@@ -74,9 +74,10 @@ export function getBingoUiState(
 
   const drawn = activeDraw.drawnNumbers || [];
   const last = drawn.length > 0 ? drawn[drawn.length - 1] : null;
+  // Mostrar as últimas 4 bolas sorteadas para o preview
   const preview = drawn.slice(-4).reverse();
 
-  let phase = "Aguardando Sorteio";
+  let phase = "Vendas Abertas";
   let status: "WAITING" | "PRE_DRAW_HOLD" | "DRAWING" = "WAITING";
 
   if (activeDraw.status === 'live') {
@@ -84,7 +85,7 @@ export function getBingoUiState(
     if (!activeDraw.winnersFound?.quadra) phase = "Buscando Quadra";
     else if (!activeDraw.winnersFound?.kina) phase = "Buscando Kina";
     else phase = "Buscando Keno";
-  } else if (activeDraw.status === 'scheduled') {
+  } else if (activeDraw.status === 'scheduled' || activeDraw.status === 'waiting') {
     if (now >= scheduledTime) {
       status = "PRE_DRAW_HOLD";
       phase = "AGUARDANDO SORTEIO";
@@ -106,7 +107,7 @@ export function getBingoUiState(
     .map((t) => ({
       terminal: t.terminalId || "000",
       name: t.userName || "Usuário",
-      numbers: (t.ticketNumbers?.[0] as number[]) || [],
+      numbers: (t.ticketNumbers as number[]) || [],
       highlight: !t.isBot,
       isBot: !!t.isBot
     }));
