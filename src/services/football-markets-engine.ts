@@ -1,5 +1,5 @@
 /**
- * @fileOverview Gerador de Mercados de Aposta.
+ * @fileOverview Gerador de Mercados de Aposta Profissional.
  * Cria mercados secundários (Over/Under, Ambas Marcam, Dupla Chance) a partir da probabilidade base.
  */
 
@@ -15,6 +15,7 @@ export interface BettingMarket {
   id: string;
   name: string;
   selections: MarketSelection[];
+  status: 'OPEN' | 'SUSPENDED' | 'CLOSED';
 }
 
 export class FootballMarketsEngine {
@@ -25,32 +26,35 @@ export class FootballMarketsEngine {
     markets.push({
       id: '1X2',
       name: 'Vencedor do Jogo',
+      status: 'OPEN',
       selections: [
-        { id: 'home', label: 'Mandante', odd: FootballOddsEngine.probToOdd(probs.homeWin) },
+        { id: 'home', label: 'Casa', odd: FootballOddsEngine.probToOdd(probs.homeWin) },
         { id: 'draw', label: 'Empate', odd: FootballOddsEngine.probToOdd(probs.draw) },
-        { id: 'away', label: 'Visitante', odd: FootballOddsEngine.probToOdd(probs.awayWin) }
+        { id: 'away', label: 'Fora', odd: FootballOddsEngine.probToOdd(probs.awayWin) }
       ]
     });
 
-    // 2. Dupla Chance (Derivado do 1X2)
+    // 2. Dupla Chance
     markets.push({
       id: 'DC',
       name: 'Dupla Chance',
+      status: 'OPEN',
       selections: [
-        { id: '1X', label: '1 ou X', odd: FootballOddsEngine.probToOdd(probs.homeWin + probs.draw) },
-        { id: '12', label: '1 ou 2', odd: FootballOddsEngine.probToOdd(probs.homeWin + probs.awayWin) },
-        { id: 'X2', label: 'X ou 2', odd: FootballOddsEngine.probToOdd(probs.draw + probs.awayWin) }
+        { id: '1X', label: 'Casa ou Empate', odd: FootballOddsEngine.probToOdd(probs.homeWin + probs.draw) },
+        { id: '12', label: 'Casa ou Fora', odd: FootballOddsEngine.probToOdd(probs.homeWin + probs.awayWin) },
+        { id: 'X2', label: 'Empate ou Fora', odd: FootballOddsEngine.probToOdd(probs.draw + probs.awayWin) }
       ]
     });
 
-    // 3. Over/Under 2.5 (Modelo Poisson Simplificado)
+    // 3. Over/Under 2.5
     const expectedGoals = probs.expectedTotalGoals || 2.5;
     const probUnder25 = Math.exp(-expectedGoals) * (1 + expectedGoals + (Math.pow(expectedGoals, 2) / 2));
     const probOver25 = 1 - probUnder25;
 
     markets.push({
       id: 'OU25',
-      name: 'Total de Gols (2.5)',
+      name: 'Gols +/- 2.5',
+      status: 'OPEN',
       selections: [
         { id: 'over', label: 'Mais de 2.5', odd: FootballOddsEngine.probToOdd(probOver25) },
         { id: 'under', label: 'Menos de 2.5', odd: FootballOddsEngine.probToOdd(probUnder25) }
@@ -58,11 +62,11 @@ export class FootballMarketsEngine {
     });
 
     // 4. Ambas Marcam (BTTS)
-    // Probabilidade baseada no equilíbrio ofensivo das equipes
-    const bttsProb = Math.min(0.7, (probs.expectedTotalGoals / 5) + 0.2);
+    const bttsProb = Math.min(0.75, (probs.expectedTotalGoals / 4.5) + 0.15);
     markets.push({
       id: 'BTTS',
       name: 'Ambas Marcam',
+      status: 'OPEN',
       selections: [
         { id: 'yes', label: 'Sim', odd: FootballOddsEngine.probToOdd(bttsProb) },
         { id: 'no', label: 'Não', odd: FootballOddsEngine.probToOdd(1 - bttsProb) }

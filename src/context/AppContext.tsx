@@ -23,6 +23,8 @@ import { INITIAL_GENERIC_LOTTERIES, INITIAL_JDB_LOTERIAS } from '@/constants/lot
 import { MatchMapperService } from '@/services/match-mapper-service';
 import { filterProfanity } from '@/utils/profanity-filter';
 import { formatBRL } from '@/utils/currency';
+import { FootballSettlementService } from '@/services/football-settlement-service';
+import { FootballLiveEngine } from '@/services/football-live-engine';
 
 // --- INTERFACES GERAIS ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -57,8 +59,9 @@ export interface FootballBet {
   stake: number;
   potentialWin: number;
   items: any[];
-  status: 'OPEN' | 'WON' | 'LOST';
+  status: 'OPEN' | 'WON' | 'LOST' | 'VOID';
   createdAt: string;
+  settledAt?: string;
   isDescarga?: boolean;
 }
 
@@ -738,22 +741,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)];
       }
 
+      // Processamento Live e Odds Dinâmicas
       const unified = allMatches.map(match => {
         const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || []);
         const baseModel = MatchMapperService.transformEspnToBettable(match);
         const markets = FootballMarketsEngine.generateAllMarkets(probs);
+        
+        // Aplica Engine Live
+        const processed = FootballLiveEngine.processLiveState(baseModel, match);
+        
         return { 
-          ...baseModel, 
-          markets, hasOdds: true, isLive: match.status === 'LIVE', 
-          marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN', 
-          odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } 
+          ...processed, 
+          markets, 
+          hasOdds: true,
+          odds: { 
+            home: markets[0].selections[0].odd, 
+            draw: markets[0].selections[1].odd, 
+            away: markets[0].selections[2].odd 
+          } 
         };
       });
+
+      // --- LIQUIDAÇÃO AUTOMÁTICA ---
+      const currentBets = getStorageItem<FootballBet[]>('app:football_bets:v1', []);
+      const settledBets = FootballSettlementService.settleBets(currentBets, unified);
+      setStorageItem('app:football_bets:v1', settledBets);
 
       const data = { leagues: currentLeagues, matches: allMatches, unifiedMatches: unified, lastSyncAt: new Date().toISOString() };
       setStorageItem('app:football:unified:v1', data);
       setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' }));
-      toast({ title: 'Sync Concluído' });
+      
+      if (force) toast({ title: 'Sync Concluído', description: `${unified.length} partidas atualizadas.` });
     } catch (e) {
       console.error(e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
@@ -1066,7 +1084,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     settleSnookerRound, clearCelebration,
 
     refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, 
-    updateLeagueConfig, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
+    updateLeagueConfig, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId === b.matchId && i.id === b.id), b]),
     removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
     placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews
   }), [
