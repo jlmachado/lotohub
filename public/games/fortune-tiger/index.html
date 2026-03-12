@@ -1,77 +1,71 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fortune Tiger Clone</title>
+    <title>Fortune Tiger - Real Clone</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 <body>
     <div id="game-wrapper">
-        <div class="header">
-            <div class="logo-container">
-                <img src="images/logo.png" alt="Fortune Tiger" class="game-logo" onerror="this.style.display='none'">
-            </div>
+        <div class="header-game">
+            <img src="images/logo.png" alt="Fortune Tiger" class="game-logo" onerror="this.src='https://placehold.co/200x80/red/gold?text=FORTUNE+TIGER'">
         </div>
 
-        <div class="reels-container">
-            <div class="grid-overlay"></div>
-            <div class="reels">
+        <div class="slots-container">
+            <div class="slots-grid" id="reels-grid">
+                <!-- Coluna 1 -->
                 <div class="reel" id="reel-0">
-                    <div class="reel-content"></div>
+                    <div class="symbol-container"></div>
                 </div>
+                <!-- Coluna 2 -->
                 <div class="reel" id="reel-1">
-                    <div class="reel-content"></div>
+                    <div class="symbol-container"></div>
                 </div>
+                <!-- Coluna 3 -->
                 <div class="reel" id="reel-2">
-                    <div class="reel-content"></div>
+                    <div class="symbol-container"></div>
                 </div>
             </div>
+            
+            <div class="win-line-overlay" id="win-lines"></div>
         </div>
 
-        <div class="controls">
-            <div class="info-bar">
-                <div class="balance-container">
-                    <span class="label">SALDO</span>
-                    <span class="value" id="balance">R$ 1.000,00</span>
-                </div>
-                <div class="win-container">
-                    <span class="label">GANHO</span>
-                    <span class="value" id="last-win">R$ 0,00</span>
-                </div>
+        <div class="game-footer">
+            <div class="balance-container">
+                <div class="label">SALDO</div>
+                <div class="value" id="balance-display">R$ 1.000,00</div>
             </div>
 
-            <div class="action-buttons">
-                <div class="bet-adjust">
-                    <button class="btn-adjust" id="btn-minus">-</button>
-                    <div class="current-bet">
-                        <span class="bet-label">APOSTA</span>
-                        <span class="bet-value" id="bet-amount">R$ 1,00</span>
+            <div class="controls-wrapper">
+                <div class="bet-controls">
+                    <button id="bet-minus" class="control-btn">-</button>
+                    <div class="bet-info">
+                        <div class="label">APOSTA</div>
+                        <div class="value" id="bet-display">R$ 1,00</div>
                     </div>
-                    <button class="btn-adjust" id="btn-plus">+</button>
+                    <button id="bet-plus" class="control-btn">+</button>
                 </div>
 
-                <div class="spin-container">
-                    <button id="spin-button" class="btn-spin">
-                        <div class="spin-icon"></div>
+                <div class="spin-section">
+                    <div class="turbo-btn" id="turbo-toggle">
+                        <img src="images/turbo-icon.png" alt="Turbo" onerror="this.style.display='none'">
+                        <span>TURBO</span>
+                    </div>
+                    <button id="spin-btn" class="spin-button">
+                        <img src="images/spin-icon.png" alt="Girar" onerror="this.src='https://placehold.co/60x60/gold/black?text=SPIN'">
                     </button>
-                </div>
-
-                <div class="turbo-auto">
-                    <button class="btn-util" id="btn-turbo">
-                        <span class="icon">⚡</span>
-                        <span class="text">TURBO</span>
-                    </button>
+                    <div class="auto-btn">AUTO</div>
                 </div>
             </div>
         </div>
 
-        <!-- Popups -->
-        <div id="win-popup" class="popup hidden">
-            <div class="popup-content">
-                <h2 id="win-title">BIG WIN!</h2>
-                <p id="win-value">R$ 50,00</p>
+        <!-- Big Win Modal -->
+        <div id="win-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h2 class="win-title">BIG WIN!</h2>
+                <div class="win-amount" id="modal-win-amount">R$ 0,00</div>
             </div>
         </div>
     </div>
