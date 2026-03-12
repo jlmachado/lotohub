@@ -114,12 +114,14 @@ export function TicketDialog({
       terminal: terminal || '',
       datetime: generationTime || new Date().toLocaleString('pt-BR'),
       jogo: lotteryName,
+      cliente: user?.nome || 'Cliente Final',
+      vendedor: ['CAMBISTA', 'PROMOTOR', 'ADMIN', 'SUPER_ADMIN'].includes(user?.tipoUsuario) ? user.nome : 'LotoHub Digital',
       apostas: (ticketItems || []).map((item) => {
         if (isFootball) {
           return {
             modalidade: item.matchName || 'Sportsbook',
             numero: `Vencedor: ${item.pickLabel} (@${item.odd?.toFixed(2)})`,
-            valor: (item.stake || totalValue).toFixed(2),
+            valor: (item.value || totalValue).toFixed(2),
           };
         }
         return {

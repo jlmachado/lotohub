@@ -1,119 +1,253 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Impressão de Bilhete</title>
+    <title>Impressão de Bilhete - LotoHub</title>
     <style>
-        * { box-sizing: border-box; }
         body {
             margin: 0;
             padding: 0;
             font-family: 'Courier New', Courier, monospace;
-            background-color: white;
-            color: black;
-            -webkit-print-color-adjust: exact;
+            background-color: #fff;
+            color: #000;
+            width: 100%;
         }
-        .ticket {
-            width: 80mm;
-            max-width: 100%;
+
+        .ticket-container {
+            width: 100%;
+            max-width: 300px;
             margin: 0 auto;
-            padding: 5px;
+            padding: 10px;
+            box-sizing: border-box;
         }
-        .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .dashed { border-top: 1px dashed #000; margin: 8px 0; }
-        .header { margin-bottom: 10px; }
-        .header h1 { margin: 0; font-size: 22px; text-transform: uppercase; }
-        .header p { margin: 2px 0; font-size: 14px; }
-        .info { font-size: 13px; margin-bottom: 10px; }
-        .info p { margin: 3px 0; }
-        .bets { font-size: 12px; }
-        .bet-item { margin-bottom: 10px; }
-        .bet-item .mod { font-weight: bold; font-size: 13px; text-transform: uppercase; }
-        .bet-item .nums { word-break: break-all; font-weight: bold; margin: 2px 0; }
-        .bet-item .val { text-align: right; }
-        .footer { text-align: right; margin-top: 10px; border-top: 1px dashed #000; padding-top: 5px; }
-        .footer p { margin: 4px 0; font-size: 15px; }
-        .legal { text-align: center; font-size: 10px; margin-top: 15px; font-style: italic; line-height: 1.2; }
-        
+
+        .ticket-header {
+            text-align: center;
+            margin-bottom: 10px;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 5px;
+        }
+
+        .ticket-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 5px 0;
+            text-transform: uppercase;
+        }
+
+        .ticket-section {
+            font-size: 14px;
+            margin-top: 4px;
+            line-height: 1.3;
+        }
+
+        .ticket-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+        }
+
+        .label {
+            font-weight: normal;
+        }
+
+        .value {
+            font-weight: bold;
+        }
+
+        .secondary-info {
+            font-size: 11px;
+            margin-bottom: 10px;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 5px;
+            margin-top: 5px;
+        }
+
+        .bets-header {
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0 5px 0;
+            text-transform: uppercase;
+            text-decoration: underline;
+        }
+
+        .bet-item {
+            margin-bottom: 10px;
+            border-bottom: 1px dotted #ccc;
+            padding-bottom: 5px;
+        }
+
+        .bet-modality {
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .bet-numbers {
+            font-size: 15px;
+            font-weight: bold;
+            word-break: break-all;
+            margin: 3px 0;
+            letter-spacing: 1px;
+        }
+
+        .bet-value {
+            font-size: 13px;
+            text-align: right;
+        }
+
+        .ticket-total-section {
+            margin-top: 15px;
+            padding-top: 5px;
+            border-top: 2px solid #000;
+        }
+
+        .ticket-total {
+            font-size: 19px;
+            font-weight: bold;
+            text-align: center;
+            margin: 5px 0;
+        }
+
+        .ticket-return {
+            font-size: 15px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .qrcode-wrapper {
+            text-align: center;
+            margin: 15px 0;
+        }
+
+        .qrcode-wrapper img {
+            width: 130px;
+            height: 130px;
+            display: inline-block;
+        }
+
+        .ticket-footer {
+            font-size: 12px;
+            text-align: center;
+            margin-top: 10px;
+            font-style: italic;
+            border-top: 1px dashed #000;
+            padding-top: 8px;
+        }
+
         @media print {
-            @page { margin: 0; size: auto; }
-            body { padding: 0; margin: 0; }
-            .no-print { display: none; }
+            .no-print {
+                display: none;
+            }
+            body {
+                width: 100%;
+            }
+            @page {
+                margin: 0;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="app" class="ticket">
-        <p class="center" style="padding: 20px;">Processando bilhete...</p>
+    <div class="ticket-container" id="ticket">
+        <div class="ticket-header">
+            <div class="ticket-title" id="banca-name">LotoHub</div>
+        </div>
+
+        <div class="ticket-section">
+            <div class="ticket-info-row">
+                <span class="label">Jogo:</span>
+                <span class="value" id="game-name"></span>
+            </div>
+            <div class="ticket-info-row">
+                <span class="label">Data:</span>
+                <span class="value" id="ticket-date"></span>
+            </div>
+            <div class="ticket-info-row">
+                <span class="label">Cliente:</span>
+                <span class="value" id="client-name"></span>
+            </div>
+            <div class="ticket-info-row">
+                <span class="label">Vendedor:</span>
+                <span class="value" id="vendor-name"></span>
+            </div>
+        </div>
+
+        <div class="secondary-info">
+            <div>POULE: <span id="ticket-id"></span></div>
+            <div>TERM: <span id="terminal-id"></span></div>
+        </div>
+
+        <div class="bets-header">Apostas Confirmadas</div>
+        <div id="bets-list"></div>
+
+        <div class="ticket-total-section">
+            <div class="ticket-total" id="total-value"></div>
+            <div class="ticket-return" id="possible-return"></div>
+        </div>
+
+        <div class="qrcode-wrapper">
+            <div id="qrcode"></div>
+            <div style="font-size: 10px; margin-top: 5px; font-weight: bold;">Valide no site oficial</div>
+        </div>
+
+        <div class="ticket-footer">
+            Boa Sorte!<br>
+            Acesse para resultados e mais jogos.
+        </div>
     </div>
 
+    <div class="no-print" style="text-align: center; padding: 30px;">
+        <button onclick="window.print()" style="padding: 15px 40px; font-size: 18px; font-weight: bold; cursor: pointer; background: #000; color: #fff; border: none; border-radius: 8px;">IMPRIMIR BILHETE</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         window.onload = function() {
-            const dataStr = localStorage.getItem('PRINT_TICKET_DATA');
-            if (!dataStr) {
-                document.getElementById('app').innerHTML = '<p class="center" style="color: red;">Erro: Dados não encontrados.</p>';
+            const rawData = localStorage.getItem('PRINT_TICKET_DATA');
+            if (!rawData) {
+                document.body.innerHTML = '<div style="padding:20px; text-align:center;">Dados do bilhete não encontrados.</div>';
                 return;
             }
 
-            try {
-                const data = JSON.parse(dataStr);
-                let html = `
-                    <div class="header center">
-                        <h1>${data.banca || 'LOTOHUB'}</h1>
-                        <p class="bold">COMPROVANTE DE APOSTA</p>
-                    </div>
-                    <div class="dashed"></div>
-                    <div class="info">
-                        <p><strong>POULE:</strong> ${data.ticketId}</p>
-                        <p><strong>TERM:</strong> ${data.terminal}</p>
-                        <p><strong>DATA:</strong> ${data.datetime}</p>
-                        <p><strong>JOGO:</strong> ${data.jogo || 'LOTERIA'}</p>
-                    </div>
-                    <div class="dashed"></div>
-                    <div class="bets">
+            const data = JSON.parse(rawData);
+            
+            document.getElementById('banca-name').textContent = data.banca || 'LotoHub';
+            document.getElementById('game-name').textContent = data.jogo || 'Loterias';
+            document.getElementById('ticket-date').textContent = data.datetime;
+            document.getElementById('client-name').textContent = data.cliente || '---';
+            document.getElementById('vendor-name').textContent = data.vendedor || '---';
+            document.getElementById('ticket-id').textContent = data.ticketId;
+            document.getElementById('terminal-id').textContent = data.terminal;
+            document.getElementById('total-value').textContent = 'VALOR ' + data.total;
+            document.getElementById('possible-return').textContent = 'RETORNO POTENCIAL: R$ ' + data.possivelRetorno;
+
+            const betsList = document.getElementById('bets-list');
+            data.apostas.forEach(bet => {
+                const item = document.createElement('div');
+                item.className = 'bet-item';
+                item.innerHTML = `
+                    <div class="bet-modality">${bet.modalidade}</div>
+                    <div class="bet-numbers">${bet.numero}</div>
+                    <div class="bet-value">Subtotal: R$ ${bet.valor.replace('.', ',')}</div>
                 `;
+                betsList.appendChild(item);
+            });
 
-                data.apostas.forEach(bet => {
-                    html += `
-                        <div class="bet-item">
-                            <div class="mod">${bet.modalidade}</div>
-                            <div class="nums">${bet.numero}</div>
-                            <div class="val">Valor: R$ ${bet.valor}</div>
-                        </div>
-                    `;
-                });
+            const validationUrl = window.location.origin + '/poule/' + data.ticketId;
+            new QRCode(document.getElementById("qrcode"), {
+                text: validationUrl,
+                width: 130,
+                height: 130,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
 
-                html += `
-                    </div>
-                    <div class="footer">
-                        <p class="bold">TOTAL: ${data.total}</p>
-                        ${(data.possivelRetorno && data.possivelRetorno !== '0,00') ? `<p style="font-size: 13px">RETORNO: R$ ${data.possivelRetorno}</p>` : ''}
-                    </div>
-                    <div class="legal">
-                        Bilhete válido somente mediante consulta<br>
-                        da poule no sistema oficial LotoHub.<br>
-                        Jogue com responsabilidade.
-                    </div>
-                `;
-
-                document.getElementById('app').innerHTML = html;
-
-                // Pequeno delay para garantir que o navegador renderizou o texto antes de abrir a janela de impressão
-                setTimeout(() => {
-                    window.print();
-                    // Opcional: Algumas POS precisam de tempo para processar o print() antes de fechar
-                    setTimeout(() => {
-                        // window.close(); 
-                    }, 1000);
-                }, 500);
-
-            } catch (e) {
-                console.error('Erro na impressão:', e);
-                document.getElementById('app').innerHTML = '<p class="center" style="color: red;">Erro ao processar bilhete.</p>';
-            }
+            setTimeout(() => {
+                window.print();
+            }, 600);
         };
     </script>
 </body>

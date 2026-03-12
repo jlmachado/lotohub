@@ -574,3 +574,31 @@
 .gmp-snap-bl { @apply bottom-4 left-4; }
 .gmp-snap-tr { @apply top-20 right-4; }
 .gmp-snap-tl { @apply top-20 left-4; }
+
+/* Professional Print Styles for POS Thermal Printers */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 14px;
+    margin: 0;
+    padding: 0;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .ticket-container {
+    width: 100% !important;
+    max-width: 300px !important;
+    margin: 0 auto !important;
+    padding: 5px !important;
+    font-family: 'Courier New', Courier, monospace !important;
+  }
+
+  @page {
+    margin: 0;
+    size: auto;
+  }
+}
