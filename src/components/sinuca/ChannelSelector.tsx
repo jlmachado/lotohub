@@ -51,7 +51,7 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
     const { snookerChannels } = useAppContext();
 
     const availableChannels = useMemo(() => {
-        return snookerChannels
+        return (snookerChannels || [])
             .filter(c => c.enabled)
             .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
     }, [snookerChannels]);

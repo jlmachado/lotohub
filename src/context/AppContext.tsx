@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Controla o estado de todos os módulos (Futebol, Loterias, Bingo e Sinuca).
+ * Refatorado com useCallback para evitar loops de renderização infinita (Maximum update depth).
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -325,6 +325,26 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Defaults fora do componente para evitar instabilidade
+const DEFAULT_BINGO_SETTINGS: BingoSettings = {
+  enabled: true, rtpEnabled: false, rtpPercent: 20, ticketPriceDefault: 0.3,
+  maxTicketsPerUserDefault: 500, housePercentDefault: 10, preDrawHoldSeconds: 10,
+  prizeDefaults: { quadra: 60, kina: 90, keno: 150 }, scheduleMode: 'manual',
+  autoSchedule: { everyMinutes: 3, startHour: 8, endHour: 23 }
+};
+
+const DEFAULT_PLAYER_CONFIG: LiveMiniPlayerConfig = {
+  enabled: true, youtubeUrl: '', youtubeEmbedId: '', title: 'Sinuca ao Vivo',
+  autoShow: true, defaultState: 'open', showOnHome: true, showOnSinuca: true,
+  topHeight: 96, bubbleSize: 62
+};
+
+const DEFAULT_SNOOKER_CFG: SnookerLiveConfig = {
+  defaultChannelId: '', showLiveBadge: true, betsEnabled: true, minBet: 5, maxBet: 1000,
+  cashOutMargin: 8, chatEnabled: true, reactionsEnabled: true, profanityFilterEnabled: true,
+  updatedAt: new Date().toISOString()
+};
+
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const router = useRouter();
@@ -344,12 +364,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<any[]>([]);
   
   // Bingo State
-  const [bingoSettings, setBingoSettings] = useState<BingoSettings>({
-    enabled: true, rtpEnabled: false, rtpPercent: 20, ticketPriceDefault: 0.3,
-    maxTicketsPerUserDefault: 500, housePercentDefault: 10, preDrawHoldSeconds: 10,
-    prizeDefaults: { quadra: 60, kina: 90, keno: 150 }, scheduleMode: 'manual',
-    autoSchedule: { everyMinutes: 3, startHour: 8, endHour: 23 }
-  });
+  const [bingoSettings, setBingoSettings] = useState<BingoSettings>(DEFAULT_BINGO_SETTINGS);
   const [bingoDraws, setBingoDraws] = useState<BingoDraw[]>([]);
   const [bingoTickets, setBingoTickets] = useState<BingoTicket[]>([]);
   const [bingoPayouts, setBingoPayouts] = useState<BingoPayout[]>([]);
@@ -360,11 +375,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [snookerFinancialHistory, setSnookerFinancialHistory] = useState<SnookerFinancialSummary[]>([]);
   const [snookerBets, setSnookerBets] = useState<SnookerBet[]>([]);
   const [snookerCashOutLog, setSnookerCashOutLog] = useState<any[]>([]);
-  const [snookerLiveConfig, setSnookerLiveConfig] = useState<SnookerLiveConfig>({
-    defaultChannelId: '', showLiveBadge: true, betsEnabled: true, minBet: 5, maxBet: 1000,
-    cashOutMargin: 8, chatEnabled: true, reactionsEnabled: true, profanityFilterEnabled: true,
-    updatedAt: new Date().toISOString()
-  });
+  const [snookerLiveConfig, setSnookerLiveConfig] = useState<SnookerLiveConfig>(DEFAULT_SNOOKER_CFG);
   const [snookerActivityFeed, setSnookerActivityFeed] = useState<any[]>([]);
   const [snookerBetsFeed, setSnookerBetsFeed] = useState<any[]>([]);
   const [snookerChatMessages, setSnookerChatMessages] = useState<SnookerChatMessage[]>([]);
@@ -378,11 +389,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   });
 
   // UI State
-  const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<LiveMiniPlayerConfig>({
-    enabled: true, youtubeUrl: '', youtubeEmbedId: '', title: 'Sinuca ao Vivo',
-    autoShow: true, defaultState: 'open', showOnHome: true, showOnSinuca: true,
-    topHeight: 96, bubbleSize: 62
-  });
+  const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<LiveMiniPlayerConfig>(DEFAULT_PLAYER_CONFIG);
 
   const loadLocalData = useCallback(() => {
     const session = getSession();
@@ -405,7 +412,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES));
     
     // Bingo
-    setBingoSettings(getStorageItem('app:bingo_settings:v1', bingoSettings));
+    setBingoSettings(getStorageItem('app:bingo_settings:v1', DEFAULT_BINGO_SETTINGS));
     setBingoDraws(getStorageItem('app:bingo_draws:v1', []));
     setBingoTickets(getStorageItem('app:bingo_tickets:v1', []));
     setBingoPayouts(getStorageItem('app:bingo_payouts:v1', []));
@@ -415,11 +422,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setSnookerFinancialHistory(getStorageItem('app:snooker_history:v1', []));
     setSnookerBets(getStorageItem('app:snooker_bets:v1', []));
     setSnookerCashOutLog(getStorageItem('app:snooker_cashout:v1', []));
-    setSnookerLiveConfig(getStorageItem('app:snooker_cfg:v1', snookerLiveConfig));
+    setSnookerLiveConfig(getStorageItem('app:snooker_cfg:v1', DEFAULT_SNOOKER_CFG));
     setSnookerChatMessages(getStorageItem('app:snooker_chat:v1', []));
     setSnookerScoreboards(getStorageItem('app:snooker_scores:v1', {}));
 
-    setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', liveMiniPlayerConfig));
+    setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', DEFAULT_PLAYER_CONFIG));
 
     const savedFootball = getStorageItem('app:football:unified:v1', null);
     if (savedFootball && Array.isArray(savedFootball.unifiedMatches)) {
@@ -441,20 +448,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [loadLocalData]);
 
-  const notify = () => window.dispatchEvent(new Event('app:data-changed'));
+  const notify = useCallback(() => window.dispatchEvent(new Event('app:data-changed')), []);
 
-  const logout = () => { authLogout(); setUser(null); notify(); router.push('/login'); };
+  const logout = useCallback(() => { authLogout(); setUser(null); notify(); router.push('/login'); }, [notify, router]);
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().then(() => setIsFullscreen(true));
     } else {
       document.exitFullscreen().then(() => setIsFullscreen(false));
     }
-  };
+  }, []);
 
   // --- LOTTERY METHODS ---
-  const handleFinalizarAposta = (aposta: any, valorTotal: number): string | null => {
+  const handleFinalizarAposta = useCallback((aposta: any, valorTotal: number): string | null => {
     if (!user) { router.push('/login'); return null; }
     const pouleId = generatePoule();
     const result = BetService.processBet(user, {
@@ -470,16 +477,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return pouleId;
     }
     return null;
-  };
+  }, [user, apostas, notify, router]);
 
-  const processarResultados = (dados: any) => {
+  const processarResultados = useCallback((dados: any) => {
     const items = [dados, ...postedResults];
     setStorageItem('app:posted_results:v1', items);
     notify();
-  };
+  }, [postedResults, notify]);
 
   // --- FOOTBALL METHODS ---
-  const syncFootballAll = async (force = false) => {
+  const syncFootballAll = useCallback(async (force = false) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
     try {
       const activeLeagues = footballData.leagues.filter(l => l.active);
@@ -515,15 +522,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       console.error(e);
       setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
     }
-  };
+  }, [footballData.leagues, toast]);
 
-  const updateLeagueConfig = (id: string, config: any) => {
+  const updateLeagueConfig = useCallback((id: string, config: any) => {
     const leagues = footballData.leagues.map(l => l.id === id ? { ...l, ...config } : l);
     setFootballData(prev => ({ ...prev, leagues }));
     notify();
-  };
+  }, [footballData.leagues, notify]);
 
-  const placeFootballBet = async (stake: number): Promise<string | null> => {
+  const placeFootballBet = useCallback(async (stake: number): Promise<string | null> => {
     if (!user) { router.push('/login'); return null; }
     const pouleId = generatePoule();
     const totalOdds = parseFloat(betSlip.reduce((acc, item) => acc * (item.odd || 1), 1).toFixed(2));
@@ -543,12 +550,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return pouleId;
     }
     return null;
-  };
+  }, [user, betSlip, footballBets, notify, router]);
 
   // --- BINGO METHODS ---
-  const updateBingoSettings = (s: BingoSettings) => { setBingoSettings(s); setStorageItem('app:bingo_settings:v1', s); notify(); };
-  const createBingoDraw = (d: Partial<BingoDraw>) => { 
-    // Important: Read current items from storage to avoid stale closure state in loops
+  const updateBingoSettings = useCallback((s: BingoSettings) => { setBingoSettings(s); setStorageItem('app:bingo_settings:v1', s); notify(); }, [notify]);
+  const createBingoDraw = useCallback((d: Partial<BingoDraw>) => { 
     const currentDraws = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
     const nextNum = (currentDraws[0]?.drawNumber || 0) + 1;
 
@@ -563,20 +569,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const items = [newDraw, ...currentDraws]; 
     setStorageItem('app:bingo_draws:v1', items); 
     notify(); 
-  };
-  const startBingoDraw = (id: string) => {
+  }, [user, notify]);
+
+  const startBingoDraw = useCallback((id: string) => {
     const items = bingoDraws.map(d => d.id === id ? { ...d, status: 'live', startedAt: new Date().toISOString() } : d);
     setStorageItem('app:bingo_draws:v1', items); notify();
-  };
-  const finishBingoDraw = (id: string) => {
+  }, [bingoDraws, notify]);
+
+  const finishBingoDraw = useCallback((id: string) => {
     const items = bingoDraws.map(d => d.id === id ? { ...d, status: 'finished', finishedAt: new Date().toISOString() } : d);
     setStorageItem('app:bingo_draws:v1', items); notify();
-  };
-  const cancelBingoDraw = (id: string, reason: string) => {
+  }, [bingoDraws, notify]);
+
+  const cancelBingoDraw = useCallback((id: string, reason: string) => {
     const items = bingoDraws.map(d => d.id === id ? { ...d, status: 'cancelled' } : d);
     setStorageItem('app:bingo_draws:v1', items); notify();
-  };
-  const buyBingoTickets = (drawId: string, count: number) => {
+  }, [bingoDraws, notify]);
+
+  const buyBingoTickets = useCallback((drawId: string, count: number) => {
     if (!user) return false;
     const draw = bingoDraws.find(d => d.id === drawId);
     if (!draw) return false;
@@ -595,31 +605,35 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return true;
     }
     return false;
-  };
-  const refundBingoTicket = (id: string) => {
+  }, [user, bingoDraws, bingoTickets, notify]);
+
+  const refundBingoTicket = useCallback((id: string) => {
     const items = bingoTickets.map(t => t.id === id ? { ...t, status: 'refunded' as const } : t);
     setStorageItem('app:bingo_tickets:v1', items); notify();
-  };
-  const payBingoPayout = (id: string) => {
+  }, [bingoTickets, notify]);
+
+  const payBingoPayout = useCallback((id: string) => {
     const items = bingoPayouts.map(p => p.id === id ? { ...p, status: 'paid' as const } : p);
     setStorageItem('app:bingo_payouts:v1', items); notify();
-  };
+  }, [bingoPayouts, notify]);
 
   // --- SNOOKER METHODS ---
-  const joinChannel = (channelId: string, userId: string) => {
+  const joinChannel = useCallback((channelId: string, userId: string) => {
     setSnookerPresence(prev => {
       const current = prev[channelId]?.viewers || [];
       if (current.includes(userId)) return prev;
       return { ...prev, [channelId]: { viewers: [...current, userId] } };
     });
-  };
-  const leaveChannel = (channelId: string, userId: string) => {
+  }, []);
+
+  const leaveChannel = useCallback((channelId: string, userId: string) => {
     setSnookerPresence(prev => {
       const current = prev[channelId]?.viewers || [];
       return { ...prev, [channelId]: { viewers: current.filter(id => id !== userId) } };
     });
-  };
-  const placeSnookerBet = (bet: any) => {
+  }, []);
+
+  const placeSnookerBet = useCallback((bet: any) => {
     if (!user) return false;
     const result = BetService.processBet(user, {
       userId: user.id, modulo: 'Sinuca', valor: bet.amount, retornoPotencial: 0,
@@ -634,50 +648,58 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return true;
     }
     return false;
-  };
-  const cashOutSnookerBet = (betId: string) => {
+  }, [user, snookerBets, notify]);
+
+  const cashOutSnookerBet = useCallback((betId: string) => {
     const items = snookerBets.map(b => b.id === betId ? { ...b, status: 'cash_out' as const } : b);
     setStorageItem('app:snooker_bets:v1', items); notify();
-  };
-  const sendSnookerChatMessage = (channelId: string, text: string) => {
+  }, [snookerBets, notify]);
+
+  const sendSnookerChatMessage = useCallback((channelId: string, text: string) => {
     if (!user) return;
     const newMessage: SnookerChatMessage = {
       id: `msg-${Date.now()}`, channelId, userId: user.id, userName: user.nome || 'Usuário',
       text, createdAt: new Date().toISOString(), role: user.tipoUsuario === 'SUPER_ADMIN' ? 'admin' : 'user'
     };
     const items = [newMessage, ...snookerChatMessages]; setStorageItem('app:snooker_chat:v1', items); notify();
-  };
-  const deleteSnookerChatMessage = (id: string) => {
+  }, [user, snookerChatMessages, notify]);
+
+  const deleteSnookerChatMessage = useCallback((id: string) => {
     const items = snookerChatMessages.map(m => m.id === id ? { ...m, deleted: true } : m);
     setStorageItem('app:snooker_chat:v1', items); notify();
-  };
-  const sendSnookerReaction = (channelId: string, reaction: string) => {
+  }, [snookerChatMessages, notify]);
+
+  const sendSnookerReaction = useCallback((channelId: string, reaction: string) => {
     const text = `${user?.nome || 'Alguém'} reagiu com ${reaction}`;
     setSnookerActivityFeed(prev => [{ id: Date.now(), channelId, text, createdAt: new Date().toISOString() }, ...prev]);
-  };
-  const updateSnookerLiveConfig = (c: any) => { setSnookerLiveConfig(c); setStorageItem('app:snooker_cfg:v1', c); notify(); };
-  const updateSnookerScoreboard = (id: string, s: any) => {
+  }, [user]);
+
+  const updateSnookerLiveConfig = useCallback((c: any) => { setSnookerLiveConfig(c); setStorageItem('app:snooker_cfg:v1', c); notify(); }, [notify]);
+  const updateSnookerScoreboard = useCallback((id: string, s: any) => {
     const items = { ...snookerScoreboards, [id]: s }; setStorageItem('app:snooker_scores:v1', items); notify();
-  };
-  const addSnookerChannel = (c: any) => {
+  }, [snookerScoreboards, notify]);
+
+  const addSnookerChannel = useCallback((c: any) => {
     const newChannel = { ...c, id: `chan-${Date.now()}`, scoreA: 0, scoreB: 0, status: 'scheduled', odds: { A: 1.95, B: 1.95, D: 3.20 } };
     const items = [...snookerChannels, newChannel]; setStorageItem('app:snooker_channels:v1', items); notify();
-  };
-  const updateSnookerChannel = (c: any) => {
+  }, [snookerChannels, notify]);
+
+  const updateSnookerChannel = useCallback((c: any) => {
     const items = snookerChannels.map(i => i.id === c.id ? c : i); setStorageItem('app:snooker_channels:v1', items); notify();
-  };
-  const deleteSnookerChannel = (id: string) => {
+  }, [snookerChannels, notify]);
+
+  const deleteSnookerChannel = useCallback((id: string) => {
     const items = snookerChannels.filter(i => i.id !== id); setStorageItem('app:snooker_channels:v1', items); notify();
-  };
-  const settleSnookerRound = (channelId: string, winner: string) => {
+  }, [snookerChannels, notify]);
+
+  const settleSnookerRound = useCallback((channelId: string, winner: string) => {
     const betsToSettle = snookerBets.filter(b => b.channelId === channelId && b.status === 'open');
     betsToSettle.forEach(bet => {
       const isWinner = bet.pick === winner;
       if (isWinner) {
         const oddsMap = { A: bet.oddsA, B: bet.oddsB, EMPATE: bet.oddsD };
         const prize = bet.amount * (oddsMap[bet.pick as keyof typeof oddsMap]);
-        // Creditar prêmio
-        const u = getUserByTerminal(user.terminal);
+        const u = getUserByTerminal(user?.terminal || '');
         if (u) {
           const newBal = u.saldo + prize;
           upsertUser({ terminal: u.terminal, saldo: newBal });
@@ -693,45 +715,59 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const items = snookerBets.map(b => b.channelId === channelId && b.status === 'open' ? { ...b, status: b.pick === winner ? 'won' as const : 'lost' as const } : b);
     setStorageItem('app:snooker_bets:v1', items); notify();
     if (winner !== 'EMPATE') setCelebrationTrigger(true);
-  };
-  const clearCelebration = () => setCelebrationTrigger(false);
+  }, [user, snookerBets, notify]);
+
+  const clearCelebration = useCallback(() => setCelebrationTrigger(false), []);
 
   // --- ADMIN METHODS ---
-  const addBanner = (b: Banner) => { const items = [...banners, b]; setStorageItem('app:banners:v1', items); notify(); };
-  const updateBanner = (b: Banner) => { const items = banners.map(i => i.id === b.id ? b : i); setStorageItem('app:banners:v1', items); notify(); };
-  const deleteBanner = (id: string) => { const items = banners.filter(i => i.id !== id); setStorageItem('app:banners:v1', items); notify(); };
-  const addPopup = (p: Popup) => { const items = [...popups, p]; setStorageItem('app:popups:v1', items); notify(); };
-  const updatePopup = (p: Popup) => { const items = popups.map(i => i.id === p.id ? p : i); setStorageItem('app:popups:v1', items); notify(); };
-  const deletePopup = (id: string) => { const items = popups.filter(i => i.id !== id); setStorageItem('app:popups:v1', items); notify(); };
-  const addNews = (m: NewsMessage) => { const items = [...news, m]; setStorageItem('news_messages', items); notify(); };
-  const updateNews = (m: NewsMessage) => { const items = news.map(i => i.id === m.id ? m : i); setStorageItem('news_messages', items); notify(); };
-  const deleteNews = (id: string) => { const items = news.filter(i => i.id !== id); setStorageItem('news_messages', items); notify(); };
+  const addBanner = useCallback((b: Banner) => { const items = [...banners, b]; setStorageItem('app:banners:v1', items); notify(); }, [banners, notify]);
+  const updateBanner = useCallback((b: Banner) => { const items = banners.map(i => i.id === b.id ? b : i); setStorageItem('app:banners:v1', items); notify(); }, [banners, notify]);
+  const deleteBanner = useCallback((id: string) => { const items = banners.filter(i => i.id !== id); setStorageItem('app:banners:v1', items); notify(); }, [banners, notify]);
+  const addPopup = useCallback((p: Popup) => { const items = [...popups, p]; setStorageItem('app:popups:v1', items); notify(); }, [popups, notify]);
+  const updatePopup = useCallback((p: Popup) => { const items = popups.map(i => i.id === p.id ? p : i); setStorageItem('app:popups:v1', items); notify(); }, [popups, notify]);
+  const deletePopup = useCallback((id: string) => { const items = popups.filter(i => i.id !== id); setStorageItem('app:popups:v1', items); notify(); }, [popups, notify]);
+  const addNews = useCallback((m: NewsMessage) => { const items = [...news, m]; setStorageItem('news_messages', items); notify(); }, [news, notify]);
+  const updateNews = useCallback((m: NewsMessage) => { const items = news.map(i => i.id === m.id ? m : i); setStorageItem('news_messages', items); notify(); }, [news, notify]);
+  const deleteNews = useCallback((id: string) => { const items = news.filter(i => i.id !== id); setStorageItem('news_messages', items); notify(); }, [news, notify]);
+
+  const contextValue = useMemo(() => ({
+    user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
+    activeBancaId: user?.bancaId || 'default', ledger, banners, popups, news, apostas, postedResults, 
+    jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
+    isFullscreen, toggleFullscreen,
+    
+    // Bingo
+    bingoSettings, bingoDraws, bingoTickets, bingoPayouts,
+    updateBingoSettings, createBingoDraw, startBingoDraw, finishBingoDraw, cancelBingoDraw, 
+    buyBingoTickets, refundBingoTicket, payBingoPayout,
+
+    // Sinuca
+    snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog,
+    snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerScoreboards,
+    celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet,
+    sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig,
+    updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel,
+    settleSnookerRound, clearCelebration,
+
+    refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, 
+    updateLeagueConfig, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
+    removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
+    placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews
+  }), [
+    user, isLoading, ledger, banners, popups, news, apostas, postedResults, jdbLoterias, genericLotteryConfigs, 
+    footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, bingoSettings, bingoDraws, 
+    bingoTickets, bingoPayouts, snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, 
+    snookerCashOutLog, snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, 
+    snookerScoreboards, celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, 
+    sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, 
+    updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, 
+    settleSnookerRound, clearCelebration, loadLocalData, logout, handleFinalizarAposta, processarResultados, 
+    syncFootballAll, updateLeagueConfig, placeFootballBet, addBanner, updateBanner, deleteBanner, 
+    addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen
+  ]);
 
   return (
-    <AppContext.Provider value={{
-      user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
-      activeBancaId: user?.bancaId || 'default', ledger, banners, popups, news, apostas, postedResults, 
-      jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
-      isFullscreen, toggleFullscreen,
-      
-      // Bingo
-      bingoSettings, bingoDraws, bingoTickets, bingoPayouts,
-      updateBingoSettings, createBingoDraw, startBingoDraw, finishBingoDraw, cancelBingoDraw, 
-      buyBingoTickets, refundBingoTicket, payBingoPayout,
-
-      // Sinuca
-      snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog,
-      snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerScoreboards,
-      celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet,
-      sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig,
-      updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel,
-      settleSnookerRound, clearCelebration,
-
-      refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, 
-      updateLeagueConfig, addBetToSlip: (b) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId), b]),
-      removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
-      placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews
-    }}>
+    <AppContext.Provider value={contextValue}>
       {mounted && children}
     </AppContext.Provider>
   );
