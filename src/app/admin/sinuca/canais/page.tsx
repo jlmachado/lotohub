@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, PlusCircle, Edit, Trash2 } from 'lucide-react';
+import { ChevronLeft, PlusCircle, Edit, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -43,21 +43,9 @@ const calculateOddsPreview = (levelA: number, levelB: number, margin: number) =>
     const oddB = 1 / (normProbB * marginFactor);
     const oddD = 1 / (normProbD * marginFactor);
 
-    const overround = (1 / oddA) + (1 / oddB) + (1 / oddD);
-    const realMargin = (overround - 1) * 100;
-
     return {
-        odds: {
-            A: oddA.toFixed(2),
-            B: oddB.toFixed(2),
-            D: oddD.toFixed(2),
-        },
-        probs: {
-            A: (normProbA * 100).toFixed(1),
-            B: (normProbB * 100).toFixed(1),
-            D: (normProbD * 100).toFixed(1),
-        },
-        realMargin: realMargin.toFixed(2),
+        odds: { A: oddA.toFixed(2), B: oddB.toFixed(2), D: oddD.toFixed(2) },
+        probs: { A: (normProbA * 100).toFixed(1), B: (normProbB * 100).toFixed(1), D: (normProbD * 100).toFixed(1) }
     };
 };
 
@@ -93,23 +81,18 @@ export default function AdminSinucaCanaisPage() {
     const [currentChannel, setCurrentChannel] = useState<FormState>(initialFormState);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [preview, setPreview] = useState<ReturnType<typeof calculateOddsPreview> | null>(null);
     
-    const sortedChannels = [...snookerChannels].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+    const sortedChannels = useMemo(() => 
+        [...snookerChannels].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()),
+    [snookerChannels]);
 
-    useEffect(() => {
+    const preview = useMemo(() => {
         const levelA = currentChannel.playerA.level;
         const levelB = currentChannel.playerB.level;
         const margin = currentChannel.houseMargin;
-
-        if (!isNaN(levelA) && !isNaN(levelB) && !isNaN(margin) && levelA >= 1 && levelA <= 10 && levelB >= 1 && levelB <= 10 && margin >= 5 && margin <= 20) {
-            const previewData = calculateOddsPreview(levelA, levelB, margin);
-            setPreview(previewData);
-        } else {
-            setPreview(null);
-        }
+        if (levelA && levelB && margin) return calculateOddsPreview(levelA, levelB, margin);
+        return null;
     }, [currentChannel.playerA.level, currentChannel.playerB.level, currentChannel.houseMargin]);
-
 
     const handleAddNew = () => {
         setEditingId(null);
@@ -140,28 +123,7 @@ export default function AdminSinucaCanaisPage() {
 
     const handleSave = () => {
         if (!currentChannel.title || !currentChannel.youtubeUrl || !currentChannel.scheduledAt) {
-            toast({ variant: 'destructive', title: 'Erro', description: 'Título, URL do YouTube e Data/Hora de início são obrigatórios.' });
-            return;
-        }
-
-        const now = new Date();
-        const scheduledDate = new Date(currentChannel.scheduledAt);
-        if (scheduledDate < now) {
-            toast({
-                variant: 'destructive',
-                title: 'Data Inválida',
-                description: 'A data de início deve ser no futuro.',
-            });
-            return;
-        }
-
-        const diffInMinutes = (scheduledDate.getTime() - now.getTime()) / (1000 * 60);
-        if (diffInMinutes < 30) {
-            toast({
-                variant: 'destructive',
-                title: 'Agendamento Inválido',
-                description: 'O jogo deve ser agendado com pelo menos 30 minutos de antecedência.',
-            });
+            toast({ variant: 'destructive', title: 'Erro', description: 'Título, URL do YouTube e Data de início são obrigatórios.' });
             return;
         }
 
@@ -175,10 +137,11 @@ export default function AdminSinucaCanaisPage() {
 
         if (editingId) {
             updateSnookerChannel({ ...channelData, id: editingId } as SnookerChannel);
-            toast({ title: 'Canal atualizado com sucesso!' });
+            toast({ title: 'Canal atualizado!' });
         } else {
-            addSnookerChannel(channelData);
-            toast({ title: 'Canal criado com sucesso!' });
+            // New channels are ALWAYS enabled by default for betting
+            addSnookerChannel({ ...channelData, enabled: true });
+            toast({ title: 'Canal criado e habilitado para apostas!' });
         }
         setIsDialogOpen(false);
         setEditingId(null);
@@ -195,184 +158,178 @@ export default function AdminSinucaCanaisPage() {
     }
 
     return (
-        <main className="p-4 md:p-8">
-            <div className="flex items-center gap-4 mb-6">
-                <Link href="/admin/sinuca"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
-                <h1 className="text-3xl font-bold">Gerenciar Jogos de Sinuca</h1>
+        <main className="p-4 md:p-8 space-y-6">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <Link href="/admin/sinuca"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
+                    <div>
+                        <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Gestão de Canais</h1>
+                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Configuração de Transmissões e Odds</p>
+                    </div>
+                </div>
+                <Button onClick={handleAddNew} className="lux-shine font-black uppercase rounded-xl"><PlusCircle className="mr-2 h-4 w-4" /> Agendar Jogo</Button>
             </div>
 
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                        <CardTitle>Jogos Agendados</CardTitle>
-                        <CardDescription>Adicione, edite e organize os jogos de sinuca ao vivo.</CardDescription>
-                    </div>
-                    <Button onClick={handleAddNew}><PlusCircle className="mr-2 h-4 w-4" /> Agendar Novo Jogo</Button>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Jogo</TableHead>
-                                <TableHead>Horário</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Habilitado</TableHead>
-                                <TableHead className="text-right">Ações</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {sortedChannels.map(channel => (
-                                <TableRow key={channel.id}>
-                                    <TableCell className="font-medium">{channel.playerA.name} vs {channel.playerB.name}</TableCell>
-                                    <TableCell>{new Date(channel.scheduledAt).toLocaleString('pt-BR')}</TableCell>
+            <Card className="border-white/5 bg-card/50 overflow-hidden shadow-2xl">
+                <Table>
+                    <TableHeader className="bg-slate-950/50">
+                        <TableRow className="border-white/5 h-10">
+                            <TableHead className="text-[9px] uppercase font-black px-4">Jogo / Título</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black">Horário</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black">Status</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black text-center">Visível</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {sortedChannels.length === 0 ? (
+                            <TableRow><TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum canal agendado.</TableCell></TableRow>
+                        ) : (
+                            sortedChannels.map(channel => (
+                                <TableRow key={channel.id} className="border-white/5 hover:bg-white/5 transition-colors group">
+                                    <TableCell className="px-4">
+                                        <div className="flex flex-col">
+                                            <span className="text-[11px] font-bold text-white uppercase italic">{channel.playerA.name} vs {channel.playerB.name}</span>
+                                            <span className="text-[9px] text-muted-foreground truncate max-w-[150px]">{channel.title}</span>
+                                        </div>
+                                    </TableCell>
                                     <TableCell>
-                                        <Badge variant={getStatusVariant(channel.status)}>
-                                            {channel.status.charAt(0).toUpperCase() + channel.status.slice(1)}
+                                        <span className="text-[10px] font-mono text-slate-300">{new Date(channel.scheduledAt).toLocaleString('pt-BR')}</span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant={getStatusVariant(channel.status)} className="text-[8px] h-4 uppercase font-black italic">
+                                            {channel.status}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell>{channel.enabled ? 'Sim' : 'Não'}</TableCell>
-                                    <TableCell className="text-right space-x-2">
-                                        <Button variant="outline" size="sm" onClick={() => handleEdit(channel)}><Edit className="mr-2 h-4 w-4" />Editar</Button>
-                                        <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(channel.id)}><Trash2 className="mr-2 h-4 w-4" />Excluir</Button>
+                                    <TableCell className="text-center">
+                                        <Badge variant={channel.enabled ? 'default' : 'secondary'} className="text-[8px] h-4 uppercase font-black">
+                                            {channel.enabled ? 'SIM' : 'NÃO'}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right px-4 space-x-1">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(channel)}><Edit className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteClick(channel.id)}><Trash2 className="h-4 w-4" /></Button>
                                     </TableCell>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </CardContent>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
             </Card>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-3xl">
+                <DialogContent className="sm:max-w-3xl bg-[#0f172a] border-white/10 text-white max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>{editingId ? 'Editar Jogo' : 'Agendar Novo Jogo'}</DialogTitle>
+                        <DialogTitle className="text-2xl font-black uppercase italic tracking-tighter">
+                            {editingId ? 'Editar Canal' : 'Agendar Novo Jogo'}
+                        </DialogTitle>
+                        <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Configure os parâmetros da transmissão</p>
                     </DialogHeader>
-                    <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
+                    
+                    <div className="grid gap-6 py-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="title">Título do Evento</Label>
-                            <Input id="title" value={currentChannel.title} onChange={(e) => setCurrentChannel({ ...currentChannel, title: e.target.value })} />
+                            <Label className="text-[10px] uppercase font-bold text-slate-400">Título do Evento</Label>
+                            <Input value={currentChannel.title} onChange={(e) => setCurrentChannel({ ...currentChannel, title: e.target.value })} className="bg-black/20 border-white/10 h-11" placeholder="Ex: Grande Final Matriz" />
                         </div>
+
                         <div className="grid md:grid-cols-2 gap-6">
-                            <div className='space-y-4 p-4 border rounded-lg'>
-                                <h3 className='font-medium'>Jogador A</h3>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="playerA-name">Nome</Label>
-                                    <Input id="playerA-name" value={currentChannel.playerA.name} onChange={(e) => setCurrentChannel({ ...currentChannel, playerA: {...currentChannel.playerA, name: e.target.value} })} />
-                                </div>
-                                 <div className="grid gap-2">
-                                    <Label htmlFor="playerA-level">Nível (1-10)</Label>
-                                    <Input 
-                                        id="playerA-level" 
-                                        type="number" 
-                                        min="1" 
-                                        max="10" 
-                                        value={isNaN(currentChannel.playerA.level) ? '' : currentChannel.playerA.level} 
-                                        onChange={(e) => setCurrentChannel({ ...currentChannel, playerA: {...currentChannel.playerA, level: parseInt(e.target.value) || 0} })} 
-                                    />
+                            <div className='space-y-4 p-4 border border-white/5 rounded-2xl bg-black/20'>
+                                <h3 className='text-xs font-black uppercase text-primary italic'>Jogador A (Mandante)</h3>
+                                <div className="grid gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[9px] uppercase font-bold">Nome</Label>
+                                        <Input value={currentChannel.playerA.name} onChange={(e) => setCurrentChannel({ ...currentChannel, playerA: {...currentChannel.playerA, name: e.target.value} })} className="h-9" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[9px] uppercase font-bold">Nível Técnico (1-10)</Label>
+                                        <Input type="number" min="1" max="10" value={currentChannel.playerA.level} onChange={(e) => setCurrentChannel({ ...currentChannel, playerA: {...currentChannel.playerA, level: parseInt(e.target.value) || 1} })} className="h-9" />
+                                    </div>
                                 </div>
                             </div>
-                            <div className='space-y-4 p-4 border rounded-lg'>
-                                <h3 className='font-medium'>Jogador B</h3>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="playerB-name">Nome</Label>
-                                    <Input id="playerB-name" value={currentChannel.playerB.name} onChange={(e) => setCurrentChannel({ ...currentChannel, playerB: {...currentChannel.playerB, name: e.target.value} })} />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="playerB-level">Nível (1-10)</Label>
-                                    <Input 
-                                        id="playerB-level" 
-                                        type="number" 
-                                        min="1" 
-                                        max="10" 
-                                        value={isNaN(currentChannel.playerB.level) ? '' : currentChannel.playerB.level} 
-                                        onChange={(e) => setCurrentChannel({ ...currentChannel, playerB: {...currentChannel.playerB, level: parseInt(e.target.value) || 0} })} 
-                                    />
+                            
+                            <div className='space-y-4 p-4 border border-white/5 rounded-2xl bg-black/20'>
+                                <h3 className='text-xs font-black uppercase text-primary italic'>Jogador B (Visitante)</h3>
+                                <div className="grid gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[9px] uppercase font-bold">Nome</Label>
+                                        <Input value={currentChannel.playerB.name} onChange={(e) => setCurrentChannel({ ...currentChannel, playerB: {...currentChannel.playerB, name: e.target.value} })} className="h-9" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[9px] uppercase font-bold">Nível Técnico (1-10)</Label>
+                                        <Input type="number" min="1" max="10" value={currentChannel.playerB.level} onChange={(e) => setCurrentChannel({ ...currentChannel, playerB: {...currentChannel.playerB, level: parseInt(e.target.value) || 1} })} className="h-9" />
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="grid gap-2">
-                            <Label htmlFor="scheduledAt">Data e Hora de Início</Label>
-                            <Input id="scheduledAt" type="datetime-local" value={currentChannel.scheduledAt} onChange={(e) => setCurrentChannel({ ...currentChannel, scheduledAt: e.target.value })}/>
-                        </div>
-                         <div className="grid md:grid-cols-2 gap-6">
-                            <div className="grid gap-2">
-                                <Label htmlFor="bestOf">Melhor de (Frames)</Label>
-                                <Select value={String(currentChannel.bestOf)} onValueChange={(v) => setCurrentChannel({...currentChannel, bestOf: parseInt(v) || 1})}>
-                                    <SelectTrigger><SelectValue/></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="5">5</SelectItem>
-                                        <SelectItem value="7">7</SelectItem>
-                                        <SelectItem value="9">9</SelectItem>
-                                        <SelectItem value="11">11</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <div className="space-y-1.5">
+                                <Label className="text-[9px] uppercase font-bold">Início Agendado</Label>
+                                <Input type="datetime-local" value={currentChannel.scheduledAt} onChange={(e) => setCurrentChannel({ ...currentChannel, scheduledAt: e.target.value })} className="h-11" />
                             </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="houseMargin">Margem de Lucro (%)</Label>
-                                <Input 
-                                    id="houseMargin" 
-                                    type="number" 
-                                    min="5" 
-                                    max="20" 
-                                    step="0.5" 
-                                    value={isNaN(currentChannel.houseMargin) ? '' : currentChannel.houseMargin} 
-                                    onChange={(e) => setCurrentChannel({ ...currentChannel, houseMargin: parseFloat(e.target.value) || 0 })} 
-                                />
+                            <div className="space-y-1.5">
+                                <Label className="text-[9px] uppercase font-bold">Margem da Casa (%)</Label>
+                                <Input type="number" min="1" max="30" value={currentChannel.houseMargin} onChange={(e) => setCurrentChannel({ ...currentChannel, houseMargin: parseFloat(e.target.value) || 8 })} className="h-11" />
                             </div>
                         </div>
+
                         {preview && (
-                            <div className="p-4 border rounded-lg bg-muted/50 space-y-2">
-                                <h4 className="font-medium text-center">📊 Prévia das Odds</h4>
+                            <div className="p-4 border border-primary/20 rounded-2xl bg-primary/5 space-y-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Zap size={14} className="text-primary" />
+                                    <h4 className="text-[10px] font-black uppercase text-white tracking-widest">Prévia Automática de Odds</h4>
+                                </div>
                                 <div className="grid grid-cols-3 gap-2 text-center">
-                                    <div className='p-2 rounded bg-green-500/10 text-green-500'>
-                                        <strong className='text-xs'>Jogador A</strong>
-                                        <p className="text-lg font-bold">{preview.odds.A}</p>
-                                        <small className="text-xs opacity-80">{preview.probs.A}%</small>
+                                    <div className='p-2 rounded-xl bg-black/40 border border-white/5'>
+                                        <p className='text-[8px] uppercase font-bold opacity-50 mb-1'>Casa</p>
+                                        <p className="text-lg font-black text-primary italic">@{preview.odds.A}</p>
                                     </div>
-                                    <div className='p-2 rounded bg-amber-500/10 text-amber-500'>
-                                        <strong className='text-xs'>Empate</strong>
-                                        <p className="text-lg font-bold">{preview.odds.D}</p>
-                                        <small className="text-xs opacity-80">{preview.probs.D}%</small>
+                                    <div className='p-2 rounded-xl bg-black/40 border border-white/5'>
+                                        <p className='text-[8px] uppercase font-bold opacity-50 mb-1'>Empate</p>
+                                        <p className="text-lg font-black text-primary italic">@{preview.odds.D}</p>
                                     </div>
-                                    <div className='p-2 rounded bg-red-500/10 text-red-500'>
-                                        <strong className='text-xs'>Jogador B</strong>
-                                        <p className="text-lg font-bold">{preview.odds.B}</p>
-                                        <small className="text-xs opacity-80">{preview.probs.B}%</small>
+                                    <div className='p-2 rounded-xl bg-black/40 border border-white/5'>
+                                        <p className='text-[8px] uppercase font-bold opacity-50 mb-1'>Fora</p>
+                                        <p className="text-lg font-black text-primary italic">@{preview.odds.B}</p>
                                     </div>
                                 </div>
-                                <p className="text-xs text-center text-muted-foreground pt-2">Margem Real: {preview.realMargin}%</p>
                             </div>
                         )}
+
                         <div className="grid gap-2">
-                            <Label htmlFor="youtubeUrl">URL do YouTube</Label>
-                            <Input id="youtubeUrl" value={currentChannel.youtubeUrl} onChange={(e) => setCurrentChannel({ ...currentChannel, youtubeUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." />
+                            <Label className="text-[10px] uppercase font-bold text-slate-400">URL da Transmissão (YouTube)</Label>
+                            <Input value={currentChannel.youtubeUrl} onChange={(e) => setCurrentChannel({ ...currentChannel, youtubeUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." className="h-11" />
                         </div>
-                         <div className="grid gap-2">
-                            <Label htmlFor="description">Descrição (opcional)</Label>
-                            <Textarea id="description" value={currentChannel.description} onChange={(e) => setCurrentChannel({ ...currentChannel, description: e.target.value })} />
-                        </div>
-                         <div className="flex items-center space-x-2">
-                            <Switch id="enabled" checked={currentChannel.enabled} onCheckedChange={(checked) => setCurrentChannel({...currentChannel, enabled: checked})}/>
-                            <Label htmlFor="enabled">Jogo Habilitado</Label>
+
+                        <div className="flex items-center gap-2 bg-white/5 p-4 rounded-xl border border-white/10">
+                            <Switch id="enabled" checked={currentChannel.enabled} onCheckedChange={(v) => setCurrentChannel({...currentChannel, enabled: v})}/>
+                            <div className="space-y-0.5">
+                                <Label htmlFor="enabled" className="text-sm font-bold">Habilitar Acesso</Label>
+                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Torna o canal visível e aberto para apostas imediatamente.</p>
+                            </div>
                         </div>
                     </div>
-                    <DialogFooter>
-                        <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-                        <Button onClick={handleSave}>Salvar</Button>
+
+                    <DialogFooter className="gap-3 border-t border-white/5 pt-6 mt-4">
+                        <DialogClose asChild><Button variant="outline" className="h-12 px-8 rounded-xl font-bold border-white/10">Cancelar</Button></DialogClose>
+                        <Button onClick={handleSave} className="h-12 px-10 rounded-xl font-black uppercase italic lux-shine">
+                            {editingId ? 'Salvar Alterações' : 'Confirmar Agendamento'}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
             <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
-                <AlertDialogContent>
+                <AlertDialogContent className="bg-[#0f172a] border-white/10 text-white">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-                        <AlertDialogDescription>Essa ação não pode ser desfeita. Isso excluirá permanentemente o canal.</AlertDialogDescription>
+                        <AlertDialogTitle className="text-xl font-black uppercase italic">Excluir Canal?</AlertDialogTitle>
+                        <AlertDialogDescription className="text-slate-400">
+                            Esta ação removerá permanentemente a transmissão e o mercado deste jogo.
+                        </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setDeletingId(null)}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmDelete}>Excluir</AlertDialogAction>
+                        <AlertDialogCancel className="bg-transparent border-white/10 text-white hover:bg-white/5">Voltar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-bold uppercase italic">Sim, Excluir</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

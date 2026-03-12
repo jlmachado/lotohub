@@ -1,7 +1,7 @@
 'use client';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, CheckCircle2, History, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -21,6 +21,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
+import { formatBRL } from '@/utils/currency';
 
 export default function AdminSinucaApostasPage() {
     const { snookerChannels, snookerBets, settleSnookerRound } = useAppContext();
@@ -41,13 +43,17 @@ export default function AdminSinucaApostasPage() {
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [snookerBets, channelFilter, statusFilter]);
 
+    const activeBetsCount = useMemo(() => 
+        snookerBets.filter(b => b.channelId === channelFilter && b.status === 'open').length,
+    [snookerBets, channelFilter]);
+
     const handleSettle = () => {
         if (!winner) {
             toast({ variant: 'destructive', title: 'Selecione um resultado' });
             return;
         }
         settleSnookerRound(channelFilter, winner);
-        toast({ title: 'Rodada Finalizada!', description: `As apostas para o canal foram liquidadas. Vencedor: ${winner}` });
+        toast({ title: 'Rodada Finalizada!', description: `As apostas foram liquidadas. Vencedor: ${winner}` });
         setIsSettleDialogOpen(false);
         setWinner(null);
     };
@@ -58,82 +64,109 @@ export default function AdminSinucaApostasPage() {
             case 'lost': return 'destructive';
             case 'open': return 'secondary';
             case 'refunded': return 'outline';
+            case 'cash_out': return 'secondary';
             default: return 'secondary';
         }
     }
     
     return (
-        <main className="p-4 md:p-8">
-            <div className="flex items-center gap-4 mb-6">
+        <main className="p-4 md:p-8 space-y-6">
+            <div className="flex items-center gap-4">
                 <Link href="/admin/sinuca"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
-                <h1 className="text-3xl font-bold">Histórico de Apostas - Sinuca</h1>
+                <div>
+                    <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Monitoramento de Apostas</h1>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Auditoria e Liquidação em Tempo Real</p>
+                </div>
             </div>
 
-            <Card>
-                <CardHeader className="flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <CardTitle>Monitoramento de Apostas</CardTitle>
-                        <CardDescription>Visualize e liquide as apostas abertas por canal.</CardDescription>
+            <Card className="border-white/5 bg-card/50 shadow-2xl">
+                <CardHeader className="flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 bg-white/5">
+                    <div className="space-y-1">
+                        <CardTitle className="text-sm font-black uppercase italic tracking-widest flex items-center gap-2">
+                            <History size={16} className="text-primary" /> Histórico de Tickets
+                        </CardTitle>
+                        {channelFilter && (
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{activeBetsCount} apostas aguardando resultado</p>
+                        )}
                     </div>
-                    <div className='flex gap-2'>
+                    
+                    <div className='flex flex-col md:flex-row gap-3'>
                          <Select value={channelFilter} onValueChange={setChannelFilter}>
-                            <SelectTrigger className="w-full md:w-[240px]">
-                                <SelectValue placeholder="Filtrar por canal..." />
+                            <SelectTrigger className="w-full md:w-[280px] bg-slate-900 border-white/10">
+                                <SelectValue placeholder="Selecione um canal para auditar..." />
                             </SelectTrigger>
                             <SelectContent>
                                 {snookerChannels.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}
                             </SelectContent>
                         </Select>
+
                         <AlertDialog open={isSettleDialogOpen} onOpenChange={setIsSettleDialogOpen}>
                             <AlertDialogTrigger asChild>
-                                <Button disabled={!channelFilter || filteredBets.filter(b => b.status === 'open').length === 0}>Finalizar Rodada</Button>
+                                <Button 
+                                    disabled={!channelFilter || activeBetsCount === 0} 
+                                    className="lux-shine bg-green-600 hover:bg-green-700 font-black uppercase italic text-xs h-10 px-6 rounded-lg"
+                                >
+                                    <CheckCircle2 className="mr-2 h-4 w-4" /> Finalizar Rodada
+                                </Button>
                             </AlertDialogTrigger>
-                            <AlertDialogContent>
+                            <AlertDialogContent className="bg-[#0f172a] border-white/10 text-white">
                                 <AlertDialogHeader>
-                                    <AlertDialogTitle>Finalizar Rodada de Apostas</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        Selecione o vencedor da rodada atual. Todas as apostas em aberto para este canal serão marcadas como ganhas ou perdidas. Esta ação não pode ser desfeita.
+                                    <AlertDialogTitle className="text-2xl font-black uppercase italic">Liquidar Rodada</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-slate-400 font-medium">
+                                        Esta ação irá liquidar <span className="text-white font-bold">{activeBetsCount} apostas</span>. 
+                                        As vencedoras serão pagas instantaneamente e registradas no Ledger.
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
-                                <div className='grid gap-2 my-4'>
-                                    <Label>Resultado da Rodada</Label>
-                                     <Select onValueChange={(v: 'A' | 'B' | 'EMPATE') => setWinner(v)}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecione o vencedor..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="A">Jogador A</SelectItem>
-                                            <SelectItem value="B">Jogador B</SelectItem>
-                                            <SelectItem value="EMPATE">Empate</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                
+                                <div className='grid gap-4 my-6 p-4 bg-black/20 rounded-2xl border border-white/10'>
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] uppercase font-black text-primary tracking-widest">Vencedor da Rodada</Label>
+                                        <Select onValueChange={(v: any) => setWinner(v)}>
+                                            <SelectTrigger className="bg-slate-900 h-12 text-lg font-bold">
+                                                <SelectValue placeholder="Escolha o resultado final..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="A" className="font-bold">JOGADOR A (MANDANTE)</SelectItem>
+                                                <SelectItem value="B" className="font-bold">JOGADOR B (VISITANTE)</SelectItem>
+                                                <SelectItem value="EMPATE" className="font-bold">EMPATE</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex gap-3 items-start">
+                                        <AlertTriangle className="text-amber-500 h-5 w-5 shrink-0" />
+                                        <p className="text-[10px] text-amber-500 font-bold leading-relaxed uppercase">
+                                            Atenção: A liquidação é irreversível e afeta o saldo real dos usuários.
+                                        </p>
+                                    </div>
                                 </div>
+
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel onClick={() => setWinner(null)}>Cancelar</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleSettle} disabled={!winner}>Confirmar Resultado</AlertDialogAction>
+                                    <AlertDialogCancel className="bg-transparent border-white/10 hover:bg-white/5">Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleSettle} disabled={!winner} className="bg-green-600 text-white font-black uppercase italic lux-shine">
+                                        Confirmar e Pagar Prêmios
+                                    </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
                     </div>
                 </CardHeader>
-                <CardContent>
-                    <div className="flex items-center gap-2 mb-4">
-                        <Button size="sm" variant={statusFilter === 'all' ? 'default' : 'outline'} onClick={() => setStatusFilter('all')}>Todas</Button>
-                        <Button size="sm" variant={statusFilter === 'open' ? 'default' : 'outline'} onClick={() => setStatusFilter('open')}>Em Aberto</Button>
-                        <Button size="sm" variant={statusFilter === 'won' ? 'default' : 'outline'} onClick={() => setStatusFilter('won')}>Ganhas</Button>
-                        <Button size="sm" variant={statusFilter === 'lost' ? 'default' : 'outline'} onClick={() => setStatusFilter('lost')}>Perdidas</Button>
-                        <Button size="sm" variant={statusFilter === 'refunded' ? 'default' : 'outline'} onClick={() => setStatusFilter('refunded')}>Reembolsadas</Button>
+                
+                <CardContent className="p-0">
+                    <div className="flex items-center gap-2 p-4 bg-white/5 border-b border-white/5">
+                        <Button size="xs" variant={statusFilter === 'all' ? 'default' : 'ghost'} className="text-[9px] font-black uppercase h-7 px-3" onClick={() => setStatusFilter('all')}>Todas</Button>
+                        <Button size="xs" variant={statusFilter === 'open' ? 'default' : 'ghost'} className="text-[9px] font-black uppercase h-7 px-3" onClick={() => setStatusFilter('open')}>Em Aberto</Button>
+                        <Button size="xs" variant={statusFilter === 'won' ? 'default' : 'ghost'} className="text-[9px] font-black uppercase h-7 px-3 text-green-500" onClick={() => setStatusFilter('won')}>Ganhas</Button>
+                        <Button size="xs" variant={statusFilter === 'cash_out' ? 'default' : 'ghost'} className="text-[9px] font-black uppercase h-7 px-3 text-amber-500" onClick={() => setStatusFilter('cash_out')}>Cash Out</Button>
                     </div>
                    
                     <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Usuário</TableHead>
-                                <TableHead>Data</TableHead>
-                                <TableHead>Aposta</TableHead>
-                                <TableHead>Valor</TableHead>
-                                <TableHead>Prêmio Potencial</TableHead>
-                                <TableHead>Status</TableHead>
+                        <TableHeader className="bg-slate-950/20">
+                            <TableRow className="border-white/5 h-10">
+                                <TableHead className="text-[9px] uppercase font-black px-4">Usuário / Data</TableHead>
+                                <TableHead className="text-[9px] uppercase font-black">Aposta</TableHead>
+                                <TableHead className="text-[9px] uppercase font-black text-right">Valor</TableHead>
+                                <TableHead className="text-[9px] uppercase font-black text-right">Retorno Bruto</TableHead>
+                                <TableHead className="text-[9px] uppercase font-black text-center px-4">Status</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -143,15 +176,23 @@ export default function AdminSinucaApostasPage() {
                                 const prize = bet.amount * odds;
 
                                 return (
-                                    <TableRow key={bet.id}>
-                                        <TableCell>{bet.userName}</TableCell>
-                                        <TableCell>{new Date(bet.createdAt).toLocaleString('pt-BR')}</TableCell>
-                                        <TableCell><Badge variant="secondary">{bet.pick}</Badge></TableCell>
-                                        <TableCell>R$ {bet.amount.toFixed(2).replace('.', ',')}</TableCell>
-                                        <TableCell>R$ {prize.toFixed(2).replace('.', ',')}</TableCell>
+                                    <TableRow key={bet.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                                        <TableCell className="px-4 py-3">
+                                            <div className="flex flex-col">
+                                                <span className="text-[11px] font-bold text-white uppercase italic">{bet.userName}</span>
+                                                <span className="text-[9px] text-muted-foreground font-mono">{new Date(bet.createdAt).toLocaleString('pt-BR')}</span>
+                                            </div>
+                                        </TableCell>
                                         <TableCell>
-                                            <Badge variant={getStatusVariant(bet.status)}>
-                                                {bet.status}
+                                            <Badge variant="outline" className="text-[9px] h-4 font-black uppercase border-white/10 bg-black/20">
+                                                {bet.pick} <span className="text-primary ml-1 italic">@{odds.toFixed(2)}</span>
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right font-bold text-slate-300">{formatBRL(bet.amount)}</TableCell>
+                                        <TableCell className="text-right font-black text-green-500">{formatBRL(prize)}</TableCell>
+                                        <TableCell className="text-center px-4">
+                                            <Badge variant={getStatusVariant(bet.status)} className="text-[8px] h-4 uppercase font-black italic">
+                                                {bet.status.replace('_', ' ')}
                                             </Badge>
                                         </TableCell>
                                     </TableRow>
@@ -160,8 +201,8 @@ export default function AdminSinucaApostasPage() {
                         </TableBody>
                     </Table>
                      {filteredBets.length === 0 && (
-                        <p className="text-center text-muted-foreground py-8">
-                            {channelFilter ? 'Nenhuma aposta encontrada para os filtros selecionados.' : 'Selecione um canal para ver as apostas.'}
+                        <p className="text-center text-muted-foreground py-20 italic text-sm">
+                            {channelFilter ? 'Nenhuma aposta encontrada com estes filtros.' : 'Selecione um canal acima para auditar as apostas.'}
                         </p>
                     )}
                 </CardContent>

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAppContext } from "@/context/AppContext";
 import { useToast } from "@/hooks/use-toast";
-import { Minus, Plus, Clock } from 'lucide-react';
+import { Minus, Plus, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BettingPanelProps {
@@ -15,7 +15,7 @@ interface BettingPanelProps {
 }
 
 export const BettingPanel = ({ channelId }: BettingPanelProps) => {
-    const { snookerLiveConfig, snookerChannels, placeSnookerBet } = useAppContext();
+    const { snookerLiveConfig, snookerChannels, placeSnookerBet, user, balance } = useAppContext();
     const { toast } = useToast();
     const channel = snookerChannels.find(c => c.id === channelId);
     
@@ -23,11 +23,11 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
     const [selectedBet, setSelectedBet] = useState<'A' | 'B' | 'EMPATE' | null>(null);
     const [canBet, setCanBet] = useState(false);
     const [timeLeft, setTimeLeft] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const [updatedOdd, setUpdatedOdd] = useState<'A' | 'B' | 'D' | null>(null);
     const prevOdds = useRef(channel?.odds);
 
-    // Gating por horário e contagem regressiva
     useEffect(() => {
         if (!channel) return;
         const checkTime = () => {
@@ -72,15 +72,27 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
     };
 
     const handlePlaceBet = () => {
+        if (!user) {
+            toast({ variant: 'destructive', title: 'Acesso Restrito', description: 'Faça login para realizar apostas.' });
+            return;
+        }
+
         if (!selectedBet || !channel) {
             toast({ variant: 'destructive', title: 'Selecione uma aposta' });
             return;
         }
 
-        if (!canBet) {
-            toast({ variant: 'destructive', title: 'Aposta bloqueada', description: 'O jogo ainda não começou.' });
+        if (amount < (snookerLiveConfig.minBet || 1)) {
+            toast({ variant: 'destructive', title: 'Valor inválido', description: `Aposta mínima é R$ ${snookerLiveConfig.minBet}` });
             return;
         }
+
+        if (amount > balance && user.tipoUsuario !== 'CAMBISTA') {
+            toast({ variant: 'destructive', title: 'Saldo Insuficiente', description: 'Realize uma recarga para continuar.' });
+            return;
+        }
+
+        setIsProcessing(true);
         
         const success = placeSnookerBet({
             channelId,
@@ -92,25 +104,22 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
         });
         
         if (success) {
-            toast({ title: 'Aposta realizada com sucesso!' });
+            toast({ title: 'Aposta Confirmada!', description: 'Boa sorte!' });
+            setSelectedBet(null);
         }
+        setIsProcessing(false);
     };
     
     const getButtonState = () => {
-        if (!snookerLiveConfig?.betsEnabled) {
-            return { text: 'APOSTAS DESABILITADAS', disabled: true };
-        }
-        if (!channel) {
-            return { text: 'CARREGANDO JOGO...', disabled: true };
-        }
+        if (!user) return { text: 'FAÇA LOGIN PARA APOSTAR', disabled: true };
+        if (!snookerLiveConfig?.betsEnabled) return { text: 'APOSTAS DESABILITADAS', disabled: true };
+        if (!channel) return { text: 'CARREGANDO JOGO...', disabled: true };
         
-        if (!canBet && timeLeft) {
-            return { text: `COMEÇA EM ${timeLeft}`, disabled: true };
-        }
+        if (!canBet && timeLeft) return { text: `DISPONÍVEL EM ${timeLeft}`, disabled: true };
 
         switch(channel.status) {
             case 'live':
-                return { text: 'APOSTAR', disabled: !selectedBet };
+                return { text: isProcessing ? 'PROCESSANDO...' : 'CONFIRMAR APOSTA', disabled: !selectedBet || isProcessing };
             case 'scheduled':
             case 'imminent':
                 return { text: 'AGUARDANDO INÍCIO', disabled: true };
@@ -118,83 +127,103 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
             case 'cancelled':
                 return { text: 'JOGO ENCERRADO', disabled: true };
             default:
-                return { text: 'APOSTAS ENCERRADAS', disabled: true };
+                return { text: 'MERCADO FECHADO', disabled: true };
         }
     }
 
     const buttonState = getButtonState();
 
     return (
-        <Card className="casino-card">
-            <CardHeader>
+        <Card className="casino-card border-primary/10">
+            <CardHeader className="pb-3">
                 <div className="flex justify-between items-center">
-                    <CardTitle className="text-lg text-white">Faça sua Aposta</CardTitle>
+                    <CardTitle className="text-lg text-white font-black italic uppercase tracking-tighter">Palpites do Jogo</CardTitle>
                     {!canBet && timeLeft && (
-                        <Badge variant="outline" className="text-amber-400 border-amber-400/30 flex items-center gap-1 animate-pulse">
+                        <Badge variant="outline" className="text-amber-400 border-amber-400/30 flex items-center gap-1 animate-pulse font-mono">
                             <Clock className="h-3 w-3" /> {timeLeft}
                         </Badge>
                     )}
                 </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
                 <div className="grid grid-cols-3 gap-2">
                     <Button 
-                        variant={selectedBet === 'A' ? 'secondary' : 'outline'}
-                        className="flex-col h-16 border-white/20"
+                        variant={selectedBet === 'A' ? 'default' : 'outline'}
+                        className={cn(
+                            "flex-col h-20 border-white/10 transition-all rounded-xl",
+                            selectedBet === 'A' && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                        )}
                         onClick={() => setSelectedBet('A')}
                         disabled={!canBet}
                     >
-                        <span className="truncate w-full text-center px-1">{channel?.playerA.name || 'Jogador A'}</span>
-                        <span className={cn("font-bold text-primary", updatedOdd === 'A' && 'odds-update-flash')}>ODD {channel?.odds.A.toFixed(2) ?? "1.00"}</span>
+                        <span className="text-[10px] uppercase font-black opacity-60 truncate w-full text-center px-1 mb-1">{channel?.playerA.name || 'Jogador A'}</span>
+                        <span className={cn("text-xl font-black italic text-primary", updatedOdd === 'A' && 'odds-update-flash')}>@{channel?.odds.A.toFixed(2) ?? "1.00"}</span>
                     </Button>
                     <Button 
-                        variant={selectedBet === 'EMPATE' ? 'secondary' : 'outline'}
-                        className="flex-col h-16 border-white/20"
+                        variant={selectedBet === 'EMPATE' ? 'default' : 'outline'}
+                        className={cn(
+                            "flex-col h-20 border-white/10 transition-all rounded-xl",
+                            selectedBet === 'EMPATE' && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                        )}
                         onClick={() => setSelectedBet('EMPATE')}
                          disabled={!canBet}
                     >
-                        <span>Empate</span>
-                        <span className={cn("font-bold text-primary", updatedOdd === 'D' && 'odds-update-flash')}>ODD {channel?.odds.D.toFixed(2) ?? "1.00"}</span>
+                        <span className="text-[10px] uppercase font-black opacity-60 mb-1">Empate</span>
+                        <span className={cn("text-xl font-black italic text-primary", updatedOdd === 'D' && 'odds-update-flash')}>@{channel?.odds.D.toFixed(2) ?? "1.00"}</span>
                     </Button>
                     <Button 
-                        variant={selectedBet === 'B' ? 'secondary' : 'outline'}
-                        className="flex-col h-16 border-white/20"
+                        variant={selectedBet === 'B' ? 'default' : 'outline'}
+                        className={cn(
+                            "flex-col h-20 border-white/10 transition-all rounded-xl",
+                            selectedBet === 'B' && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                        )}
                         onClick={() => setSelectedBet('B')}
                          disabled={!canBet}
                     >
-                        <span className="truncate w-full text-center px-1">{channel?.playerB.name || 'Jogador B'}</span>
-                        <span className={cn("font-bold text-primary", updatedOdd === 'B' && 'odds-update-flash')}>ODD {channel?.odds.B.toFixed(2) ?? "1.00"}</span>
+                        <span className="text-[10px] uppercase font-black opacity-60 truncate w-full text-center px-1 mb-1">{channel?.playerB.name || 'Jogador B'}</span>
+                        <span className={cn("text-xl font-black italic text-primary", updatedOdd === 'B' && 'odds-update-flash')}>@{channel?.odds.B.toFixed(2) ?? "1.00"}</span>
                     </Button>
                 </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="bet-amount" className="text-white/70">Valor da Aposta (R$)</Label>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="icon" className="h-12 w-12 border-white/20" onClick={() => handleAmountChange(-5)} disabled={!canBet}><Minus/></Button>
+
+                <div className="space-y-2">
+                    <Label htmlFor="bet-amount" className="text-white/70 text-[10px] uppercase font-bold tracking-widest ml-1">Valor do Bilhete (R$)</Label>
+                    <div className="flex items-center gap-3">
+                        <Button variant="outline" size="icon" className="h-12 w-12 border-white/10 rounded-xl" onClick={() => handleAmountChange(-5)} disabled={!canBet}><Minus/></Button>
                         <Input 
                             id="bet-amount"
                             type="number"
                             value={amount}
                             onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                            className="casino-input text-center font-bold text-2xl h-12"
+                            className="casino-input text-center font-black text-2xl h-12 rounded-xl"
                              disabled={!canBet}
                         />
-                         <Button variant="outline" size="icon" className="h-12 w-12 border-white/20" onClick={() => handleAmountChange(5)} disabled={!canBet}><Plus/></Button>
+                         <Button variant="outline" size="icon" className="h-12 w-12 border-white/10 rounded-xl" onClick={() => handleAmountChange(5)} disabled={!canBet}><Plus/></Button>
                     </div>
                 </div>
-                <Button 
-                    className={cn(
-                        "w-full h-14 text-lg transition-all",
-                        buttonState.disabled ? "bg-gray-800 text-gray-500 border border-white/5" : "casino-gold-button"
-                    )}
-                    onClick={handlePlaceBet}
-                    disabled={buttonState.disabled}
-                >
-                    {buttonState.text}
-                </Button>
-                {!canBet && channel && channel.status !== 'finished' && (
-                    <p className="text-[10px] text-center text-white/40 uppercase tracking-widest">
-                        Disponível a partir de {new Date(channel.scheduledAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
-                    </p>
+
+                <div className="pt-2">
+                    <Button 
+                        className={cn(
+                            "w-full h-16 text-lg font-black uppercase italic rounded-xl shadow-xl transition-all active:scale-95",
+                            buttonState.disabled ? "bg-gray-800 text-gray-500 border border-white/5" : "casino-gold-button lux-shine"
+                        )}
+                        onClick={handlePlaceBet}
+                        disabled={buttonState.disabled}
+                    >
+                        {buttonState.text}
+                    </Button>
+                </div>
+
+                {selectedBet && channel && (
+                    <div className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center gap-2">
+                            <CheckCircle2 className="text-primary h-4 w-4" />
+                            <span className="text-xs font-bold text-white uppercase">Retorno Potencial:</span>
+                        </div>
+                        <span className="text-lg font-black text-primary italic">
+                            R$ {(amount * (selectedBet === 'A' ? channel.odds.A : selectedBet === 'B' ? channel.odds.B : channel.odds.D)).toFixed(2)}
+                        </span>
+                    </div>
                 )}
             </CardContent>
         </Card>

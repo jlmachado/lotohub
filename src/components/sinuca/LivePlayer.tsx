@@ -9,14 +9,12 @@ interface LivePlayerProps {
     channelId: string;
 }
 
-// Helper to extract YouTube video ID from various URL formats
 const getYoutubeEmbedId = (url: string): string | null => {
     if (!url) return null;
     const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const match = url.match(regex);
     return match ? match[1] : null;
 };
-
 
 const ElapsedTime = ({ startedAt }: { startedAt: string | undefined }) => {
     const [elapsed, setElapsed] = useState<number | null>(null);
@@ -27,34 +25,30 @@ const ElapsedTime = ({ startedAt }: { startedAt: string | undefined }) => {
             return;
         }
 
-        // Calculate initial elapsed time
         const start = new Date(startedAt).getTime();
-        setElapsed(Math.floor((Date.now() - start) / (1000 * 60)));
+        setElapsed(Math.max(0, Math.floor((Date.now() - start) / (1000 * 60))));
 
         const interval = setInterval(() => {
             const now = Date.now();
             const start = new Date(startedAt).getTime();
-            setElapsed(Math.floor((now - start) / (1000 * 60)));
+            setElapsed(Math.max(0, Math.floor((now - start) / (1000 * 60))));
         }, 1000);
 
         return () => clearInterval(interval);
     }, [startedAt]);
 
-    if (elapsed === null || elapsed < 0) {
-        return null;
-    }
+    if (elapsed === null) return null;
 
     return (
-        <div className="viewer-count">
-            <Timer className="h-4 w-4" />
-            <span>{elapsed}'</span>
+        <div className="viewer-count border-primary/20">
+            <Timer className="h-3 w-3 text-primary" />
+            <span className="font-mono text-[10px] font-bold text-primary">{elapsed}'</span>
         </div>
     );
 }
 
-
 export const LivePlayer = ({ channelId }: LivePlayerProps) => {
-    const { snookerChannels, snookerPresence } = useAppContext();
+    const { snookerChannels, snookerPresence, snookerLiveConfig } = useAppContext();
     const [isMuted, setIsMuted] = useState(true);
 
     const channel = useMemo(() => 
@@ -71,56 +65,58 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
 
     if (!channel) {
         return (
-             <Card className="casino-card-glow relative overflow-hidden aspect-video flex items-center justify-center">
-                <p className="text-white/70">Canal não encontrado.</p>
+             <Card className="casino-card relative overflow-hidden aspect-video flex items-center justify-center border-dashed">
+                <p className="text-white/40 font-bold uppercase tracking-widest text-xs italic">Selecione um jogo para assistir</p>
              </Card>
         )
     }
 
+    const showBadge = snookerLiveConfig?.showLiveBadge && channel.status === 'live';
+
     return (
-        <Card className="casino-card-glow relative overflow-hidden">
-            <div className="absolute top-4 left-4 z-10 flex items-center gap-4">
-                {channel.status === 'live' && (
-                    <div className={cn("live-badge", channel.status === 'live' && "live-badge-pulsing")}>
+        <Card className="casino-card-glow relative overflow-hidden bg-black rounded-2xl group shadow-2xl">
+            {/* Overlays */}
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
+                {showBadge && (
+                    <div className="live-badge live-badge-pulsing shadow-xl shadow-red-600/20">
                         <span className="live-pulse"></span>
                         AO VIVO
                     </div>
                 )}
                 {channel.status === 'live' && <ElapsedTime startedAt={channel.startedAt} />}
                 <div className="viewer-count">
-                    <Eye className="h-4 w-4" />
-                    <span>{viewerCount.toLocaleString('pt-BR')}</span>
+                    <Eye className="h-3 w-3 text-white/70" />
+                    <span className="text-[10px] font-bold">{viewerCount.toLocaleString('pt-BR')}</span>
                 </div>
             </div>
 
-            <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-                <button onClick={() => setIsMuted(!isMuted)} className="player-control-btn">
-                    {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+            <div className="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <button onClick={() => setIsMuted(!isMuted)} className="player-control-btn h-9 w-9 bg-black/60">
+                    {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                 </button>
                  <button onClick={() => {
                     const iframe = document.getElementById('youtube-player') as HTMLIFrameElement;
-                    if (iframe && iframe.requestFullscreen) {
-                        iframe.requestFullscreen();
-                    }
-                 }} className="player-control-btn">
-                    <Maximize className="h-5 w-5" />
+                    if (iframe?.requestFullscreen) iframe.requestFullscreen();
+                 }} className="player-control-btn h-9 w-9 bg-black/60">
+                    <Maximize size={18} />
                 </button>
             </div>
             
-            <div className="aspect-video bg-black">
+            <div className="aspect-video bg-[#020617] relative">
                 {embedId ? (
                     <iframe
                         id="youtube-player"
                         className="w-full h-full"
-                        src={`https://www.youtube.com/embed/${embedId}?autoplay=1&mute=${isMuted ? 1 : 0}&controls=0&showinfo=0&rel=0&loop=1&playsinline=1&playlist=${embedId}`}
+                        src={`https://www.youtube.com/embed/${embedId}?autoplay=1&mute=${isMuted ? 1 : 0}&controls=0&showinfo=0&rel=0&loop=1&playsinline=1&playlist=${embedId}&modestbranding=1`}
                         title={channel.title}
                         frameBorder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowFullScreen>
                     </iframe>
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                        <p className="text-white/70">URL do vídeo inválida ou não configurada.</p>
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                        <div className="w-12 h-12 rounded-full border-2 border-white/10 animate-spin border-t-primary" />
+                        <p className="text-white/40 font-bold uppercase text-[10px] tracking-widest">Conectando ao Stream...</p>
                     </div>
                 )}
             </div>
