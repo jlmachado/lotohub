@@ -33,7 +33,6 @@ export default function AdminUsersPage() {
   }, []);
 
   const refreshData = () => {
-    // getUsers agora é síncrono
     setAllUsers(getUsers());
   };
 
@@ -56,13 +55,13 @@ export default function AdminUsersPage() {
 
   const handleToggleStatus = (user: User) => {
     const newStatus = user.status === 'ACTIVE' ? 'BLOCKED' : 'ACTIVE';
-    // upsertUser agora é síncrono
     upsertUser({ terminal: user.terminal, status: newStatus });
     logAdminAction({
       adminUser: 'admin',
       action: newStatus === 'ACTIVE' ? 'UNBLOCK_USER' : 'BLOCK_USER',
       terminal: user.terminal,
-      reason: 'Alteração manual via lista'
+      reason: 'Alteração manual via lista',
+      bancaId: user.bancaId
     });
     toast({ title: newStatus === 'ACTIVE' ? 'Usuário Desbloqueado' : 'Usuário Bloqueado' });
     refreshData();
@@ -71,13 +70,13 @@ export default function AdminUsersPage() {
   const handleResetPassword = (user: User) => {
     const newPass = prompt(`Digite a nova senha para o terminal ${user.terminal}:`, '1234');
     if (newPass && newPass.length >= 4) {
-      // upsertUser agora é síncrono
       upsertUser({ terminal: user.terminal, password: newPass });
       logAdminAction({
         adminUser: 'admin',
         action: 'RESET_PASSWORD',
         terminal: user.terminal,
-        reason: 'Reset via painel administrativo'
+        reason: 'Reset via painel administrativo',
+        bancaId: user.bancaId
       });
       toast({ title: 'Senha resetada com sucesso!' });
       refreshData();
@@ -92,7 +91,7 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Link href="/admin">
@@ -156,7 +155,6 @@ export default function AdminUsersPage() {
             onAdjustBalance={handleAdjustBalance}
           />
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between pt-4">
               <p className="text-sm text-muted-foreground">

@@ -65,7 +65,7 @@ export default function NewBancaPage() {
   };
 
   return (
-    <main className="p-4 md:p-8 max-w-4xl mx-auto">
+    <div className="space-y-6">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/admin/bancas">
           <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
@@ -152,6 +152,6 @@ export default function NewBancaPage() {
           </CardFooter>
         </Card>
       </form>
-    </main>
+    </div>
   );
 }

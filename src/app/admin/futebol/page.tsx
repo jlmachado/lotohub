@@ -41,7 +41,7 @@ export default function AdminFutebolDashboardPage() {
   const matchesCount = footballData?.matches?.length || 0;
 
   return (
-    <main className="p-4 md:p-8 space-y-8">
+    <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Dashboard Futebol</h1>
@@ -138,7 +138,7 @@ export default function AdminFutebolDashboardPage() {
           </CardFooter>
         </Card>
       </div>
-    </main>
+    </div>
   );
 }
 

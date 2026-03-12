@@ -62,7 +62,7 @@ export default function AdminBingoDashboardPage() {
   if (!mounted) return null;
 
   return (
-    <main className="p-4 md:p-8">
+    <div className="space-y-6">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/admin"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
         <h1 className="text-3xl font-bold">Dashboard do Bingo</h1>
@@ -153,6 +153,6 @@ export default function AdminBingoDashboardPage() {
               </CardContent>
           </Card>
       </div>
-    </main>
+    </div>
   );
 }

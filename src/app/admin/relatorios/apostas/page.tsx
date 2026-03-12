@@ -161,7 +161,7 @@ export default function RelatorioApostasPage() {
   };
 
   return (
-    <main className="p-4 md:p-8">
+    <div className="space-y-6">
       <h1 className="text-3xl font-black uppercase italic tracking-tighter mb-6">Relatório de Apostas</h1>
       
       <ReportKpis totalValue={totalValue} count={filtered.length} label="Apostas" />
@@ -235,6 +235,6 @@ export default function RelatorioApostasPage() {
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
