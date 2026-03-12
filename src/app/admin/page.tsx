@@ -14,6 +14,7 @@ import { getUsers } from '@/utils/usersStorage';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getRecentBets, getRecentPayouts } from '@/utils/adminRecentActivity';
 import { formatBRL } from '@/utils/currency';
+import { LedgerService } from '@/services/ledger-service';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -34,8 +35,13 @@ export default function AdminPage() {
     setUsers(getUsers());
   }, [router]);
 
+  // Bug fix: O totals deve usar o Ledger completo filtrado por contexto, 
+  // não apenas o context.ledger (que é o extrato pessoal do admin logado).
   const totals = useMemo(() => {
     if (!activeCtx) return null;
+    
+    const fullLedger = LedgerService.getEntries();
+    
     return getDashboardTotals({
       apostas: context.apostas,
       bingoTickets: context.bingoTickets,
@@ -43,7 +49,7 @@ export default function AdminPage() {
       footballBets: context.footballBets,
       userCommissions: [],
       users: users,
-      ledger: context.ledger
+      ledger: fullLedger
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
