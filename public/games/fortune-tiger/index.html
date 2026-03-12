@@ -2,37 +2,75 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fortune Tiger</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fortune Tiger - LotoHub</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="loading-overlay">
-        <div id="loading-content">
-            <div id="loading-logo-placeholder"></div>
-            <div class="spinner"></div>
-            <div id="loading-text">Carregando... 0%</div>
-        </div>
-        <div id="error-overlay" style="display: none;"></div>
-    </div>
+    <div id="app">
+        <!-- Background e Atmosfera -->
+        <div class="bg-overlay"></div>
+        
+        <!-- Header do Jogo -->
+        <header class="game-header">
+            <div class="logo-container">
+                <h1 class="game-title">FORTUNE<br><span>TIGER</span></h1>
+            </div>
+        </header>
 
-    <div id="game-container" class="hidden">
-        <div id="balance-container">
-            <span>Saldo: R$</span><span id="balance">1000.00</span>
-        </div>
-        <div id="reels-container"></div>
-        <div id="controls-container">
-            <button id="spin-button" class="control-button">GIRAR</button>
-            <button id="toggle-sound" class="control-button">Som: ON</button>
-        </div>
-         <div id="win-popup" class="hidden">
-            <span id="win-amount"></span>
-        </div>
-    </div>
+        <!-- Grade do Slot -->
+        <main class="slot-machine">
+            <div class="reels-container">
+                <div class="reel" id="reel-0"></div>
+                <div class="reel" id="reel-1"></div>
+                <div class="reel" id="reel-2"></div>
+                <!-- Linhas de Ganho (Visual) -->
+                <div class="win-lines"></div>
+            </div>
+        </main>
 
-    <script src="game.js"></script>
+        <!-- Banner de Ganhos -->
+        <div id="win-banner" class="win-banner hidden">
+            <div class="win-content">
+                <span class="win-label">GRANDE GANHO!</span>
+                <span id="win-value" class="win-amount">R$ 0,00</span>
+            </div>
+        </div>
+
+        <!-- Painel de Controle -->
+        <footer class="controls-panel">
+            <div class="info-row">
+                <div class="balance-box">
+                    <span class="label">SALDO</span>
+                    <span id="display-balance" class="value">R$ 1.000,00</span>
+                </div>
+                <div class="win-box">
+                    <span class="label">GANHO</span>
+                    <span id="display-last-win" class="value">R$ 0,00</span>
+                </div>
+            </div>
+
+            <div class="bet-row">
+                <div class="bet-adjust">
+                    <button id="btn-minus" class="adjust-btn">−</button>
+                    <div class="bet-display">
+                        <span class="label">APOSTA</span>
+                        <span id="display-bet" class="value">R$ 1,00</span>
+                    </div>
+                    <button id="btn-plus" class="adjust-btn">+</button>
+                </div>
+
+                <button id="spin-btn" class="spin-btn">
+                    <div class="spin-inner"></div>
+                </button>
+
+                <div class="auto-btn">
+                    <button id="btn-auto" class="adjust-btn">AUTO</button>
+                </div>
+            </div>
+        </footer>
+    </div>
+    <script src="script.js"></script>
 </body>
 </html>
