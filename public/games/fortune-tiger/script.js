@@ -1,201 +1,210 @@
-// --- CONFIGURAÇÕES DO JOGO ---
+/**
+ * @fileOverview Lógica Real do Fortune Tiger Slot Machine.
+ * Baseado no repositório de referência.
+ */
+
 const SYMBOLS = [
-    { id: 'wild', img: 'https://picsum.photos/seed/FT-wild/150/150', weight: 5, mult: 50 },
-    { id: 'gold', img: 'https://picsum.photos/seed/FT-gold/150/150', weight: 10, mult: 20 },
-    { id: 'envelope', img: 'https://picsum.photos/seed/FT-env/150/150', weight: 15, mult: 10 },
-    { id: 'bag', img: 'https://picsum.photos/seed/FT-bag/150/150', weight: 20, mult: 5 },
-    { id: 'fire', img: 'https://picsum.photos/seed/FT-fire/150/150', weight: 25, mult: 3 },
-    { id: 'orange', img: 'https://picsum.photos/seed/FT-ora/150/150', weight: 30, mult: 2 }
+    { id: 1, name: 'tiger', multiplier: 50, img: 'images/symbols/tiger.png' }, // WILD
+    { id: 2, name: 'gold_pot', multiplier: 20, img: 'images/symbols/gold_pot.png' },
+    { id: 3, name: 'coin_bag', multiplier: 10, img: 'images/symbols/coin_bag.png' },
+    { id: 4, name: 'red_envelope', multiplier: 5, img: 'images/symbols/red_envelope.png' },
+    { id: 5, name: 'firecrackers', multiplier: 3, img: 'images/symbols/firecrackers.png' },
+    { id: 6, name: 'orange', multiplier: 2, img: 'images/symbols/orange.png' }
 ];
 
 const PAY_LINES = [
-    [0, 0, 0], // Topo
-    [1, 1, 1], // Meio
-    [2, 2, 2], // Baixo
-    [0, 1, 2], // Diagonal Descendente
-    [2, 1, 0]  // Diagonal Ascendente
+    [0, 0, 0], // Top
+    [1, 1, 1], // Middle
+    [2, 2, 2], // Bottom
+    [0, 1, 2], // Diagonal 1
+    [2, 1, 0]  // Diagonal 2
 ];
 
-// --- ESTADO DO JOGO ---
 let balance = 1000.00;
-let currentBet = 10.00;
+let currentBet = 1.00;
 let isSpinning = false;
-let autoPlay = false;
+let isTurbo = false;
 
-// --- ELEMENTOS ---
-const reelsElements = [
-    document.getElementById('reel-0'),
-    document.getElementById('reel-1'),
-    document.getElementById('reel-2')
-];
+// Elements
+const balanceEl = document.getElementById('balance');
+const winEl = document.getElementById('last-win');
+const betEl = document.getElementById('bet-amount');
+const spinBtn = document.getElementById('spin-button');
+const turboBtn = document.getElementById('btn-turbo');
+const winPopup = document.getElementById('win-popup');
+const winValuePopup = document.getElementById('win-value');
 
-const spinBtn = document.getElementById('btn-spin');
-const balanceText = document.getElementById('balance-display');
-const betText = document.getElementById('bet-display');
-const winDisplay = document.getElementById('last-win-display');
-const winOverlay = document.getElementById('win-overlay');
-const winAmountText = document.getElementById('win-amount-display');
-
-// --- INICIALIZAÇÃO ---
+// Initialization
 function init() {
-    reelsElements.forEach(reel => {
-        for (let i = 0; i < 3; i++) {
-            const sym = getRandomSymbol();
-            const div = createSymbolElement(sym);
-            reel.appendChild(div);
-        }
-    });
+    setupReels();
     updateUI();
+    
+    document.getElementById('btn-plus').onclick = () => {
+        currentBet = Math.min(100, currentBet + 1);
+        updateUI();
+    };
+    
+    document.getElementById('btn-minus').onclick = () => {
+        currentBet = Math.max(1, currentBet - 1);
+        updateUI();
+    };
+    
+    turboBtn.onclick = () => {
+        isTurbo = !isTurbo;
+        turboBtn.classList.toggle('active', isTurbo);
+    };
+    
+    spinBtn.onclick = spin;
 }
 
-function getRandomSymbol() {
-    const totalWeight = SYMBOLS.reduce((acc, s) => acc + s.weight, 0);
-    let random = Math.random() * totalWeight;
-    for (const s of SYMBOLS) {
-        if (random < s.weight) return s;
-        random -= s.weight;
+function updateUI() {
+    balanceEl.textContent = `R$ ${balance.toFixed(2).replace('.', ',')}`;
+    betEl.textContent = `R$ ${currentBet.toFixed(2).replace('.', ',')}`;
+}
+
+function setupReels() {
+    for (let i = 0; i < 3; i++) {
+        const reel = document.querySelector(`#reel-${i} .reel-content`);
+        reel.innerHTML = '';
+        for (let j = 0; j < 3; j++) {
+            const sym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+            reel.appendChild(createSymbolElement(sym));
+        }
     }
-    return SYMBOLS[SYMBOLS.length - 1];
 }
 
-function createSymbolElement(symbol, isBlur = false) {
+function createSymbolElement(symbol) {
     const div = document.createElement('div');
-    div.className = `symbol ${isBlur ? 'blur' : ''}`;
+    div.className = 'symbol';
     div.dataset.id = symbol.id;
     const img = document.createElement('img');
     img.src = symbol.img;
+    img.alt = symbol.name;
+    // Fallback if image not found
+    img.onerror = () => {
+        div.style.background = '#ffd700';
+        div.style.color = '#000';
+        div.innerHTML = `<b>${symbol.name.charAt(0).toUpperCase()}</b>`;
+    };
     div.appendChild(img);
     return div;
 }
 
-function updateUI() {
-    balanceText.textContent = `R$ ${balance.toFixed(2).replace('.', ',')}`;
-    betText.textContent = `R$ ${currentBet.toFixed(2).replace('.', ',')}`;
-}
-
-// --- LÓGICA DE GIRO ---
 async function spin() {
     if (isSpinning || balance < currentBet) return;
-
+    
     isSpinning = true;
     balance -= currentBet;
-    winDisplay.textContent = 'R$ 0,00';
     updateUI();
-    winOverlay.classList.add('hidden');
-    spinBtn.classList.add('spinning');
-
-    // Limpar animações antigas
-    document.querySelectorAll('.symbol').forEach(s => s.classList.remove('symbol-win-anim'));
-
-    const spinResults = [];
-
-    // Animando cilindros
-    const spinPromises = reelsElements.map(async (reel, index) => {
-        const result = [];
-        // Delay sequencial de parada
-        await new Promise(res => setTimeout(res, index * 200));
-
-        // Simular giro (substituir símbolos rápido)
-        for (let i = 0; i < 15; i++) {
-            reel.prepend(createSymbolElement(getRandomSymbol(), true));
-            reel.lastChild.remove();
-            await new Promise(res => setTimeout(res, 50));
-        }
-
-        // Parada final
-        reel.innerHTML = '';
-        for (let i = 0; i < 3; i++) {
-            const sym = getRandomSymbol();
-            result.push(sym.id);
-            reel.appendChild(createSymbolElement(sym));
-        }
-        spinResults.push(result);
-    });
-
-    await Promise.all(spinPromises);
+    winEl.textContent = 'R$ 0,00';
     
-    checkWins(spinResults);
-    spinBtn.classList.remove('spinning');
+    const results = [];
+    const spinDuration = isTurbo ? 500 : 1500;
+    
+    // Start Animation
+    for (let i = 0; i < 3; i++) {
+        const reel = document.querySelector(`#reel-${i} .reel-content`);
+        const result = Array.from({length: 3}, () => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]);
+        results.push(result);
+        
+        animateReel(i, result, spinDuration + (i * 200));
+    }
+    
+    await new Promise(res => setTimeout(res, spinDuration + 600));
+    
+    checkWins(results);
     isSpinning = false;
+}
 
-    if (autoPlay) setTimeout(spin, 1500);
+function animateReel(index, finalSymbols, duration) {
+    const reel = document.querySelector(`#reel-${index} .reel-content`);
+    const startTime = performance.now();
+    
+    function update(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        if (progress < 1) {
+            // Random icons during spin for blur effect
+            if (Math.random() > 0.7) {
+                const tempSym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+                reel.prepend(createSymbolElement(tempSym));
+                if (reel.children.length > 5) reel.lastChild.remove();
+            }
+            requestAnimationFrame(update);
+        } else {
+            // Set final icons
+            reel.innerHTML = '';
+            finalSymbols.forEach(s => reel.appendChild(createSymbolElement(s)));
+        }
+    }
+    requestAnimationFrame(update);
 }
 
 function checkWins(results) {
-    // Matriz transposta para facilitar check de linhas
-    // results[coluna][linha]
     let totalWin = 0;
-    const winningSymbols = [];
+    const winningLines = [];
+
+    // Matrix result: results[column][row]
+    // We need results[row][column] for easier payline check
+    const matrix = [
+        [results[0][0], results[1][0], results[2][0]],
+        [results[0][1], results[1][1], results[2][1]],
+        [results[0][2], results[1][2], results[2][2]]
+    ];
 
     PAY_LINES.forEach((line, lineIndex) => {
-        const s1 = results[0][line[0]];
-        const s2 = results[1][line[1]];
-        const s3 = results[2][line[2]];
+        const [r1, r2, r3] = line;
+        const s1 = results[0][r1];
+        const s2 = results[1][r2];
+        const s3 = results[2][r3];
 
-        if (isMatch(s1, s2, s3)) {
-            const symConfig = SYMBOLS.find(s => s.id === (s1 === 'wild' ? (s2 === 'wild' ? s3 : s2) : s1));
-            const win = currentBet * (symConfig?.mult || 2);
-            totalWin += win;
+        // Wild check (id 1 is tiger)
+        const isWild = (s) => s.id === 1;
+        
+        let winningSymbol = null;
+        if (!isWild(s1)) winningSymbol = s1;
+        else if (!isWild(s2)) winningSymbol = s2;
+        else if (!isWild(s3)) winningSymbol = s3;
+        else winningSymbol = SYMBOLS[0]; // All wild!
+
+        const match1 = s1.id === winningSymbol.id || isWild(s1);
+        const match2 = s2.id === winningSymbol.id || isWild(s2);
+        const match3 = s3.id === winningSymbol.id || isWild(s3);
+
+        if (match1 && match2 && match3) {
+            const lineWin = currentBet * winningSymbol.multiplier;
+            totalWin += lineWin;
+            winningLines.push(line);
             
-            // Guardar posições para animar
-            winningSymbols.push({ col: 0, row: line[0] });
-            winningSymbols.push({ col: 1, row: line[1] });
-            winningSymbols.push({ col: 2, row: line[2] });
+            // Visual highlight
+            highlightWinningLine(line);
         }
     });
 
     if (totalWin > 0) {
         balance += totalWin;
-        winDisplay.textContent = `R$ ${totalWin.toFixed(2).replace('.', ',')}`;
-        showWin(totalWin, winningSymbols);
+        updateUI();
+        winEl.textContent = `R$ ${totalWin.toFixed(2).replace('.', ',')}`;
+        showWinPopup(totalWin);
     }
 }
 
-function isMatch(s1, s2, s3) {
-    if (s1 === 'wild' && s2 === 'wild' && s3 === 'wild') return true;
-    
-    const nonWild = [s1, s2, s3].filter(s => s !== 'wild');
-    if (nonWild.length === 0) return true;
-    
-    const first = nonWild[0];
-    return nonWild.every(s => s === first);
-}
-
-function showWin(amount, positions) {
-    // Animar símbolos
-    positions.forEach(pos => {
-        const symbolEl = reelsElements[pos.col].children[pos.row];
-        symbolEl.classList.add('symbol-win-anim');
+function highlightWinningLine(line) {
+    line.forEach((row, col) => {
+        const reel = document.getElementById(`reel-${col}`);
+        const sym = reel.querySelectorAll('.symbol')[row];
+        sym.classList.add('winning');
+        setTimeout(() => sym.classList.remove('winning'), 2000);
     });
-
-    if (amount >= currentBet * 5) {
-        winAmountText.textContent = `R$ ${amount.toFixed(2).replace('.', ',')}`;
-        winOverlay.classList.remove('hidden');
-        setTimeout(() => winOverlay.classList.add('hidden'), 3000);
-    }
-    updateUI();
 }
 
-// --- LISTENERS ---
-spinBtn.addEventListener('click', spin);
+function showWinPopup(value) {
+    winValuePopup.textContent = `R$ ${value.toFixed(2).replace('.', ',')}`;
+    winPopup.classList.remove('hidden');
+    setTimeout(() => {
+        winPopup.classList.add('hidden');
+    }, 2500);
+}
 
-document.getElementById('btn-plus').addEventListener('click', () => {
-    if (isSpinning) return;
-    currentBet = Math.min(500, currentBet + 10);
-    updateUI();
-});
-
-document.getElementById('btn-minus').addEventListener('click', () => {
-    if (isSpinning) return;
-    currentBet = Math.max(1, currentBet - 10);
-    updateUI();
-});
-
-document.getElementById('btn-auto').addEventListener('click', (e) => {
-    autoPlay = !autoPlay;
-    e.target.style.color = autoPlay ? 'var(--gold)' : '#fff';
-    if (autoPlay && !isSpinning) spin();
-});
-
-// Iniciar
-init();
+window.onload = init;

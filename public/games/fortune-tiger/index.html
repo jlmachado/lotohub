@@ -3,75 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fortune Tiger Premium</title>
+    <title>Fortune Tiger Clone</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 <body>
     <div id="game-wrapper">
-        <!-- Cabeçalho com Logo e Multiplicador -->
-        <div class="game-header">
-            <div class="logo-area">
-                <img src="https://picsum.photos/seed/tiger-logo/200/100" alt="Fortune Tiger" class="game-logo" data-ai-hint="tiger logo">
-            </div>
-            <div class="multiplier-banner">
-                <span class="x10-text">x10</span>
+        <div class="header">
+            <div class="logo-container">
+                <img src="images/logo.png" alt="Fortune Tiger" class="game-logo" onerror="this.style.display='none'">
             </div>
         </div>
 
-        <!-- Slot Machine -->
-        <div class="slot-container">
-            <div class="reels-container" id="reels">
-                <div class="reel" id="reel-0"></div>
-                <div class="reel" id="reel-1"></div>
-                <div class="reel" id="reel-2"></div>
-            </div>
-            
-            <!-- Moldura Decorativa -->
-            <div class="slot-frame"></div>
-            
-            <!-- Overlay de Vitória -->
-            <div id="win-overlay" class="hidden">
-                <div class="win-content">
-                    <h2 class="win-title">GRANDE VITÓRIA!</h2>
-                    <p id="win-amount-display">R$ 0,00</p>
+        <div class="reels-container">
+            <div class="grid-overlay"></div>
+            <div class="reels">
+                <div class="reel" id="reel-0">
+                    <div class="reel-content"></div>
+                </div>
+                <div class="reel" id="reel-1">
+                    <div class="reel-content"></div>
+                </div>
+                <div class="reel" id="reel-2">
+                    <div class="reel-content"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Área de Controles -->
-        <div class="controls-area">
+        <div class="controls">
             <div class="info-bar">
-                <div class="info-box">
+                <div class="balance-container">
                     <span class="label">SALDO</span>
-                    <span id="balance-display" class="value">R$ 1.000,00</span>
+                    <span class="value" id="balance">R$ 1.000,00</span>
                 </div>
-                <div class="info-box highlight">
+                <div class="win-container">
                     <span class="label">GANHO</span>
-                    <span id="last-win-display" class="value">R$ 0,00</span>
+                    <span class="value" id="last-win">R$ 0,00</span>
                 </div>
-            </div>
-
-            <div class="bet-controls">
-                <button id="btn-minus" class="bet-btn">−</button>
-                <div class="bet-value-container">
-                    <span class="label">APOSTA</span>
-                    <span id="bet-display" class="value">R$ 10,00</span>
-                </div>
-                <button id="btn-plus" class="bet-btn">+</button>
             </div>
 
             <div class="action-buttons">
-                <button id="btn-auto" class="secondary-btn">AUTO</button>
-                <button id="btn-spin" class="main-spin-btn">
-                    <div class="spin-icon"></div>
-                </button>
-                <button id="btn-turbo" class="secondary-btn">TURBO</button>
+                <div class="bet-adjust">
+                    <button class="btn-adjust" id="btn-minus">-</button>
+                    <div class="current-bet">
+                        <span class="bet-label">APOSTA</span>
+                        <span class="bet-value" id="bet-amount">R$ 1,00</span>
+                    </div>
+                    <button class="btn-adjust" id="btn-plus">+</button>
+                </div>
+
+                <div class="spin-container">
+                    <button id="spin-button" class="btn-spin">
+                        <div class="spin-icon"></div>
+                    </button>
+                </div>
+
+                <div class="turbo-auto">
+                    <button class="btn-util" id="btn-turbo">
+                        <span class="icon">⚡</span>
+                        <span class="text">TURBO</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Popups -->
+        <div id="win-popup" class="popup hidden">
+            <div class="popup-content">
+                <h2 id="win-title">BIG WIN!</h2>
+                <p id="win-value">R$ 50,00</p>
             </div>
         </div>
     </div>
 
-    <!-- Assets Scripts -->
     <script src="script.js"></script>
 </body>
 </html>
