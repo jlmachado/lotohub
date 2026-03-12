@@ -155,6 +155,17 @@ export interface SnookerLiveConfig {
   updatedAt: string;
 }
 
+export interface SnookerChatMessage {
+  id: string;
+  channelId: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: string;
+  role: 'user' | 'admin';
+  deleted?: boolean;
+}
+
 export interface SnookerScoreboard {
   matchTitle: string;
   playerA: { name: string; score: number };
@@ -537,14 +548,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- BINGO METHODS ---
   const updateBingoSettings = (s: BingoSettings) => { setBingoSettings(s); setStorageItem('app:bingo_settings:v1', s); notify(); };
   const createBingoDraw = (d: Partial<BingoDraw>) => { 
+    // Important: Read current items from storage to avoid stale closure state in loops
+    const currentDraws = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
+    const nextNum = (currentDraws[0]?.drawNumber || 0) + 1;
+
     const newDraw: BingoDraw = { 
-      id: `draw-${Date.now()}`, drawNumber: (bingoDraws[0]?.drawNumber || 0) + 1, 
+      id: `draw-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`, 
+      drawNumber: nextNum, 
       status: 'scheduled', totalRevenue: 0, payoutTotal: 0, drawnNumbers: [], 
       winnersFound: {}, totalTickets: 0, bancaId: user?.bancaId || 'default',
       scheduledAt: d.scheduledAt!, ticketPrice: d.ticketPrice!, housePercent: d.housePercent!,
       prizeRules: d.prizeRules!
     };
-    const items = [newDraw, ...bingoDraws]; setStorageItem('app:bingo_draws:v1', items); notify(); 
+    const items = [newDraw, ...currentDraws]; 
+    setStorageItem('app:bingo_draws:v1', items); 
+    notify(); 
   };
   const startBingoDraw = (id: string) => {
     const items = bingoDraws.map(d => d.id === id ? { ...d, status: 'live', startedAt: new Date().toISOString() } : d);
