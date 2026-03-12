@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -26,9 +27,9 @@ export interface UserPermissions {
 export interface User {
   id: string;
   terminal: string;
-  email?: string;
+  email: string;
   password: string;
-  nome?: string;
+  nome: string;
   cpf?: string;
   cidade?: string;
   whatsapp?: string;
@@ -39,7 +40,7 @@ export interface User {
   cambistaConfig?: { loginFechamento: string; senhaFechamento: string; };
   saldo: number;
   bonus: number;
-  bancaId: string; // Obrigatório
+  bancaId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +68,7 @@ const seedInitialUsers = (): User[] => {
     {
       id: 'u-superadmin',
       terminal: '10001',
+      email: 'admin@lotohub.com',
       password: 'admin',
       nome: 'Diretoria LotoHub',
       status: 'ACTIVE',
@@ -79,53 +81,9 @@ const seedInitialUsers = (): User[] => {
       updatedAt: now
     },
     {
-      id: 'u-admin-matriz',
-      terminal: 'admin',
-      password: 'admin',
-      nome: 'Admin Matriz',
-      status: 'ACTIVE',
-      tipoUsuario: 'ADMIN',
-      permissoes: getDefaultPermissions('ADMIN'),
-      saldo: 0,
-      bonus: 0,
-      bancaId: 'default',
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: 'u-caixa-matriz',
-      terminal: '20002',
-      password: '1234',
-      nome: 'Caixa Matriz',
-      status: 'ACTIVE',
-      tipoUsuario: 'CAMBISTA',
-      permissoes: getDefaultPermissions('CAMBISTA'),
-      cambistaConfig: { loginFechamento: 'caixa', senhaFechamento: '1234' },
-      promotorConfig: { porcentagemComissao: 10 },
-      saldo: 5000,
-      bonus: 0,
-      bancaId: 'default',
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: 'u-promotor-01',
-      terminal: '30001',
-      password: '1234',
-      nome: 'Promotor Gold',
-      status: 'ACTIVE',
-      tipoUsuario: 'PROMOTOR',
-      permissoes: getDefaultPermissions('PROMOTOR'),
-      promotorConfig: { porcentagemComissao: 15 },
-      saldo: 1000,
-      bonus: 0,
-      bancaId: 'default',
-      createdAt: now,
-      updatedAt: now
-    },
-    {
       id: 'u-player-01',
       terminal: '12345',
+      email: 'jogador@demo.com',
       password: '1234',
       nome: 'Jogador Demo',
       status: 'ACTIVE',
@@ -149,15 +107,12 @@ export const getUsers = (bancaId?: string | null): User[] => {
   }
   
   if (bancaId && bancaId !== 'all') {
-    return users.filter(u => u.bancaId === bancaId || u.tipoUsuario === 'SUPER_ADMIN');
+    return users.filter(u => u.bancaId === bancaId);
   }
   
   return users;
 };
 
-/**
- * Gera o próximo terminal disponível para uma banca específica.
- */
 export const generateNextTerminalForBanca = (bancaId: string): string => {
   const bancas = getBancas();
   const banca = bancas.find(b => b.id === bancaId || b.subdomain === bancaId);
@@ -168,11 +123,10 @@ export const generateNextTerminalForBanca = (bancaId: string): string => {
   
   const terminalNumbers = bancaUsers
     .map(u => parseInt(u.terminal))
-    .filter(n => !isNaN(n) && n > banca.baseTerminal);
+    .filter(n => !isNaN(n) && n >= banca.baseTerminal);
 
   const highest = terminalNumbers.length > 0 ? Math.max(...terminalNumbers) : banca.baseTerminal;
   
-  // Garantir que não colidimos com terminais especiais
   let next = highest + 1;
   while (users.some(u => u.terminal === String(next))) {
     next++;
@@ -183,9 +137,8 @@ export const generateNextTerminalForBanca = (bancaId: string): string => {
 
 export const getUserByTerminal = (terminal: string): User | null => {
   const users = getStorageItem<User[]>(USERS_KEY, []);
-  if (users.length === 0) seedInitialUsers();
-  const all = getStorageItem<User[]>(USERS_KEY, []);
-  return all.find(u => u.terminal === terminal || u.email === terminal) || null;
+  if (users.length === 0) return seedInitialUsers().find(u => u.terminal === terminal) || null;
+  return users.find(u => u.terminal === terminal || u.email === terminal) || null;
 };
 
 export const saveUsers = (users: User[]) => {
@@ -198,14 +151,29 @@ export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
   const now = new Date().toISOString();
 
   if (index >= 0) {
-    allUsers[index] = { ...allUsers[index], ...userData, updatedAt: now };
+    const existing = allUsers[index];
+    const newRole = userData.tipoUsuario || existing.tipoUsuario;
+    
+    // Preparação automática de cargos se necessário
+    const updates: Partial<User> = { ...userData, updatedAt: now };
+    
+    if (newRole === 'PROMOTOR' && !existing.promotorConfig) {
+      updates.promotorConfig = { porcentagemComissao: 10 };
+    }
+    if (newRole === 'CAMBISTA') {
+      if (!existing.promotorConfig) updates.promotorConfig = { porcentagemComissao: 10 };
+      if (!existing.cambistaConfig) updates.cambistaConfig = { loginFechamento: `caixa${existing.terminal}`, senhaFechamento: '1234' };
+    }
+
+    allUsers[index] = { ...existing, ...updates, permissoes: getDefaultPermissions(newRole) };
   } else {
+    const type = userData.tipoUsuario || 'USUARIO';
     const newUser = {
       ...userData,
       id: userData.id || `u-${userData.terminal}-${Date.now()}`,
       status: userData.status || 'ACTIVE',
-      tipoUsuario: userData.tipoUsuario || 'USUARIO',
-      permissoes: userData.permissoes || getDefaultPermissions(userData.tipoUsuario || 'USUARIO'),
+      tipoUsuario: type,
+      permissoes: userData.permissoes || getDefaultPermissions(type),
       saldo: userData.saldo || 0,
       bonus: userData.bonus || 0,
       bancaId: userData.bancaId || 'default',
@@ -216,7 +184,6 @@ export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
   }
   saveUsers(allUsers);
   
-  // Sincroniza evento global
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('app:data-changed'));
   }
@@ -245,9 +212,9 @@ export const logAdminAction = (log: Omit<AdminLog, 'id' | 'at'>) => {
   setStorageItem(AUDIT_KEY, logs.slice(0, 1000));
 };
 
-export const getAuditLogs = (bancaId: string, terminal?: string): AdminLog[] => {
+export const getAuditLogs = (terminal?: string): AdminLog[] => {
   const logs = getStorageItem<AdminLog[]>(AUDIT_KEY, []);
-  return logs.filter(l => (!bancaId || l.bancaId === bancaId) && (!terminal || l.terminal === terminal));
+  return terminal ? logs.filter(l => l.terminal === terminal) : logs;
 };
 
 export const addPromoterCredit = (terminal: string, amount: number, reason: string) => {

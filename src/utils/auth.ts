@@ -1,8 +1,8 @@
+
 'use client';
 
 /**
  * @fileOverview Lógica de autenticação síncrona baseada em Storage Local.
- * Totalmente compatível com a arquitetura Multi-Banca.
  */
 
 import { User, getUserByTerminal, upsertUser, getDefaultPermissions, generateNextTerminalForBanca, getUsers } from './usersStorage';
@@ -21,7 +21,6 @@ const SESSION_KEY = 'app:session:v1';
 export const login = (identifier: string, password: string): { success: boolean; message: string; user?: User } => {
   if (typeof window === 'undefined') return { success: false, message: 'Ambiente inválido' };
 
-  // Busca o usuário globalmente (o terminal ou email deve ser único no sistema prototype)
   const user = getUserByTerminal(identifier);
 
   if (!user) {
@@ -45,8 +44,6 @@ export const login = (identifier: string, password: string): { success: boolean;
   };
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  
-  // Notifica o sistema da mudança de autenticação
   window.dispatchEvent(new Event('auth-change'));
 
   return { success: true, message: 'Logado com sucesso!', user };
@@ -54,20 +51,16 @@ export const login = (identifier: string, password: string): { success: boolean;
 
 export const register = (data: Omit<Partial<User>, 'terminal'>): { success: boolean; message: string; terminal?: string } => {
   if (!data.nome || !data.password || !data.email) {
-    return { success: false, message: 'Dados obrigatórios ausentes (Nome, E-mail e Senha).' };
+    return { success: false, message: 'Dados obrigatórios ausentes.' };
   }
 
-  // Verificar se e-mail já existe
   const allUsers = getUsers();
   if (allUsers.some(u => u.email === data.email)) {
     return { success: false, message: 'Este e-mail já está cadastrado.' };
   }
 
-  // Resolver banca atual
   const banca = resolveCurrentBanca();
   const bancaId = banca?.id || 'default';
-
-  // Gerar terminal automático
   const terminal = generateNextTerminalForBanca(bancaId);
 
   upsertUser({
