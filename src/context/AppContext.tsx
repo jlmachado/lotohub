@@ -22,7 +22,6 @@ import { ESPN_LEAGUE_CATALOG } from '@/utils/espn-league-catalog';
 import { INITIAL_GENERIC_LOTTERIES, INITIAL_JDB_LOTERIAS } from '@/constants/lottery-configs';
 import { MatchMapperService } from '@/services/match-mapper-service';
 import { filterProfanity } from '@/utils/profanity-filter';
-import { formatBRL } from '@/utils/currency';
 import { FootballSettlementService } from '@/services/football-settlement-service';
 import { FootballLiveEngine } from '@/services/football-live-engine';
 
@@ -238,12 +237,14 @@ export interface SnookerScoreboard {
 
 interface AppContextType {
   user: any;
+  allUsers: any[];
   isLoading: boolean;
   balance: number;
   bonus: number;
   terminal: string;
   activeBancaId: string;
-  ledger: any[];
+  userLedger: any[];
+  fullLedger: any[];
   banners: Banner[];
   popups: Popup[];
   news: NewsMessage[];
@@ -370,11 +371,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   
   const [user, setUser] = useState<any>(null);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [betSlip, setBetSlip] = useState<any[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
   const [news, setNews] = useState<NewsMessage[]>([]);
-  const [ledger, setLedger] = useState<any[]>([]);
+  const [userLedger, setUserLedger] = useState<any[]>([]);
+  const [fullLedger, setFullLedger] = useState<any[]>([]);
   const [apostas, setApostas] = useState<Aposta[]>([]);
   const [postedResults, setPostedResults] = useState<any[]>([]);
   const [jdbLoterias, setJdbLoterias] = useState<any[]>([]);
@@ -413,12 +416,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (session) {
       currentUser = getUserByTerminal(session.terminal);
       setUser(currentUser);
-      if (currentUser) setLedger(LedgerService.getByUser(currentUser.id));
+      if (currentUser) setUserLedger(LedgerService.getByUser(currentUser.id));
     } else {
       setUser(null);
-      setLedger([]);
+      setUserLedger([]);
     }
 
+    setAllUsers(getUsers());
+    setFullLedger(LedgerService.getEntries());
     setBanners(getStorageItem('app:banners:v1', []));
     setPopups(getStorageItem('app:popups:v1', []));
     setNews(getStorageItem('news_messages', []));
@@ -869,8 +874,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const deleteNews = useCallback((id: string) => { const current = getStorageItem<NewsMessage[]>('news_messages', []); setStorageItem('news_messages', current.filter(i => i.id !== id)); notify(); }, [notify]);
 
   const contextValue = useMemo(() => ({
-    user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
-    activeBancaId: user?.bancaId || 'default', ledger, banners, popups, news, apostas, postedResults, 
+    user, allUsers, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
+    activeBancaId: user?.bancaId || 'default', userLedger, fullLedger, banners, popups, news, apostas, postedResults, 
     jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
     isFullscreen, toggleFullscreen, casinoSettings, updateCasinoSettings,
     bingoSettings, bingoDraws, bingoTickets, bingoPayouts,
@@ -887,7 +892,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
     placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews
   }), [
-    user, isLoading, ledger, banners, popups, news, apostas, postedResults, jdbLoterias, genericLotteryConfigs, 
+    user, allUsers, isLoading, userLedger, fullLedger, banners, popups, news, apostas, postedResults, jdbLoterias, genericLotteryConfigs, 
     footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, bingoSettings, bingoDraws, 
     bingoTickets, bingoPayouts, snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, 
     snookerCashOutLog, snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, 

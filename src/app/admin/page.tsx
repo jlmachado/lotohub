@@ -21,7 +21,6 @@ export default function AdminPage() {
   const context = useAppContext();
   const [activeCtx, setActiveCtx] = useState<any>(null);
   const [currentBanca, setCurrentBanca] = useState<any>(null);
-  const [users, setUsers] = useState<any[]>([]);
 
   useEffect(() => {
     const ctx = getActiveContext();
@@ -32,15 +31,13 @@ export default function AdminPage() {
     
     setActiveCtx(ctx);
     setCurrentBanca(resolveCurrentBanca());
-    setUsers(getUsers());
   }, [router]);
 
-  // Bug fix: O totals deve usar o Ledger completo filtrado por contexto, 
-  // não apenas o context.ledger (que é o extrato pessoal do admin logado).
+  // Bug fix master: O dashboard agora usa o fullLedger e allUsers do context.
+  // Como o contextValue muda sempre que loadLocalData roda (após notify()),
+  // este useMemo é 100% reativo a qualquer aposta feita por qualquer perfil.
   const totals = useMemo(() => {
     if (!activeCtx) return null;
-    
-    const fullLedger = LedgerService.getEntries();
     
     return getDashboardTotals({
       apostas: context.apostas,
@@ -48,13 +45,13 @@ export default function AdminPage() {
       snookerBets: context.snookerBets,
       footballBets: context.footballBets,
       userCommissions: [],
-      users: users,
-      ledger: fullLedger
+      users: context.allUsers,
+      ledger: context.fullLedger
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
     });
-  }, [context, users, activeCtx]);
+  }, [context.fullLedger, context.allUsers, context.apostas, context.bingoTickets, context.snookerBets, context.footballBets, activeCtx]);
 
   const recentBets = useMemo(() => {
     if (!activeCtx) return [];
@@ -66,8 +63,8 @@ export default function AdminPage() {
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
-    }, users);
-  }, [context, activeCtx, users]);
+    }, context.allUsers);
+  }, [context.apostas, context.bingoTickets, context.snookerBets, context.footballBets, context.allUsers, activeCtx]);
 
   const recentPayouts = useMemo(() => {
     if (!activeCtx) return [];
@@ -79,8 +76,8 @@ export default function AdminPage() {
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
-    }, users);
-  }, [context, activeCtx, users]);
+    }, context.allUsers);
+  }, [context.apostas, context.bingoDraws, context.snookerBets, context.footballBets, context.allUsers, activeCtx]);
 
   const getUserTypeBadge = (type: string) => {
     switch (type) {
