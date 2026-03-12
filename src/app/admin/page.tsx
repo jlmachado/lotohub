@@ -31,8 +31,6 @@ export default function AdminPage() {
     
     setActiveCtx(ctx);
     setCurrentBanca(resolveCurrentBanca());
-    
-    // Busca usuários de forma síncrona
     setUsers(getUsers());
   }, [router]);
 
@@ -41,13 +39,11 @@ export default function AdminPage() {
     return getDashboardTotals({
       apostas: context.apostas,
       bingoTickets: context.bingoTickets,
-      bingoDraws: context.bingoDraws,
       snookerBets: context.snookerBets,
-      snookerFinancialHistory: context.snookerFinancialHistory,
       footballBets: context.footballBets,
-      userCommissions: context.userCommissions,
+      userCommissions: [],
       users: users,
-      ledger: context.ledger || []
+      ledger: context.ledger
     }, {
       mode: activeCtx.mode,
       bancaId: activeCtx.bancaId
@@ -126,7 +122,6 @@ export default function AdminPage() {
       <AdminKpiCards totals={totals} />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* TABELA DE ÚLTIMAS APOSTAS */}
         <Card className="lg:col-span-7 border-white/5 bg-card/50 overflow-hidden shadow-2xl">
           <CardHeader className="flex flex-row items-center justify-between bg-white/5 border-b border-white/5">
             <div className="flex items-center gap-2">
@@ -161,12 +156,7 @@ export default function AdminPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
-                          <div className='flex items-center gap-2'>
-                            <span className="text-[10px] font-black text-primary uppercase">{bet.modulo}</span>
-                            {bet.isDescarga && (
-                              <Badge className='bg-purple-600 text-white text-[7px] h-3 px-1 font-black italic'>DESCARGA</Badge>
-                            )}
-                          </div>
+                          <span className="text-[10px] font-black text-primary uppercase">{bet.modulo}</span>
                           <span className="text-[9px] text-muted-foreground truncate max-w-[120px]">{bet.descricao}</span>
                         </div>
                       </TableCell>
@@ -182,7 +172,6 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
-        {/* TABELA DE ÚLTIMOS PRÊMIOS */}
         <Card className="lg:col-span-5 border-white/5 bg-card/50 overflow-hidden shadow-2xl">
           <CardHeader className="flex flex-row items-center justify-between bg-white/5 border-b border-white/5">
             <div className="flex items-center gap-2">
@@ -215,10 +204,7 @@ export default function AdminPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className='flex flex-col gap-1 items-start'>
-                          <Badge variant="outline" className="text-[8px] font-black border-green-500/20 text-green-500 bg-green-500/5">{pay.modulo}</Badge>
-                          {pay.isDescarga && <Badge className='bg-purple-600 text-white text-[6px] h-3 px-1'>DESCARGA</Badge>}
-                        </div>
+                        <Badge variant="outline" className="text-[8px] font-black border-green-500/20 text-green-500 bg-green-500/5">{pay.modulo}</Badge>
                       </TableCell>
                       <TableCell className="text-right font-black text-green-500">
                         {formatBRL(pay.valor)}
@@ -232,7 +218,6 @@ export default function AdminPage() {
         </Card>
       </div>
 
-      {/* ÁREA DE RELATÓRIOS RÁPIDOS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-white/5 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer group" onClick={() => router.push('/admin/relatorios/apostas')}>
           <CardContent className="p-6 flex items-center justify-between">
@@ -275,31 +260,5 @@ export default function AdminPage() {
         </Card>
       </div>
     </main>
-  );
-}
-
-function KpiBox({ title, value, color, sub }: any) {
-  return (
-    <Card className="bg-slate-900 border-white/5 shadow-inner">
-      <CardContent className="p-4">
-        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{title}</p>
-        <p className={cn("text-2xl font-black italic tracking-tighter tabular-nums", color)}>{value}</p>
-        <p className="text-[8px] font-bold text-muted-foreground/50 uppercase">{sub}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function QuickLink({ href, icon: Icon, label, desc }: any) {
-  return (
-    <Link href={href}>
-      <div className="p-4 rounded-xl bg-black/30 border border-white/5 hover:border-primary/30 transition-all group flex flex-col gap-2">
-        <Icon className="h-5 w-5 text-primary group-hover:scale-110 transition-transform" />
-        <div>
-          <p className="text-xs font-black text-white uppercase italic">{label}</p>
-          <p className="text-[9px] text-muted-foreground font-bold uppercase">{desc}</p>
-        </div>
-      </div>
-    </Link>
   );
 }

@@ -1,8 +1,8 @@
-
 'use client';
 
 /**
  * @fileOverview Persistência de Usuários via LocalStorage com Seeding Automático Síncrono.
+ * Suporta Multi-Banca.
  */
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
@@ -37,7 +37,7 @@ export interface User {
   cambistaConfig?: { loginFechamento: string; senhaFechamento: string; };
   saldo: number;
   bonus: number;
-  bancaId?: string;
+  bancaId: string; // Obrigatório
   createdAt: string;
   updatedAt: string;
 }
@@ -63,7 +63,7 @@ const seedInitialUsers = (): User[] => {
   const now = new Date().toISOString();
   const initialUsers: User[] = [
     {
-      id: 'u-10001',
+      id: 'u-superadmin',
       terminal: '10001',
       password: 'admin',
       nome: 'Diretoria LotoHub',
@@ -80,7 +80,7 @@ const seedInitialUsers = (): User[] => {
       id: 'u-20002',
       terminal: '20002',
       password: '1234',
-      nome: 'Caixa Central',
+      nome: 'Caixa Matriz',
       status: 'ACTIVE',
       tipoUsuario: 'CAMBISTA',
       permissoes: getDefaultPermissions('CAMBISTA'),
@@ -91,52 +91,30 @@ const seedInitialUsers = (): User[] => {
       bancaId: 'default',
       createdAt: now,
       updatedAt: now
-    },
-    {
-      id: 'u-30003',
-      terminal: '30003',
-      password: '1234',
-      nome: 'Promotor Gold',
-      status: 'ACTIVE',
-      tipoUsuario: 'PROMOTOR',
-      permissoes: getDefaultPermissions('PROMOTOR'),
-      promotorConfig: { porcentagemComissao: 15 },
-      saldo: 1000,
-      bonus: 500,
-      bancaId: 'default',
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: 'u-40004',
-      terminal: '40004',
-      password: '1234',
-      nome: 'Jogador Teste',
-      status: 'ACTIVE',
-      tipoUsuario: 'USUARIO',
-      permissoes: getDefaultPermissions('USUARIO'),
-      saldo: 100,
-      bonus: 50,
-      bancaId: 'default',
-      createdAt: now,
-      updatedAt: now
     }
   ];
   setStorageItem(USERS_KEY, initialUsers);
   return initialUsers;
 };
 
-export const getUsers = (): User[] => {
+export const getUsers = (bancaId?: string | null): User[] => {
   const users = getStorageItem<User[]>(USERS_KEY, []);
   if (users.length === 0) {
     return seedInitialUsers();
   }
+  
+  if (bancaId) {
+    return users.filter(u => u.bancaId === bancaId || u.tipoUsuario === 'SUPER_ADMIN');
+  }
+  
   return users;
 };
 
 export const getUserByTerminal = (terminal: string): User | null => {
-  const users = getUsers();
-  return users.find(u => u.terminal === terminal || u.email === terminal) || null;
+  const users = getStorageItem<User[]>(USERS_KEY, []);
+  if (users.length === 0) seedInitialUsers();
+  const all = getStorageItem<User[]>(USERS_KEY, []);
+  return all.find(u => u.terminal === terminal || u.email === terminal) || null;
 };
 
 export const saveUsers = (users: User[]) => {
@@ -144,12 +122,12 @@ export const saveUsers = (users: User[]) => {
 };
 
 export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
-  const users = getUsers();
-  const index = users.findIndex(u => u.terminal === userData.terminal);
+  const allUsers = getStorageItem<User[]>(USERS_KEY, []);
+  const index = allUsers.findIndex(u => u.terminal === userData.terminal);
   const now = new Date().toISOString();
 
   if (index >= 0) {
-    users[index] = { ...users[index], ...userData, updatedAt: now };
+    allUsers[index] = { ...allUsers[index], ...userData, updatedAt: now };
   } else {
     const newUser = {
       ...userData,
@@ -159,12 +137,13 @@ export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
       permissoes: userData.permissoes || getDefaultPermissions(userData.tipoUsuario || 'USUARIO'),
       saldo: userData.saldo || 0,
       bonus: userData.bonus || 0,
+      bancaId: userData.bancaId || 'default',
       createdAt: now,
       updatedAt: now
     } as User;
-    users.push(newUser);
+    allUsers.push(newUser);
   }
-  saveUsers(users);
+  saveUsers(allUsers);
 };
 
 export interface AdminLog {
@@ -175,7 +154,7 @@ export interface AdminLog {
   delta?: number;
   reason?: string;
   at: string;
-  bancaId?: string;
+  bancaId: string;
 }
 
 const AUDIT_KEY = 'app:admin_audit:v1';
@@ -190,22 +169,22 @@ export const logAdminAction = (log: Omit<AdminLog, 'id' | 'at'>) => {
   setStorageItem(AUDIT_KEY, logs.slice(0, 1000));
 };
 
-export const getAuditLogs = (terminal?: string): AdminLog[] => {
+export const getAuditLogs = (bancaId: string, terminal?: string): AdminLog[] => {
   const logs = getStorageItem<AdminLog[]>(AUDIT_KEY, []);
-  if (terminal) return logs.filter(l => l.terminal === terminal);
-  return logs;
+  return logs.filter(l => l.bancaId === bancaId && (!terminal || l.terminal === terminal));
 };
 
-export const addPromoterCredit = (terminal: string, amount: number, reason: string) => {
+export const addPromoterCredit = (terminal: string, amount: number, reason: string, bancaId: string) => {
   const user = getUserByTerminal(terminal);
   if (user) {
-    upsertUser({ terminal, saldo: user.saldo + amount });
+    upsertUser({ terminal, saldo: user.saldo + amount, bancaId: user.bancaId });
     logAdminAction({
       adminUser: 'admin',
       action: 'CREDIT_ADDED',
       terminal,
       delta: amount,
-      reason
+      reason,
+      bancaId
     });
   }
 };

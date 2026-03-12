@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @fileOverview BetService - Motor local restaurado.
+ * @fileOverview BetService - Motor local Tenant-Aware.
  */
 
 import { User, upsertUser } from '@/utils/usersStorage';
@@ -19,6 +19,7 @@ export interface BetRequest {
 
 export class BetService {
   static processBet(user: User, request: BetRequest) {
+    // Resolve o contexto da banca do usuário para garantir isolamento
     const banca = resolveCurrentBanca();
     const bancaId = user.bancaId || banca?.id || 'default';
     
@@ -26,6 +27,7 @@ export class BetService {
     let newBonus = user.bonus;
     const initialTotal = user.saldo + user.bonus;
 
+    // Regra Cambista: Não consome saldo imediato para validação, mas registra no ledger
     if (user.tipoUsuario !== 'CAMBISTA') {
       if (newBonus >= request.valor) {
         newBonus -= request.valor;
@@ -36,10 +38,15 @@ export class BetService {
       }
     }
 
-    // Atualizar Usuário localmente
-    upsertUser({ terminal: user.terminal, saldo: newBalance, bonus: newBonus });
+    // Atualizar Usuário
+    upsertUser({ 
+      terminal: user.terminal, 
+      saldo: newBalance, 
+      bonus: newBonus, 
+      bancaId // Preserva o vínculo
+    });
 
-    // Registrar Ledger localmente
+    // Registrar no Ledger do Tenant
     LedgerService.addEntry({
       bancaId,
       userId: user.id,
@@ -54,7 +61,7 @@ export class BetService {
       description: request.descricao
     });
 
-    // Cálculo de Comissão síncrono
+    // Processamento de Comissão
     const percComissao = user.promotorConfig?.porcentagemComissao || 0;
     const valorComissao = (request.valor * percComissao) / 100;
 
@@ -68,7 +75,7 @@ export class BetService {
         type: 'COMMISSION_EARNED',
         amount: valorComissao,
         balanceBefore: newBalance + newBonus,
-        balanceAfter: newBalance + newBonus,
+        balanceAfter: newBalance + newBonus, // Comissão não afeta saldo imediato neste modelo simplificado
         referenceId: request.referenceId,
         description: `Comissão ${percComissao}% s/ venda ${request.modulo}`
       });

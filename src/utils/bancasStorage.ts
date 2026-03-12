@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview Persistência de Bancas via LocalStorage.
- * Restaurado para funcionamento síncrono local.
+ * Restaurado para funcionamento síncrono local com suporte a Multi-Tenant.
  */
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
@@ -40,6 +40,9 @@ export interface Banca {
   updatedAt: string;
 }
 
+/**
+ * Contexto de navegação administrativa
+ */
 export interface BancaContext {
   mode: 'GLOBAL' | 'BANCA';
   bancaId: string | null;
@@ -53,10 +56,9 @@ const CURRENT_BANCA_KEY = 'app:current_banca:v1';
 export const getBancas = (): Banca[] => {
   const bancas = getStorageItem<Banca[]>(BANCAS_KEY, []);
   if (bancas.length === 0) {
-    // Initial default banca if none exists
     const defaultBanca: Banca = {
       id: 'default',
-      subdomain: 'default',
+      subdomain: 'matriz',
       nome: 'LotoHub Matriz',
       adminLogin: 'admin',
       adminPassword: 'password',
@@ -112,11 +114,13 @@ export const upsertBanca = (bancaData: Partial<Banca> & { subdomain: string }) =
     bancas.push(newBanca);
   }
   saveBancas(bancas);
+  // Notifica o sistema de que as bancas mudaram (importante para o seletor)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('app:data-changed'));
+  }
 };
 
-export const ensureDefaultBanca = () => {
-  getBancas();
-};
+// --- Gestão de Contexto ---
 
 export const getCurrentBancaContext = (): BancaContext | null => {
   return getStorageItem<BancaContext | null>(CURRENT_BANCA_KEY, null);

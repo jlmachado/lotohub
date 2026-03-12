@@ -30,6 +30,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setAuthorized(true);
 
     const ctx = getActiveContext();
+    // Se for SuperAdmin e não escolheu o contexto ainda, força seleção
     if (!ctx && user.tipoUsuario === 'SUPER_ADMIN' && pathname !== '/admin/select-banca') {
       router.push('/admin/select-banca');
     }

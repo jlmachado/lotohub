@@ -17,24 +17,23 @@ export const resolveCurrentBanca = (): Banca | null => {
   // 2. Tentar por contexto administrativo salvo
   const context = getCurrentBancaContext();
   
-  if (context?.mode === 'GLOBAL' && !bancaParam) return null;
-
-  const searchKey = bancaParam || context?.subdomain || context?.bancaId;
+  // Prioridade: Contexto Admin > Parâmetro URL
+  const searchKey = context?.subdomain || context?.bancaId || bancaParam;
 
   if (searchKey) {
     const bancas = getBancas();
     return bancas.find(b => b.subdomain === searchKey || b.id === searchKey) || null;
   }
 
+  // Se nada for encontrado, retorna null (Modo Master Global)
   return null;
 };
 
 export const getEnabledModules = (): BancaModulos => {
   const currentBanca = resolveCurrentBanca();
   
-  // Se estiver em modo GLOBAL real (não simulado por banca), todos os módulos estão ativos para o SUPER_ADMIN
-  const context = getCurrentBancaContext();
-  if (context?.mode === 'GLOBAL' || !currentBanca) {
+  // Se não há banca selecionada (Modo Global), todos os módulos aparecem
+  if (!currentBanca) {
     return {
       bingo: true,
       cassino: true,
