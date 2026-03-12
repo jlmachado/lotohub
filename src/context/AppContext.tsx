@@ -743,7 +743,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       // Processamento Live e Odds Dinâmicas
       const unified = allMatches.map(match => {
-        const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || []);
+        const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || [], match.id);
         const baseModel = MatchMapperService.transformEspnToBettable(match);
         const markets = FootballMarketsEngine.generateAllMarkets(probs);
         

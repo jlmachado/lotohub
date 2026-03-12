@@ -1,15 +1,9 @@
 /**
- * @fileOverview Motor de Precificação (Odds Engine) para Futebol.
- * Calcula probabilidades baseadas em dados reais da ESPN (Standings, Form, Goals).
+ * @fileOverview Motor de Precificação Avançado para Futebol.
+ * Calcula probabilidades baseadas em PPG (Pontos por Jogo), Eficiência e Variância de Mercado.
  */
 
 import { NormalizedESPNStanding } from '@/utils/espn-normalizer';
-
-export interface TeamStrength {
-  score: number;
-  expectedGoals: number;
-  formFactor: number;
-}
 
 export interface MatchProbabilities {
   homeWin: number;
@@ -19,95 +13,91 @@ export interface MatchProbabilities {
 }
 
 export class FootballOddsEngine {
-  // Pesos do Modelo (Configuráveis)
-  private static WEIGHTS = {
-    position: 0.20,
-    points: 0.20,
-    goalDiff: 0.20,
-    goalsFor: 0.15,
-    form: 0.25
-  };
-
-  private static HOME_ADVANTAGE_BOOST = 0.12; // +12% de chance para o mandante
-  private static MARGIN = 0.08; // Margem da casa (8%)
+  private static MARGIN = 0.07; // Margem da casa reduzida para 7% para odds mais competitivas
+  private static HOME_ADVANTAGE_BASE = 0.08; // Bônus base de 8% para o mandante
 
   /**
-   * Calcula a força técnica de um time com base nos standings da ESPN.
+   * Calcula um score de força (0.0 a 1.0) para um time.
    */
-  static calculateTeamStrength(teamId: string, standings: NormalizedESPNStanding[]): TeamStrength {
-    const teamStats = standings.find(s => s.teamId === teamId);
-    if (!teamStats) {
-      return { score: 0.5, expectedGoals: 1.2, formFactor: 1.0 };
-    }
+  private static getTeamPowerScore(teamId: string, standings: NormalizedESPNStanding[]): number {
+    const team = standings.find(s => s.teamId === teamId);
+    if (!team || team.stats.played === 0) return 0.5; // Força média para times sem dados
 
-    const totalTeams = standings.length;
-    
-    // Normalização de métricas (0 a 1)
-    const posScore = (totalTeams - teamStats.position + 1) / totalTeams;
-    const maxPoints = standings[0]?.stats.points || 1;
-    const pointsScore = teamStats.stats.points / maxPoints;
-    
-    // Gols e Saldo
-    const goalDiffScore = Math.max(0, Math.min(1, (teamStats.stats.goalsDiff + 30) / 60));
-    const goalsForScore = Math.min(1, teamStats.stats.goalsFor / (teamStats.stats.played * 2.5));
+    // 1. Pontos por Jogo (PPG) - Peso 40%
+    const ppg = team.stats.points / team.stats.played;
+    const ppgScore = ppg / 3.0; // Max 3.0
 
-    // Força Final Ponderada
-    const score = (
-      (posScore * this.WEIGHTS.position) +
-      (pointsScore * this.WEIGHTS.points) +
-      (goalDiffScore * this.WEIGHTS.goalDiff) +
-      (goalsForScore * this.WEIGHTS.goalsFor)
-    ) / (1 - this.WEIGHTS.form); // A forma será somada depois
+    // 2. Saldo de Gols Relativo - Peso 30%
+    const goalsDiffPerGame = team.stats.goalsDiff / team.stats.played;
+    const gdScore = Math.max(0, Math.min(1, (goalsDiffPerGame + 2) / 4)); // Normaliza de -2 a +2 para 0 a 1
 
-    // Expectativa de gols por jogo (Simplificado)
-    const avgGoals = teamStats.stats.goalsFor / Math.max(1, teamStats.stats.played);
+    // 3. Aproveitamento de Vitórias - Peso 30%
+    const winRate = team.stats.wins / team.stats.played;
 
-    return {
-      score,
-      expectedGoals: avgGoals,
-      formFactor: 1.0 // Em uma versão futura, calcularíamos a string de forma "WWDLD"
-    };
+    return (ppgScore * 0.4) + (gdScore * 0.3) + (winRate * 0.3);
   }
 
   /**
-   * Gera probabilidades para o mercado 1X2.
+   * Calcula as probabilidades de um confronto com variância natural.
    */
   static calculateMatchProbabilities(
     homeTeamId: string,
     awayTeamId: string,
-    standings: NormalizedESPNStanding[]
+    standings: NormalizedESPNStanding[],
+    matchId: string // Usado para gerar variância única
   ): MatchProbabilities {
-    const home = this.calculateTeamStrength(homeTeamId, standings);
-    const away = this.calculateTeamStrength(awayTeamId, standings);
+    const homePower = this.getTeamPowerScore(homeTeamId, standings);
+    const awayPower = this.getTeamPowerScore(awayTeamId, standings);
 
-    // Diferença de força
-    let homeProb = 0.33 + (home.score - away.score);
-    let awayProb = 0.33 + (away.score - home.score);
-    
-    // Ajuste de Mando de Campo
-    homeProb += this.HOME_ADVANTAGE_BOOST;
-    awayProb -= (this.HOME_ADVANTAGE_BOOST / 2);
+    // Diferença base de força
+    let diff = homePower - awayPower;
 
-    // Garantir limites e normalizar
-    homeProb = Math.max(0.1, Math.min(0.85, homeProb));
-    awayProb = Math.max(0.1, Math.min(0.85, awayProb));
+    // Aplicar Mando de Campo
+    let homeProb = 0.37 + (diff * 0.5) + this.HOME_ADVANTAGE_BASE;
+    let awayProb = 0.33 - (diff * 0.5) - (this.HOME_ADVANTAGE_BASE / 2);
+
+    // Cálculo dinâmico de Empate (Mais provável em jogos equilibrados)
+    // Se a diferença for 0, empate é ~30%. Se a diferença for gigante, empate cai para ~15%.
+    const drawBase = 0.30 - (Math.abs(diff) * 0.25);
     
-    const drawProb = 1 - homeProb - awayProb;
+    // Injetar Pequena Variância (Jitter) para evitar odds idênticas entre jogos diferentes
+    // Usa o ID da partida para gerar um deslocamento determinístico mas único
+    const seed = matchId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const jitter = ((seed % 100) / 2000) - 0.005; // Variância de +/- 0.25%
+
+    homeProb += jitter;
+    awayProb -= jitter;
+
+    // Normalização Final
+    const total = homeProb + awayProb + drawBase;
+    const finalHome = homeProb / total;
+    const finalAway = awayProb / total;
+    const finalDraw = drawBase / total;
+
+    // Estimativa de Gols (Média da liga + ajuste de força)
+    const avgLeagueGoals = 2.6;
+    const expectedGoals = avgLeagueGoals + (homePower + awayPower - 1.0);
 
     return {
-      homeWin: homeProb,
-      draw: drawProb,
-      awayWin: awayProb,
-      expectedTotalGoals: (home.expectedGoals + away.expectedGoals)
+      homeWin: Math.max(0.05, finalHome),
+      draw: Math.max(0.05, finalDraw),
+      awayWin: Math.max(0.05, finalAway),
+      expectedTotalGoals: expectedGoals
     };
   }
 
   /**
-   * Converte probabilidade em Odd Decimal com margem.
+   * Converte probabilidade real em Odd Decimal com aplicação de margem.
    */
   static probToOdd(prob: number): number {
     if (prob <= 0) return 100.0;
-    const odd = 1 / (prob * (1 + this.MARGIN));
-    return parseFloat(Math.max(1.05, Math.min(50, odd)).toFixed(2));
+    
+    // Aplica a margem sobre a odd justa
+    const fairOdd = 1 / prob;
+    const limitedOdd = fairOdd / (1 + this.MARGIN);
+    
+    // Arredondamento profissional (2 casas decimais)
+    // Limites: Mínimo 1.01, Máximo 50.0 para evitar absurdos
+    return parseFloat(Math.max(1.01, Math.min(50, limitedOdd)).toFixed(2));
   }
 }

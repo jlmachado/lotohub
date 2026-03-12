@@ -1,6 +1,6 @@
 /**
- * @fileOverview Gerador de Mercados de Aposta Profissional.
- * Cria mercados secundários (Over/Under, Ambas Marcam, Dupla Chance) a partir da probabilidade base.
+ * @fileOverview Gerador de Mercados Secundários Proporcionais.
+ * Garante que todos os mercados (Dupla Chance, Over/Under) sigam a lógica do 1X2.
  */
 
 import { FootballOddsEngine, MatchProbabilities } from './football-odds-engine';
@@ -22,7 +22,7 @@ export class FootballMarketsEngine {
   static generateAllMarkets(probs: MatchProbabilities): BettingMarket[] {
     const markets: BettingMarket[] = [];
 
-    // 1. Vencedor 1X2
+    // 1. Vencedor 1X2 (Principal)
     markets.push({
       id: '1X2',
       name: 'Vencedor do Jogo',
@@ -34,7 +34,7 @@ export class FootballMarketsEngine {
       ]
     });
 
-    // 2. Dupla Chance
+    // 2. Dupla Chance (Soma de probabilidades)
     markets.push({
       id: 'DC',
       name: 'Dupla Chance',
@@ -46,9 +46,13 @@ export class FootballMarketsEngine {
       ]
     });
 
-    // 3. Over/Under 2.5
-    const expectedGoals = probs.expectedTotalGoals || 2.5;
-    const probUnder25 = Math.exp(-expectedGoals) * (1 + expectedGoals + (Math.pow(expectedGoals, 2) / 2));
+    // 3. Over/Under 2.5 (Modelo de Poisson Simplificado)
+    const lambda = probs.expectedTotalGoals;
+    // Probabilidade de 0, 1, 2 gols (Under 2.5)
+    const p0 = Math.exp(-lambda);
+    const p1 = lambda * p0;
+    const p2 = (Math.pow(lambda, 2) / 2) * p0;
+    const probUnder25 = p0 + p1 + p2;
     const probOver25 = 1 - probUnder25;
 
     markets.push({
@@ -61,8 +65,9 @@ export class FootballMarketsEngine {
       ]
     });
 
-    // 4. Ambas Marcam (BTTS)
-    const bttsProb = Math.min(0.75, (probs.expectedTotalGoals / 4.5) + 0.15);
+    // 4. Ambas Marcam (BTTS) - Correlacionado com a expectativa de gols
+    // Se a expectativa de gols é alta, a probabilidade de BTTS sobe.
+    const bttsProb = Math.min(0.78, (lambda / 4.0) + 0.15);
     markets.push({
       id: 'BTTS',
       name: 'Ambas Marcam',
