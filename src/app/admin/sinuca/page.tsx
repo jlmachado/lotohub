@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Cog, Gamepad2, ChevronLeft, Ticket, BarChart as BarChartIcon, Tv, MessageSquare, DollarSign, Users, TrendingUp, TrendingDown, Play, HandCoins } from 'lucide-react';
 import Link from 'next/link';
 import { useAppContext } from '@/context/AppContext';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Bar, BarChart, Line, LineChart, XAxis, YAxis, Tooltip } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -30,25 +30,28 @@ const StatCard = ({ title, value, icon: Icon, description }: { title: string; va
 export default function AdminSinucaDashboardPage() {
   const router = useRouter();
   const { snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog } = useAppContext();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   const dashboardStats = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     
-    const onlineUsers = Object.values(snookerPresence).reduce((sum, presence) => sum + (presence?.viewers?.length || 0), 0);
+    const onlineUsers = Object.values(snookerPresence || {}).reduce((sum, presence: any) => sum + (presence?.viewers?.length || 0), 0);
     
-    const liveGames = snookerChannels.filter(c => c.status === 'live').length;
+    const liveGames = (snookerChannels || []).filter(c => c.status === 'live').length;
     
-    const todayBets = snookerBets.filter(b => b.createdAt.startsWith(today));
+    const todayBets = (snookerBets || []).filter(b => b.createdAt.startsWith(today));
     const totalBetToday = todayBets.reduce((sum, b) => sum + b.amount, 0);
     
-    const todayHistory = snookerFinancialHistory.filter(h => h.settledAt.startsWith(today));
+    const todayHistory = (snookerFinancialHistory || []).filter(h => h.settledAt.startsWith(today));
     const profitToday = todayHistory.reduce((sum, h) => sum + h.houseProfit, 0);
 
-    const todayCashOuts = snookerCashOutLog.filter(c => c.createdAt.startsWith(today));
+    const todayCashOuts = (snookerCashOutLog || []).filter(c => c.createdAt.startsWith(today));
     const profitCashOutToday = todayCashOuts.reduce((sum, c) => sum + c.houseProfit, 0);
 
     const playerStats: Record<string, { totalBet: number; totalWon: number; bets: number; name: string }> = {};
-    snookerBets.filter(b => b.status !== 'open').forEach(bet => {
+    (snookerBets || []).filter(b => b.status !== 'open').forEach(bet => {
         if (!playerStats[bet.userId]) {
             playerStats[bet.userId] = { totalBet: 0, totalWon: 0, bets: 0, name: bet.userName };
         }
@@ -56,7 +59,7 @@ export default function AdminSinucaDashboardPage() {
         playerStats[bet.userId].totalBet += bet.amount;
         if (bet.status === 'won') {
              const oddsMap = { A: bet.oddsA, B: bet.oddsB, EMPATE: bet.oddsD };
-             const odds = oddsMap[bet.pick as keyof typeof oddsMap];
+             const odds = oddsMap[bet.pick as keyof typeof oddsMap] || 1;
              playerStats[bet.userId].totalWon += bet.amount * odds;
         }
     });
@@ -75,14 +78,14 @@ export default function AdminSinucaDashboardPage() {
       onlineUsers,
       liveGames,
       totalBetToday,
-      profitToday: profitToday + profitCashOutToday, // Sum of round profit and cashout profit
+      profitToday: profitToday + profitCashOutToday,
       topPlayers,
     }
   }, [snookerPresence, snookerChannels, snookerFinancialHistory, snookerBets, snookerCashOutLog]);
 
   const chartData = useMemo(() => {
-    return snookerFinancialHistory
-        .slice(0, 10) // get last 10 rounds
+    return (snookerFinancialHistory || [])
+        .slice(0, 10)
         .map(h => ({
             name: `Rodada ${h.roundNumber || ''}`,
             Arrecadado: h.totalPot,
@@ -101,6 +104,8 @@ export default function AdminSinucaDashboardPage() {
     { title: "Relatório de Cash Outs", icon: HandCoins, href: "/admin/sinuca/cash-out" },
   ]
 
+  if (!mounted) return null;
+
   return (
     <main className="p-4 md:p-8">
       <div className="flex items-center gap-4 mb-6">
@@ -108,7 +113,6 @@ export default function AdminSinucaDashboardPage() {
           <h1 className="text-3xl font-bold">Dashboard de Sinuca</h1>
       </div>
       
-      {/* STATS CARDS */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
           <StatCard title="Usuários Online" value={dashboardStats.onlineUsers.toLocaleString('pt-BR')} icon={Users} description="Espectadores em todos os canais" />
           <StatCard title="Jogos ao Vivo" value={dashboardStats.liveGames.toString()} icon={Play} description="Canais com status 'live'" />
@@ -116,7 +120,6 @@ export default function AdminSinucaDashboardPage() {
           <StatCard title="Lucro da Casa (Hoje)" value={`R$ ${dashboardStats.profitToday.toFixed(2).replace('.', ',')}`} icon={dashboardStats.profitToday >= 0 ? TrendingUp : TrendingDown} />
       </div>
 
-      {/* CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <Card>
               <CardHeader>
@@ -150,7 +153,6 @@ export default function AdminSinucaDashboardPage() {
           </Card>
       </div>
 
-      {/* BOTTOM SECTION */}
        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2">
               <CardHeader>
