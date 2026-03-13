@@ -4,6 +4,7 @@ import * as cheerio from 'cheerio';
 /**
  * @fileOverview Scraper Multiestado para PortalBrasil.net
  * Versão V3: Suporte a premiações variáveis (1-7, 1-10) e segmentação inteligente.
+ * Adicionado controle de timeout para evitar "Failed to fetch".
  */
 
 export const dynamic = 'force-dynamic';
@@ -27,12 +28,19 @@ const PORTAL_BRASIL_STATES = [
 
 async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
   try {
+    // Timeout individual de 10 segundos por estado
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     const response = await fetch(state.url, {
       next: { revalidate: 60 },
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
+      },
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) return [];
 
@@ -113,13 +121,12 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
 
     return results;
   } catch (error) {
-    console.error(`[JDB Scraper] Erro ao processar ${state.code}:`, error);
+    console.warn(`[JDB Scraper] Falha silenciosa em ${state.code} (Timeout ou Rede)`);
     return [];
   }
 }
 
 function parsePrizesFromText(text: string) {
-  // Versão V3: Identifica seções como "1º ao 7º" e "1º ao 10º" e escolhe a mais completa
   const sectionSplitRegex = /Resultados\s+do\s+1º\s+ao\s+(\d+)º/gi;
   const sections: { count: number, content: string }[] = [];
   let match;
@@ -142,7 +149,6 @@ function parsePrizesFromText(text: string) {
     })).filter(s => s.prizes.length >= 5);
 
     if (parsedSections.length > 0) {
-      // Prioridade: Pega o que tem mais prêmios válidos extraídos
       parsedSections.sort((a, b) => b.prizes.length - a.prizes.length);
       return parsedSections[0].prizes;
     }

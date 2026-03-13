@@ -2,13 +2,26 @@
  * @fileOverview Provider real que consome a API interna de scraping do Portal Brasil.
  */
 
-import { JDBNormalizedResult, JDBPrizeDetail } from "@/types/result-types";
+import { JDBNormalizedResult } from "@/types/result-types";
 
 export class PortalBrasilProvider {
   static async fetchResults(): Promise<JDBNormalizedResult[]> {
     try {
-      const response = await fetch('/api/resultados/jogodobicho');
-      if (!response.ok) throw new Error('Falha na resposta do Scraper');
+      // Adicionado AbortController para timeout de 25 segundos no client
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+      const response = await fetch('/api/resultados/jogodobicho', { 
+        signal: controller.signal,
+        cache: 'no-store' 
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn('[PortalBrasilProvider] Scraper retornou status:', response.status);
+        return [];
+      }
       
       const json = await response.json();
       if (!json.success || !json.data) return [];
@@ -37,9 +50,13 @@ export class PortalBrasilProvider {
           updatedAt: new Date().toISOString()
         } as JDBNormalizedResult;
       });
-    } catch (error) {
-      console.error('[PortalBrasilProvider] Error:', error);
-      throw error;
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('[PortalBrasilProvider] Timeout na requisição ao Scraper (25s)');
+      } else {
+        console.error('[PortalBrasilProvider] Falha de rede ou servidor:', error.message);
+      }
+      return []; // Retorna array vazio em vez de crashar
     }
   }
 }

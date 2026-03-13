@@ -32,6 +32,12 @@ export class ResultsSyncService {
       
       const imported = await PortalBrasilProvider.fetchResults();
       
+      // Se falhar o fetch, imported virá como array vazio
+      if (!imported || imported.length === 0) {
+        this.addLog('Nenhum resultado capturado pela fonte.', 'WARNING');
+        return { news: 0, updated: 0, errors: 0, totalProcessed: 0 };
+      }
+      
       const newResultsList = [...currentResults];
 
       imported.forEach(result => {
