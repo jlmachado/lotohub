@@ -15,10 +15,9 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
-import { ResultsSyncService } from '@/services/results-sync-service';
 import { ResultsAutoSyncService, AutoSyncConfig } from '@/services/results-auto-sync-service';
 import { JDBNormalizedResult } from '@/types/result-types';
-import { JDB_STATES, JDB_EXTRACTIONS } from '@/utils/jdb-constants';
+import { JDB_STATES } from '@/utils/jdb-constants';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,7 +34,6 @@ export default function AdminJDBResultsProfessionalPage() {
   const [selectedResult, setSelectedResult] = useState<JDBNormalizedResult | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   
-  // Auto Sync States
   const [autoSyncCfg, setAutoSyncCfg] = useState<AutoSyncConfig>(ResultsAutoSyncService.getConfig());
 
   useEffect(() => {
@@ -73,11 +71,11 @@ export default function AdminJDBResultsProfessionalPage() {
       if (summary) {
         toast({ 
           title: "Sincronização Finalizada", 
-          description: `${summary.news} novos resultados capturados em ${summary.totalProcessed} verificações.` 
+          description: `${summary.news} resultados publicados automaticamente.` 
         });
       }
     } catch (e) {
-      toast({ variant: "destructive", title: "Erro no Sync", description: "Falha ao conectar com o provedor." });
+      toast({ variant: "destructive", title: "Erro no Sync" });
     } finally {
       setIsSyncing(false);
     }
@@ -85,40 +83,44 @@ export default function AdminJDBResultsProfessionalPage() {
 
   const handleToggleAutoSync = (enabled: boolean) => {
     ResultsAutoSyncService.updateConfig({ enabled });
-    toast({ 
-      title: enabled ? "Automação Ativada" : "Automação Desativada",
-      description: enabled ? "O sistema verificará novos resultados periodicamente." : "As atualizações agora dependem de comando manual."
-    });
+    toast({ title: enabled ? "Automação Ativada" : "Automação Desativada" });
   };
 
   const handleExportResults = () => {
     if (filteredResults.length === 0) {
-      toast({ variant: "destructive", title: "Nada para exportar", description: "Nenhum resultado encontrado com os filtros atuais." });
+      toast({ variant: "destructive", title: "Nada para exportar" });
       return;
     }
 
-    const exportData = filteredResults.map(res => ({
-      'Data': new Date(res.date + 'T12:00:00').toLocaleDateString('pt-BR'),
-      'Hora': res.time,
-      'Estado': res.stateName,
-      'Banca/Fonte': res.sourceName,
-      'Extração': res.extractionName,
-      'Status': res.status,
-      '1º prêmio': `${res.prizes[0]?.milhar || ''} - Gr. ${res.prizes[0]?.grupo || ''} - ${res.prizes[0]?.animal || ''}`,
-      '2º prêmio': `${res.prizes[1]?.milhar || ''} - Gr. ${res.prizes[1]?.grupo || ''} - ${res.prizes[1]?.animal || ''}`,
-      '3º prêmio': `${res.prizes[2]?.milhar || ''} - Gr. ${res.prizes[2]?.grupo || ''} - ${res.prizes[2]?.animal || ''}`,
-      '4º prêmio': `${res.prizes[3]?.milhar || ''} - Gr. ${res.prizes[3]?.grupo || ''} - ${res.prizes[3]?.animal || ''}`,
-      '5º prêmio': `${res.prizes[4]?.milhar || ''} - Gr. ${res.prizes[4]?.grupo || ''} - ${res.prizes[4]?.animal || ''}`,
-      'Importado em': new Date(res.importedAt).toLocaleString('pt-BR')
-    }));
+    const exportData = filteredResults.map(res => {
+      const row: any = {
+        'Data': new Date(res.date + 'T12:00:00').toLocaleDateString('pt-BR'),
+        'Hora': res.time,
+        'Estado': res.stateName,
+        'Banca/Fonte': res.sourceName,
+        'Extração': res.extractionName,
+        'Status': res.status,
+      };
+      
+      // Adiciona colunas para até 10 prêmios
+      for (let i = 1; i <= 10; i++) {
+        const p = res.prizes.find(p => p.position === i);
+        row[`${i}º prêmio`] = p ? `${p.milhar} - Gr. ${p.grupo} - ${p.animal}` : '';
+      }
+      
+      row['Importado em'] = new Date(res.importedAt).toLocaleString('pt-BR');
+      return row;
+    });
 
     const headers = [
       'Data', 'Hora', 'Estado', 'Banca/Fonte', 'Extração', 'Status', 
-      '1º prêmio', '2º prêmio', '3º prêmio', '4º prêmio', '5º prêmio', 'Importado em'
+      '1º prêmio', '2º prêmio', '3º prêmio', '4º prêmio', '5º prêmio',
+      '6º prêmio', '7º prêmio', '8º prêmio', '9º prêmio', '10º prêmio',
+      'Importado em'
     ];
 
     downloadCSV(`resultados_bicho_${dateFilter}.csv`, exportData, headers);
-    toast({ title: "Exportação concluída", description: "Arquivo CSV gerado com sucesso." });
+    toast({ title: "Exportação concluída" });
   };
 
   const nextRunMinutes = useMemo(() => {
@@ -132,36 +134,25 @@ export default function AdminJDBResultsProfessionalPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central de Extrações</h1>
-          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Gerenciamento Automatizado de Resultados Multi-Estado</p>
+          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Gestão de Resultados Reais • Auto-Publish Ativo</p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handleExportResults}
-            className="h-11 rounded-xl font-bold border-white/10 bg-white/5"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Exportar
+          <Button variant="outline" onClick={handleExportResults} className="h-11 rounded-xl font-bold border-white/10 bg-white/5">
+            <Download className="mr-2 h-4 w-4" /> Exportar
           </Button>
-          <Button 
-            variant="outline" 
-            onClick={handleManualSync} 
-            disabled={isSyncing}
-            className="h-11 rounded-xl font-bold border-white/10 bg-white/5"
-          >
+          <Button variant="outline" onClick={handleManualSync} disabled={isSyncing} className="h-11 rounded-xl font-bold border-white/10 bg-white/5">
             {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-            Sincronizar Hoje
+            Sincronizar Agora
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <StatCard title="Total no Dia" value={stats.total} icon={History} color="text-blue-400" />
-        <StatCard title="Aguardando" value={stats.pendentes} icon={AlertTriangle} color="text-amber-500" />
-        <StatCard title="Divergentes" value={stats.divergentes} icon={Info} color="text-red-500" />
         <StatCard title="Publicados" value={stats.publicados} icon={CheckCircle2} color="text-green-500" />
+        <StatCard title="Pendentes" value={stats.pendentes} icon={AlertTriangle} color="text-amber-500" />
+        <StatCard title="Divergentes" value={stats.divergentes} icon={Info} color="text-red-500" />
         
-        {/* Auto Sync Monitoring Card */}
         <Card className={cn(
           "border-primary/20 shadow-inner overflow-hidden relative",
           autoSyncCfg.enabled ? "bg-primary/5" : "bg-slate-900/50 grayscale opacity-70"
@@ -174,48 +165,35 @@ export default function AdminJDBResultsProfessionalPage() {
             <div className="flex items-center gap-2">
               <RefreshCw size={14} className={cn("text-primary", autoSyncCfg.status === 'running' && 'animate-spin')} />
               <p className="text-xs font-black text-white italic">
-                {autoSyncCfg.status === 'running' ? 'Sincronizando...' : autoSyncCfg.enabled ? `Próximo: ${nextRunMinutes}m` : 'Desativada'}
+                {autoSyncCfg.status === 'running' ? 'Sync...' : autoSyncCfg.enabled ? `${nextRunMinutes}m` : 'Off'}
               </p>
             </div>
-            <p className="text-[8px] text-muted-foreground uppercase font-bold mt-1">
-              Último: {autoSyncCfg.lastRunAt ? new Date(autoSyncCfg.lastRunAt).toLocaleTimeString('pt-BR') : '--:--'}
-            </p>
           </CardContent>
         </Card>
       </div>
 
       <Card className="border-white/10 bg-card/50">
         <CardHeader className="pb-3 border-b border-white/5">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data das Extrações</Label>
-                <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="h-10 bg-black/20 border-white/10" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Estado / Região</Label>
-                <Select value={stateFilter} onValueChange={setStateFilter}>
-                  <SelectTrigger className="h-10 bg-black/20 border-white/10">
-                    <SelectValue placeholder="Todos os Estados" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os Estados</SelectItem>
-                    {JDB_STATES.map(s => <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Busca Rápida</Label>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input 
-                    placeholder="Banca ou hora..." 
-                    className="pl-8 h-10 bg-black/20 border-white/10 text-xs" 
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                  />
-                </div>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data</Label>
+              <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="h-10 bg-black/20 border-white/10" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Estado</Label>
+              <Select value={stateFilter} onValueChange={setStateFilter}>
+                <SelectTrigger className="h-10 bg-black/20 border-white/10">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {JDB_STATES.map(s => <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Busca</Label>
+              <Input placeholder="Pesquisar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="h-10 bg-black/20 border-white/10 text-xs" />
             </div>
           </div>
         </CardHeader>
@@ -223,36 +201,29 @@ export default function AdminJDBResultsProfessionalPage() {
           <Table>
             <TableHeader className="bg-slate-950/50">
               <TableRow className="border-white/5 h-10">
-                <TableHead className="text-[10px] uppercase font-black px-4">Horário</TableHead>
+                <TableHead className="text-[10px] uppercase font-black px-4">Hora</TableHead>
                 <TableHead className="text-[10px] uppercase font-black">Estado / Banca</TableHead>
-                <TableHead className="text-[10px] uppercase font-black">Resultado (1º ao 5º)</TableHead>
+                <TableHead className="text-[10px] uppercase font-black">Prêmios</TableHead>
                 <TableHead className="text-[10px] uppercase font-black">Status</TableHead>
                 <TableHead className="text-[10px] uppercase font-black text-right px-4">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredResults.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic text-sm">
-                    Nenhum resultado capturado para estes filtros.
-                  </TableCell>
-                </TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum resultado.</TableCell></TableRow>
               ) : (
                 filteredResults.map(result => (
-                  <TableRow key={result.id} className="border-white/5 hover:bg-white/5 transition-colors group">
+                  <TableRow key={result.id} className="border-white/5 hover:bg-white/5 transition-colors">
                     <TableCell className="px-4 font-mono font-bold text-primary">{result.time}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-bold text-white uppercase italic">{result.extractionName}</span>
-                          <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-white/5 border-white/10">{result.stateCode}</Badge>
-                        </div>
-                        <span className="text-[8px] text-muted-foreground uppercase font-black tracking-widest">{result.sourceName}</span>
+                        <span className="text-[11px] font-bold text-white uppercase italic">{result.extractionName}</span>
+                        <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-white/5 border-white/10 w-fit">{result.stateCode}</Badge>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
-                        {result.prizes.slice(0, 5).map((p, i) => (
+                      <div className="flex gap-1 flex-wrap max-w-[250px]">
+                        {result.prizes.map((p, i) => (
                           <div key={i} className="flex flex-col items-center bg-black/20 border border-white/5 rounded px-1.5 py-0.5 min-w-[45px]">
                             <span className="text-[10px] font-black text-white font-mono">{p.milhar}</span>
                             <span className="text-[7px] font-bold text-primary uppercase">{p.animal}</span>
@@ -263,25 +234,13 @@ export default function AdminJDBResultsProfessionalPage() {
                     <TableCell>
                       <Badge variant="outline" className={cn(
                         "text-[8px] h-5 uppercase font-black",
-                        result.status === 'PUBLICADO' ? "bg-green-600/20 text-green-500 border-green-500/30" : 
-                        result.status === 'DIVERGENTE' ? "bg-red-600/20 text-red-500 border-red-500/30 animate-pulse" :
-                        "bg-amber-600/20 text-amber-500 border-amber-500/30"
+                        result.status === 'PUBLICADO' ? "bg-green-600/20 text-green-500 border-green-500/30" : "bg-amber-600/20 text-amber-500 border-amber-500/30"
                       )}>
                         {result.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right px-4 space-x-1">
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50" onClick={() => { setSelectedResult(result); setIsDetailOpen(true); }}><Eye size={14} /></Button>
-                      {result.status !== 'PUBLICADO' && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-green-500 hover:bg-green-500/10"
-                          onClick={() => publishJDBResult(result.id)}
-                        >
-                          <Send size={14} />
-                        </Button>
-                      )}
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteJDBResult(result.id)}><Trash2 size={14} /></Button>
                     </TableCell>
                   </TableRow>
@@ -296,27 +255,16 @@ export default function AdminJDBResultsProfessionalPage() {
         <DialogContent className="sm:max-w-2xl bg-[#0f172a] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-2xl font-black uppercase italic tracking-tighter">Detalhes da Extração</DialogTitle>
-            <DialogDescription className="text-xs font-bold text-muted-foreground uppercase">Auditoria de Dados Normalizados: {selectedResult?.stateName}</DialogDescription>
+            <DialogDescription className="text-xs font-bold text-muted-foreground uppercase">{selectedResult?.stateName} • {selectedResult?.extractionName}</DialogDescription>
           </DialogHeader>
           
           {selectedResult && (
             <div className="space-y-6 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                  <p className="text-[9px] uppercase font-black text-slate-500 mb-1">Identificador Único</p>
-                  <p className="font-mono text-[10px] text-primary">{selectedResult.id}</p>
-                </div>
-                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                  <p className="text-[9px] uppercase font-black text-slate-500 mb-1">Origem / Estado</p>
-                  <p className="text-sm font-bold text-white italic">{selectedResult.sourceName} • {selectedResult.stateName}</p>
-                </div>
-              </div>
-
               <div className="bg-black/30 p-4 rounded-2xl border border-white/10">
-                <h4 className="text-[10px] font-black uppercase text-primary tracking-widest mb-4">Escala de Prêmios (Oficial)</h4>
+                <h4 className="text-[10px] font-black uppercase text-primary tracking-widest mb-4">Prêmios ({selectedResult.prizes.length})</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {selectedResult.prizes.map((p, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                    <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-white/5 border border-white/5">
                       <span className="text-[10px] font-black text-slate-500">{p.position}º</span>
                       <div className="flex items-center gap-4">
                         <span className="font-mono text-lg font-black text-white">{p.milhar}</span>
@@ -329,24 +277,11 @@ export default function AdminJDBResultsProfessionalPage() {
                   ))}
                 </div>
               </div>
-
-              <div className="flex justify-between items-center text-[10px] font-bold text-muted-foreground uppercase">
-                <span>Capturado em: {new Date(selectedResult.importedAt).toLocaleString('pt-BR')}</span>
-                <span className="flex items-center gap-1"><Database size={10} /> Checksum: {selectedResult.checksum.substring(0, 12)}</span>
-              </div>
             </div>
           )}
 
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <DialogClose asChild><Button variant="outline" className="border-white/10">Fechar</Button></DialogClose>
-            {selectedResult?.status !== 'PUBLICADO' && (
-              <Button 
-                onClick={() => { publishJDBResult(selectedResult!.id); setIsDetailOpen(false); }} 
-                className="lux-shine font-black uppercase italic"
-              >
-                Confirmar e Publicar
-              </Button>
-            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -366,9 +301,6 @@ function StatCard({ title, value, icon: Icon, color }: any) {
           <p className="text-2xl font-black text-white italic tracking-tighter tabular-nums">{value}</p>
         </div>
       </CardContent>
-      <div className="absolute -right-2 -bottom-2 opacity-5">
-        <Icon size={64} />
-      </div>
     </Card>
   );
 }

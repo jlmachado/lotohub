@@ -3,8 +3,7 @@ import * as cheerio from 'cheerio';
 
 /**
  * @fileOverview Scraper Multiestado para PortalBrasil.net
- * Captura resultados de 13 regiões diferentes de forma paralela.
- * Parser robusto para diferentes formatos de heading por estado.
+ * Versão V3: Suporte a premiações variáveis (1-7, 1-10) e segmentação inteligente.
  */
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +40,6 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
     const $ = cheerio.load(html);
     const results: any[] = [];
 
-    // 1. Tentar extrair a data global da página
     let pageDate = new Date().toISOString().split('T')[0];
     const fullText = $('body').text();
     const dateMatch = fullText.match(/(\d{2})\/(\d{2})\/(\d{4})/) || fullText.match(/(\d{2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i);
@@ -61,8 +59,6 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
       }
     }
 
-    // 2. Percorrer Headings (h3 ou h2) que contêm o padrão de horário/extração
-    // O parser agora localiza o horário e limpa o título para achar o nome da banca/extração
     $('h3, h2').each((_, el) => {
       const title = $(el).text().trim();
       const timeMatch = title.match(/(\d{2})h(\d{2})/i);
@@ -70,7 +66,6 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
 
       const time = `${timeMatch[1]}:${timeMatch[2]}`;
       
-      // Tenta extrair o nome da banca/extração limpando o título
       let baseExtractionName = title
         .replace(/Resultado do Jogo do Bicho de Hoje/i, '')
         .replace(/Resultado da/i, '')
@@ -83,10 +78,8 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
         .replace(/São Paulo/gi, '')
         .trim();
 
-      // Se ficou vazio, usa o horário como nome
       if (!baseExtractionName) baseExtractionName = `Extração ${time}`;
 
-      // 3. Capturar todo o conteúdo até o próximo heading
       let contentText = "";
       let nextElem = $(el).next();
       while (nextElem.length > 0 && !['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(nextElem.get(0).tagName)) {
@@ -94,14 +87,11 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
         nextElem = nextElem.next();
       }
 
-      if (!contentText.trim() || contentText.includes("clique aqui para atualizar") || contentText.includes("Não há extrações")) return;
+      if (!contentText.trim() || contentText.includes("clique aqui para atualizar")) return;
 
-      // 4. Lógica de Múltiplas Bancas no mesmo bloco (Ex: Bahia - Paratodos e Maluca)
-      // Se detectarmos subtítulos internos de banca, dividimos o bloco
       const bankSubHeaders = contentText.match(/Resultado do jogo do bicho ([A-ZÇÃÕÉÊÍÓÚ\s]{3,})/gi);
       
       if (bankSubHeaders && bankSubHeaders.length > 1) {
-        // Bloco múltiplo detectado
         bankSubHeaders.forEach((subHeader, idx) => {
           const bankName = subHeader.replace(/Resultado do jogo do bicho/i, '').trim();
           const startIdx = contentText.indexOf(subHeader);
@@ -114,7 +104,6 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
           }
         });
       } else {
-        // Bloco simples
         const prizes = parsePrizesFromText(contentText);
         if (prizes.length >= 5) {
           results.push(buildResultObject(state, baseExtractionName, time, pageDate, prizes));
@@ -129,20 +118,54 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
   }
 }
 
-/**
- * Extrai prêmios de um bloco de texto usando regex tolerante
- */
 function parsePrizesFromText(text: string) {
+  // Versão V3: Identifica seções como "1º ao 7º" e "1º ao 10º" e escolhe a mais completa
+  const sectionSplitRegex = /Resultados\s+do\s+1º\s+ao\s+(\d+)º/gi;
+  const sections: { count: number, content: string }[] = [];
+  let match;
+  let lastPos = 0;
+
+  while ((match = sectionSplitRegex.exec(text)) !== null) {
+    if (sections.length > 0) {
+      sections[sections.length - 1].content = text.substring(lastPos, match.index);
+    }
+    sections.push({ count: parseInt(match[1], 10), content: "" });
+    lastPos = match.index;
+  }
+
+  if (sections.length > 0) {
+    sections[sections.length - 1].content = text.substring(lastPos);
+    
+    const parsedSections = sections.map(s => ({
+      count: s.count,
+      prizes: parseRawLines(s.content)
+    })).filter(s => s.prizes.length >= 5);
+
+    if (parsedSections.length > 0) {
+      // Prioridade: Pega o que tem mais prêmios válidos extraídos
+      parsedSections.sort((a, b) => b.prizes.length - a.prizes.length);
+      return parsedSections[0].prizes;
+    }
+  }
+
+  return parseRawLines(text);
+}
+
+function parseRawLines(text: string) {
   const lines = text.split('\n');
   const prizes: any[] = [];
-  
+  const seen = new Set();
+
   lines.forEach(line => {
-    // Regex tolerante para: 1º ► 6558-15 — JACARÉ
-    const prizeMatch = line.match(/(\d+)[º°]?.*?(\d{3,4})-(\d{2})\s*[—–-]?\s*(.*)/i);
+    const prizeMatch = line.match(/(\d+)[º°]?.*?(\d{3,4})-(\d{2})\s*[—–-]?\s*([A-ZÇÃÕÉÊÍÓÚ\s]+)/i);
     if (prizeMatch) {
+      const position = parseInt(prizeMatch[1], 10);
+      if (seen.has(position)) return;
+      seen.add(position);
+
       const milhar = prizeMatch[2].padStart(4, '0');
       prizes.push({
-        position: parseInt(prizeMatch[1], 10),
+        position,
         milhar,
         centena: milhar.slice(-3),
         dezena: milhar.slice(-2),
@@ -151,13 +174,9 @@ function parsePrizesFromText(text: string) {
       });
     }
   });
-  
   return prizes.sort((a, b) => a.position - b.position);
 }
 
-/**
- * Monta o objeto de resultado no padrão do sistema
- */
 function buildResultObject(state: any, extractionName: string, time: string, date: string, prizes: any[]) {
   return {
     stateName: state.name,
@@ -173,13 +192,12 @@ function buildResultObject(state: any, extractionName: string, time: string, dat
 
 export async function GET() {
   try {
-    // Execução paralela para melhor performance
     const allResultsArrays = await Promise.all(PORTAL_BRASIL_STATES.map(scrapeState));
     const flattenedResults = allResultsArrays.flat();
 
     return NextResponse.json({
       success: true,
-      source: 'Portal Brasil Multi-State',
+      source: 'Portal Brasil Multi-State V3',
       count: flattenedResults.length,
       data: flattenedResults
     });

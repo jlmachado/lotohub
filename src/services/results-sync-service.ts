@@ -35,8 +35,6 @@ export class ResultsSyncService {
       const newResultsList = [...currentResults];
 
       imported.forEach(result => {
-        // CHAVE ÚNICA ATUALIZADA: Data + Estado + Nome da Extração + Horário
-        // Isso permite suportar múltiplas bancas no mesmo horário e estado (ex: Bahia)
         const uniqueKey = `${result.date}_${result.stateCode}_${result.extractionName}_${result.time}`.toLowerCase();
         
         const existingIdx = newResultsList.findIndex(r => {
@@ -45,17 +43,23 @@ export class ResultsSyncService {
         });
         
         if (existingIdx === -1) {
-          newResultsList.unshift(result);
+          // Resultado novo: Já entra como PUBLICADO e aguarda processamento pelo AppContext
+          newResultsList.unshift({
+            ...result,
+            status: 'PUBLICADO',
+            publishedAt: new Date().toISOString(),
+            isSettled: false
+          });
           news++;
         } else {
           const existing = newResultsList[existingIdx];
-          // Se o resultado já existe mas o status permite atualização (não publicado)
-          // ou se o checksum mudou (indicando correção na fonte)
-          if (existing.status !== 'PUBLICADO' && existing.checksum !== result.checksum) {
+          // Se o checksum mudou (correção na fonte)
+          if (existing.checksum !== result.checksum) {
             newResultsList[existingIdx] = { 
               ...existing, 
               ...result, 
-              status: existing.status === 'DIVERGENTE' ? 'DIVERGENTE' : 'IMPORTADO',
+              status: 'PUBLICADO',
+              isSettled: false, // Força nova conferência se o resultado mudou
               updatedAt: new Date().toISOString()
             };
             updated++;
@@ -63,14 +67,13 @@ export class ResultsSyncService {
         }
       });
 
-      // Ordenar por data e hora decrescente
       newResultsList.sort((a, b) => {
         const dateTimeA = `${a.date}T${a.time}`;
         const dateTimeB = `${b.date}T${b.time}`;
         return dateTimeB.localeCompare(dateTimeA);
       });
 
-      setStorageItem(RESULTS_KEY, newResultsList.slice(0, 3000)); // Histórico estendido
+      setStorageItem(RESULTS_KEY, newResultsList.slice(0, 3000));
       
       this.addLog(`Sync finalizado: ${news} novos, ${updated} atualizados.`, 'SUCCESS');
       window.dispatchEvent(new Event('app:data-changed'));
@@ -97,9 +100,6 @@ export class ResultsSyncService {
     window.dispatchEvent(new Event('app:data-changed'));
   }
 
-  /**
-   * Limpa logs antigos de sincronização
-   */
   static clearLogs() {
     setStorageItem(SYNC_LOGS_KEY, []);
     window.dispatchEvent(new Event('app:data-changed'));

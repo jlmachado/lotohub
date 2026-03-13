@@ -31,6 +31,7 @@ export interface JDBNormalizedResult {
   prizes: JDBPrizeDetail[];
   checksum: string;
   isDivergent: boolean;
+  isSettled?: boolean; // Indica se já disparou a apuração de apostas
   importedAt: string;
   updatedAt: string;
   publishedAt?: string;
