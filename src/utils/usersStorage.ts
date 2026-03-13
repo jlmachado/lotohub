@@ -62,9 +62,12 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
   }
 };
 
-const seedInitialUsers = (): User[] => {
+/**
+ * Retorna os usuários padrão do sistema.
+ */
+const getDefaultUsers = (): User[] => {
   const now = new Date().toISOString();
-  const initialUsers: User[] = [
+  return [
     {
       id: 'u-superadmin',
       terminal: '10001',
@@ -113,14 +116,35 @@ const seedInitialUsers = (): User[] => {
       updatedAt: now
     }
   ];
-  setStorageItem(USERS_KEY, initialUsers);
-  return initialUsers;
+};
+
+const seedInitialUsers = (): User[] => {
+  const defaults = getDefaultUsers();
+  setStorageItem(USERS_KEY, defaults);
+  return defaults;
 };
 
 export const getUsers = (bancaId?: string | null): User[] => {
-  const users = getStorageItem<User[]>(USERS_KEY, []);
+  let users = getStorageItem<User[]>(USERS_KEY, []);
+  
   if (users.length === 0) {
     return seedInitialUsers();
+  }
+
+  // REPARAÇÃO AUTOMÁTICA: Garante que terminais essenciais existam no prototype
+  const defaults = getDefaultUsers();
+  let hasChanges = false;
+
+  defaults.forEach(defUser => {
+    const exists = users.some(u => u.terminal === defUser.terminal);
+    if (!exists) {
+      users.push(defUser);
+      hasChanges = true;
+    }
+  });
+
+  if (hasChanges) {
+    saveUsers(users);
   }
   
   if (bancaId && bancaId !== 'all') {
@@ -153,8 +177,8 @@ export const generateNextTerminalForBanca = (bancaId: string): string => {
 };
 
 export const getUserByTerminal = (terminal: string): User | null => {
-  const users = getStorageItem<User[]>(USERS_KEY, []);
-  if (users.length === 0) return seedInitialUsers().find(u => u.terminal === terminal) || null;
+  // Chamamos getUsers() primeiro para garantir que a reparação automática ocorra
+  const users = getUsers();
   return users.find(u => u.terminal === terminal || u.email === terminal) || null;
 };
 
