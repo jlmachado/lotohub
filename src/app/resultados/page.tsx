@@ -191,13 +191,13 @@ ${prizesText}
                 <CardContent className="p-0">
                   <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/5">
                     <div className="divide-y divide-white/5">
-                      {res.prizes.slice(0, 3).map((p: any) => (
-                        <PrizeRow key={p.position} p={p} />
+                      {res.prizes.slice(0, 3).map((p: any, idx: number) => (
+                        <PrizeRow key={`row-1-${idx}`} p={p} />
                       ))}
                     </div>
                     <div className="divide-y divide-white/5">
-                      {res.prizes.slice(3, 5).map((p: any) => (
-                        <PrizeRow key={p.position} p={p} />
+                      {res.prizes.slice(3, 5).map((p: any, idx: number) => (
+                        <PrizeRow key={`row-2-${idx}`} p={p} />
                       ))}
                       <div className="p-4 flex items-center justify-center bg-black/20 h-full">
                          <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest italic">LotoHub Cloud Sync</p>
