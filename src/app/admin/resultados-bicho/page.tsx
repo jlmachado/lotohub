@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { 
   RefreshCw, CheckCircle2, Search, Filter, 
-  AlertTriangle, Send, Database, History, Info, Eye, Trash2, MapPin
+  AlertTriangle, Send, Database, History, Info, Eye, Trash2, MapPin, Download
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
@@ -19,6 +19,7 @@ import { JDB_STATES } from '@/utils/jdb-constants';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { downloadCSV } from '@/utils/csvUtils';
 
 export default function AdminJDBResultsProfessionalPage() {
   const { jdbResults, publishJDBResult, deleteJDBResult } = useAppContext();
@@ -66,6 +67,50 @@ export default function AdminJDBResultsProfessionalPage() {
     }
   };
 
+  const handleExportResults = () => {
+    if (filteredResults.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Nada para exportar",
+        description: "Nenhum resultado encontrado com os filtros atuais."
+      });
+      return;
+    }
+
+    const exportData = filteredResults.map(res => ({
+      'Data': new Date(res.date + 'T12:00:00').toLocaleDateString('pt-BR'),
+      'Hora': res.time,
+      'Estado': res.stateName,
+      'Banca/Fonte': res.sourceName,
+      'Extração': res.extractionName,
+      'Status': res.status,
+      '1º prêmio': `${res.prizes[0]?.milhar || ''} - Gr. ${res.prizes[0]?.grupo || ''} - ${res.prizes[0]?.animal || ''}`,
+      '2º prêmio': `${res.prizes[1]?.milhar || ''} - Gr. ${res.prizes[1]?.grupo || ''} - ${res.prizes[1]?.animal || ''}`,
+      '3º prêmio': `${res.prizes[2]?.milhar || ''} - Gr. ${res.prizes[2]?.grupo || ''} - ${res.prizes[2]?.animal || ''}`,
+      '4º prêmio': `${res.prizes[3]?.milhar || ''} - Gr. ${res.prizes[3]?.grupo || ''} - ${res.prizes[3]?.animal || ''}`,
+      '5º prêmio': `${res.prizes[4]?.milhar || ''} - Gr. ${res.prizes[4]?.grupo || ''} - ${res.prizes[4]?.animal || ''}`,
+      'Importado em': new Date(res.importedAt).toLocaleString('pt-BR')
+    }));
+
+    const headers = [
+      'Data', 'Hora', 'Estado', 'Banca/Fonte', 'Extração', 'Status', 
+      '1º prêmio', '2º prêmio', '3º prêmio', '4º prêmio', '5º prêmio', 'Importado em'
+    ];
+
+    const success = downloadCSV(
+      `resultados_bicho_${dateFilter}_${stateFilter !== 'all' ? stateFilter : 'global'}.csv`,
+      exportData,
+      headers
+    );
+
+    if (success) {
+      toast({
+        title: "Exportação concluída",
+        description: `Arquivo CSV gerado com ${exportData.length} registros.`
+      });
+    }
+  };
+
   return (
     <main className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -74,6 +119,14 @@ export default function AdminJDBResultsProfessionalPage() {
           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Gerenciamento Automatizado de Resultados Multi-Estado</p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleExportResults}
+            className="h-11 rounded-xl font-bold border-white/10 bg-white/5"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Exportar
+          </Button>
           <Button 
             variant="outline" 
             onClick={handleManualSync} 
