@@ -3,41 +3,42 @@
  */
 
 import { JDBNormalizedResult, JDBPrizeDetail } from "@/types/result-types";
-import { normalizePrize, generateResultChecksum } from "@/utils/jdb-utils";
+import { JDB_STATES } from "@/utils/jdb-constants";
 
 export class PortalBrasilProvider {
-  static async fetchResults(date?: string): Promise<JDBNormalizedResult[]> {
+  static async fetchResults(): Promise<JDBNormalizedResult[]> {
     try {
       const response = await fetch('/api/resultados/jogodobicho');
       if (!response.ok) throw new Error('Falha na resposta do Scraper');
       
-      const data = await response.json();
-      if (!data.extracoes) return [];
+      const json = await response.json();
+      if (!json.success || !json.data) return [];
 
-      const normalizedDate = data.data.split('/').reverse().join('-');
-
-      return data.extracoes.map((ext: any) => {
-        const time = ext.titulo.split('–')[0].trim().replace('h', ':');
-        const name = ext.titulo.split('–')[1]?.trim() || 'Importado';
-        
-        const rawPrizes = ext.itens.map((i: any) => i.numero);
-        const prizes: JDBPrizeDetail[] = ext.itens.map((item: any) => 
-          normalizePrize(item.numero, item.pos)
+      return json.data.map((ext: any) => {
+        // Tentar encontrar o código do estado pelo nome
+        const state = JDB_STATES.find(s => 
+          ext.stateName.toLowerCase().includes(s.name.toLowerCase()) || 
+          s.name.toLowerCase().includes(ext.stateName.toLowerCase())
         );
 
+        const stateCode = state?.code || "UN";
+        const stateName = state?.name || ext.stateName;
+
         return {
-          id: `jdb-${normalizedDate}-${time}-${name.toLowerCase().replace(/\s/g, '-')}`,
+          id: `jdb-${ext.date}-${ext.time}-${stateCode.toLowerCase()}-${ext.extractionName.toLowerCase().replace(/\s/g, '-')}`,
           bancaId: 'global',
-          lotteryId: name.toLowerCase(),
-          lotteryName: name,
-          extractionName: name,
-          date: normalizedDate,
-          time,
+          stateCode,
+          stateName,
+          lotteryId: 'jdb',
+          lotteryName: 'Jogo do Bicho',
+          extractionName: ext.extractionName,
+          date: ext.date,
+          time: ext.time,
           status: 'IMPORTADO',
           sourceType: 'SCRAPER',
           sourceName: 'Portal Brasil',
-          prizes,
-          checksum: generateResultChecksum(rawPrizes),
+          prizes: ext.prizes,
+          checksum: ext.checksum,
           isDivergent: false,
           importedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()

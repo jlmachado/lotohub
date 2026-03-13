@@ -9,15 +9,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { 
   RefreshCw, CheckCircle2, Search, Filter, 
-  AlertTriangle, Send, Database, History, Info, Eye, Edit, Trash2
+  AlertTriangle, Send, Database, History, Info, Eye, Trash2, MapPin
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { ResultsSyncService } from '@/services/results-sync-service';
-import { JDBNormalizedResult, SyncLogEntry } from '@/types/result-types';
+import { JDBNormalizedResult } from '@/types/result-types';
+import { JDB_STATES } from '@/utils/jdb-constants';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function AdminJDBResultsProfessionalPage() {
   const { jdbResults, publishJDBResult, deleteJDBResult } = useAppContext();
@@ -25,6 +26,7 @@ export default function AdminJDBResultsProfessionalPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
+  const [stateFilter, setStateFilter] = useState('all');
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedResult, setSelectedResult] = useState<JDBNormalizedResult | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -40,12 +42,14 @@ export default function AdminJDBResultsProfessionalPage() {
     return jdbResults
       .filter(r => {
         const matchDate = r.date === dateFilter;
+        const matchState = stateFilter === 'all' || r.stateCode === stateFilter;
         const matchSearch = r.lotteryName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            r.extractionName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             r.time.includes(searchTerm);
-        return matchDate && matchSearch;
+        return matchDate && matchState && matchSearch;
       })
       .sort((a, b) => b.time.localeCompare(a.time));
-  }, [jdbResults, dateFilter, searchTerm]);
+  }, [jdbResults, dateFilter, stateFilter, searchTerm]);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
@@ -62,17 +66,12 @@ export default function AdminJDBResultsProfessionalPage() {
     }
   };
 
-  const openDetails = (res: JDBNormalizedResult) => {
-    setSelectedResult(res);
-    setIsDetailOpen(true);
-  };
-
   return (
     <main className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central de Extrações</h1>
-          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Gerenciamento Automatizado de Resultados Reais</p>
+          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Gerenciamento Automatizado de Resultados Multi-Estado</p>
         </div>
         <div className="flex gap-2">
           <Button 
@@ -82,10 +81,7 @@ export default function AdminJDBResultsProfessionalPage() {
             className="h-11 rounded-xl font-bold border-white/10 bg-white/5"
           >
             {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
-            Sincronizar Hoje
-          </Button>
-          <Button className="h-11 rounded-xl font-black uppercase italic lux-shine px-6">
-            Lançamento Manual
+            Importar de Hoje
           </Button>
         </div>
       </div>
@@ -99,19 +95,31 @@ export default function AdminJDBResultsProfessionalPage() {
 
       <Card className="border-white/10 bg-card/50">
         <CardHeader className="pb-3 border-b border-white/5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
               <div className="space-y-1">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Extrações de:</Label>
-                <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="h-9 bg-black/20 border-white/10 w-40" />
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data das Extrações</Label>
+                <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="h-10 bg-black/20 border-white/10" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Estado / Região</Label>
+                <Select value={stateFilter} onValueChange={setStateFilter}>
+                  <SelectTrigger className="h-10 bg-black/20 border-white/10">
+                    <SelectValue placeholder="Todos os Estados" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Estados</SelectItem>
+                    {JDB_STATES.map(s => <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label className="text-[10px] uppercase font-bold text-muted-foreground">Busca Rápida</Label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input 
-                    placeholder="Loteria ou hora..." 
-                    className="pl-8 h-9 bg-black/20 border-white/10 w-48 text-xs" 
+                    placeholder="Banca ou hora..." 
+                    className="pl-8 h-10 bg-black/20 border-white/10 text-xs" 
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                   />
@@ -125,7 +133,7 @@ export default function AdminJDBResultsProfessionalPage() {
             <TableHeader className="bg-slate-950/50">
               <TableRow className="border-white/5 h-10">
                 <TableHead className="text-[10px] uppercase font-black px-4">Horário</TableHead>
-                <TableHead className="text-[10px] uppercase font-black">Loteria</TableHead>
+                <TableHead className="text-[10px] uppercase font-black">Estado / Banca</TableHead>
                 <TableHead className="text-[10px] uppercase font-black">Resultado (1º ao 5º)</TableHead>
                 <TableHead className="text-[10px] uppercase font-black">Status</TableHead>
                 <TableHead className="text-[10px] uppercase font-black text-right px-4">Ações</TableHead>
@@ -135,7 +143,7 @@ export default function AdminJDBResultsProfessionalPage() {
               {filteredResults.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic text-sm">
-                    Nenhum resultado capturado para esta data.
+                    Nenhum resultado capturado para estes filtros.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -144,7 +152,10 @@ export default function AdminJDBResultsProfessionalPage() {
                     <TableCell className="px-4 font-mono font-bold text-primary">{result.time}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-[11px] font-bold text-white uppercase italic">{result.lotteryName}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-bold text-white uppercase italic">{result.extractionName}</span>
+                          <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-white/5 border-white/10">{result.stateCode}</Badge>
+                        </div>
                         <span className="text-[8px] text-muted-foreground uppercase font-black tracking-widest">{result.sourceName}</span>
                       </div>
                     </TableCell>
@@ -169,7 +180,7 @@ export default function AdminJDBResultsProfessionalPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right px-4 space-x-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50" onClick={() => openDetails(result)}><Eye size={14} /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50" onClick={() => { setSelectedResult(result); setIsDetailOpen(true); }}><Eye size={14} /></Button>
                       {result.status !== 'PUBLICADO' && (
                         <Button 
                           variant="ghost" 
@@ -194,7 +205,7 @@ export default function AdminJDBResultsProfessionalPage() {
         <DialogContent className="sm:max-w-2xl bg-[#0f172a] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-2xl font-black uppercase italic tracking-tighter">Detalhes da Extração</DialogTitle>
-            <DialogDescription className="text-xs font-bold text-muted-foreground uppercase">Auditoria de Dados Normalizados</DialogDescription>
+            <DialogDescription className="text-xs font-bold text-muted-foreground uppercase">Auditoria de Dados Normalizados: {selectedResult?.stateName}</DialogDescription>
           </DialogHeader>
           
           {selectedResult && (
@@ -205,22 +216,22 @@ export default function AdminJDBResultsProfessionalPage() {
                   <p className="font-mono text-[10px] text-primary">{selectedResult.id}</p>
                 </div>
                 <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                  <p className="text-[9px] uppercase font-black text-slate-500 mb-1">Origem dos Dados</p>
-                  <p className="text-sm font-bold text-white italic">{selectedResult.sourceName} ({selectedResult.sourceType})</p>
+                  <p className="text-[9px] uppercase font-black text-slate-500 mb-1">Origem / Estado</p>
+                  <p className="text-sm font-bold text-white italic">{selectedResult.sourceName} • {selectedResult.stateName}</p>
                 </div>
               </div>
 
               <div className="bg-black/30 p-4 rounded-2xl border border-white/10">
                 <h4 className="text-[10px] font-black uppercase text-primary tracking-widest mb-4">Escala de Prêmios (Oficial)</h4>
-                <div className="grid gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {selectedResult.prizes.map((p, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
-                      <span className="text-xs font-black text-slate-500">{p.position}º Prêmio</span>
-                      <div className="flex items-center gap-6">
+                    <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                      <span className="text-[10px] font-black text-slate-500">{p.position}º</span>
+                      <div className="flex items-center gap-4">
                         <span className="font-mono text-lg font-black text-white">{p.milhar}</span>
-                        <div className="w-24 text-right">
+                        <div className="w-20 text-right">
                           <p className="text-[10px] font-black text-primary uppercase italic leading-none">{p.animal}</p>
-                          <p className="text-[8px] text-muted-foreground font-bold uppercase">Grupo: {p.group}</p>
+                          <p className="text-[8px] text-muted-foreground font-bold uppercase">Gr: {p.grupo}</p>
                         </div>
                       </div>
                     </div>

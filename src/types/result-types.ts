@@ -18,6 +18,8 @@ export interface JDBNormalizedResult {
   id: string;
   externalId?: string;
   bancaId: string;
+  stateCode: string;
+  stateName: string;
   lotteryId: string;
   lotteryName: string;
   extractionName: string;

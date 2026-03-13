@@ -1,115 +1,101 @@
 import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
+import { getGroupByNumber, getBichoByGroup } from '@/utils/jdb-constants';
 
-// Define the structure for a single result item
-interface ResultadoItem {
-    pos: number;
-    numero: string;
-    grupo: string;
-    bicho: string;
-}
+/**
+ * @fileOverview Scraper Profissional para PortalBrasil.net
+ * Extrai resultados multi-estado e normaliza para o sistema.
+ */
 
-// Define the structure for an extraction (e.g., PTM, PT, PTV)
-interface Extracao {
-    titulo: string;
-    itens: ResultadoItem[];
-}
-
-// Define the overall structure of the API response
-interface ApiResponse {
-    data: string;
-    fonte: string;
-    extracoes: Extracao[];
-}
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET() {
-    const url = 'https://portalbrasil.net/jogodobicho/resultado-do-jogo-do-bicho/';
+  const url = 'https://portalbrasil.net/jogodobicho/resultado-do-jogo-do-bicho/';
 
-    try {
-        // Fetch the HTML from the target website with a 60-second revalidation cache
-        const response = await fetch(url, {
-            next: { revalidate: 60 },
-        });
+  try {
+    const response = await fetch(url, {
+      next: { revalidate: 60 },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
 
-        if (!response.ok) {
-            return NextResponse.json({ error: `Falha ao buscar dados. Status: ${response.status}` }, { status: 502 });
-        }
-
-        const html = await response.text();
-        const $ = cheerio.load(html);
-
-        const extracoes: Extracao[] = [];
-        let dataResultado = new Date().toLocaleDateString('pt-BR'); // Default to today
-
-        // Find all result blocks. The site uses h3 tags for titles.
-        $('h3.wp-block-heading').each((i, el) => {
-            const tituloEl = $(el);
-            const tituloCompleto = tituloEl.text().trim();
-
-            // Example title: "### Resultado do Jogo do Bicho de Hoje das 09h00 – PPT"
-            const match = tituloCompleto.match(/(\d{2}h\d{2})\s*–\s*([A-Z]+)/);
-            if (!match) return;
-
-            const titulo = `${match[1]} – ${match[2]}`;
-            
-            // The results are in a <p> tag immediately following the <h3>
-            // The structure is inconsistent, so we look for the next element that contains the results
-            let pElement = tituloEl.next();
-            while(pElement.length > 0 && pElement.get(0)?.tagName !== 'p' && !pElement.text().includes('►')) {
-                pElement = pElement.next();
-            }
-
-            const textoResultados = pElement.text();
-            if (!textoResultados) return;
-
-            const itens: ResultadoItem[] = [];
-            const linhas = textoResultados.split('\n').filter(line => line.trim().length > 0);
-            
-            // Regex to capture: 1º ► 0718-05 — CACHORRO
-            const regex = /(\d+)º\s*►\s*(\d{4})-(\d{2})\s*—\s*([A-Z\sÁÉÍÓÚÃÕÇ]+)/;
-
-            linhas.forEach(linha => {
-                const itemMatch = linha.match(regex);
-                if (itemMatch) {
-                    const [, pos, numero, grupo, bicho] = itemMatch;
-                    itens.push({
-                        pos: parseInt(pos, 10),
-                        numero: numero.trim(),
-                        grupo: grupo.trim(),
-                        bicho: bicho.trim(),
-                    });
-                }
-            });
-
-            if (itens.length > 0) {
-                extracoes.push({ titulo, itens });
-            }
-        });
-        
-        // Try to get a more specific date from the page title
-        const pageTitle = $('title').text();
-        const dateMatch = pageTitle.match(/(\d{2}\/\d{2}\/\d{4})/);
-        if(dateMatch) {
-            dataResultado = dateMatch[0];
-        }
-
-        if (extracoes.length === 0) {
-            return NextResponse.json({ error: 'Nenhuma extração encontrada. O layout do site pode ter mudado.' }, { status: 502 });
-        }
-
-        const apiResponse: ApiResponse = {
-            data: dataResultado,
-            fonte: 'portalbrasil.net',
-            extracoes,
-        };
-
-        return NextResponse.json(apiResponse);
-
-    } catch (error) {
-        console.error('Erro no scraping dos resultados:', error);
-        return NextResponse.json({ error: 'Erro interno do servidor ao processar a solicitação.' }, { status: 500 });
+    if (!response.ok) {
+      return NextResponse.json({ error: 'Erro ao acessar fonte externa' }, { status: 502 });
     }
-}
 
-// This line is crucial for deploying to Vercel/Next.js hosting environments
-export const dynamic = 'force-dynamic';
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const results: any[] = [];
+
+    // Tentar extrair a data global da página
+    let pageDate = new Date().toISOString().split('T')[0];
+    const dateMatch = $('title').text().match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (dateMatch) {
+      pageDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+    }
+
+    // O PortalBrasil organiza por blocos de extração dentro de h3 ou h2
+    $('h3.wp-block-heading, h2.wp-block-heading').each((_, el) => {
+      const title = $(el).text().trim();
+      
+      // Regex para capturar Estado e Horário (Ex: Rio de Janeiro das 11h00 – PTM)
+      const stateMatch = title.match(/(.*?)\s+das\s+(\d{2}h\d{2})\s*[–-]\s*(.*)/i);
+      if (!stateMatch) return;
+
+      const stateName = stateMatch[1].trim();
+      const time = stateMatch[2].replace('h', ':');
+      const extractionName = stateMatch[3].trim();
+
+      // Buscar o parágrafo de resultados logo abaixo do título
+      let contentPara = $(el).next();
+      while (contentPara.length > 0 && contentPara.get(0).tagName !== 'p') {
+        contentPara = contentPara.next();
+      }
+
+      const rawLines = contentPara.text().split('\n').filter(l => l.includes('►') || l.includes('º'));
+      if (rawLines.length === 0) return;
+
+      const prizes = rawLines.map(line => {
+        // Formato esperado: 1º ► 0718-05 — CACHORRO
+        const match = line.match(/(\d+)º.*?►\s*(\d{4})-(\d{2})\s*[—–-]\s*(.*)/);
+        if (match) {
+          const milhar = match[2];
+          return {
+            position: parseInt(match[1], 10),
+            milhar,
+            centena: milhar.slice(-3),
+            dezena: milhar.slice(-2),
+            grupo: match[3],
+            animal: match[4].trim()
+          };
+        }
+        return null;
+      }).filter(Boolean);
+
+      if (prizes.length > 0) {
+        results.push({
+          stateName,
+          extractionName,
+          time,
+          date: pageDate,
+          prizes,
+          checksum: prizes.map(p => p.milhar).join('|')
+        });
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      date: pageDate,
+      source: 'Portal Brasil',
+      count: results.length,
+      data: results
+    });
+
+  } catch (error: any) {
+    console.error('[JDB Scraper API] Error:', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
