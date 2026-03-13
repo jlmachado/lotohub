@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -248,6 +249,7 @@ interface AppContextType {
   activeBancaId: string;
   userLedger: any[];
   fullLedger: any[];
+  ledger: any[]; // Alias for fullLedger
   banners: Banner[];
   popups: Popup[];
   news: NewsMessage[];
@@ -275,7 +277,7 @@ interface AppContextType {
   snookerActivityFeed: any[];
   snookerBetsFeed: any[];
   snookerChatMessages: SnookerChatMessage[];
-  snookerChatMessagesRaw: SnookerChatMessage[]; // Added for consistency
+  snookerChatMessagesRaw: SnookerChatMessage[];
   snookerScoreboards: Record<string, SnookerScoreboard>;
   celebrationTrigger: boolean;
 
@@ -301,6 +303,7 @@ interface AppContextType {
   placeFootballBet: (stake: number) => Promise<string | null>;
   toggleFullscreen: () => void;
   updateCasinoSettings: (s: CasinoSettings) => void;
+  registerCambistaMovement: (data: { tipo: string, valor: number, modulo: string, observacao: string }) => void;
 
   // JDB Professional Results
   publishJDBResult: (id: string) => void;
@@ -512,6 +515,39 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setStorageItem('app:casino_settings:v1', s);
     notify();
   }, [notify]);
+
+  // --- CAMBISTA METHODS ---
+  const registerCambistaMovement = useCallback((data: { tipo: string, valor: number, modulo: string, observacao: string }) => {
+    if (!user) return;
+    
+    // Mapeamento de tipos para o Ledger
+    const typeMap: Record<string, any> = {
+      'ENTRADA_MANUAL': 'CASH_IN',
+      'RECOLHE': 'CASH_OUT_RECOLHE',
+      'FECHAMENTO_CAIXA': 'CASH_CLOSE'
+    };
+
+    const ledgerType = typeMap[data.tipo] || 'BALANCE_ADJUST';
+    
+    // Valor positivo para entrada, negativo para recolhe/fechamento
+    const amount = data.tipo === 'ENTRADA_MANUAL' ? data.valor : -data.valor;
+
+    LedgerService.addEntry({
+      bancaId: user.bancaId || 'default',
+      userId: user.id,
+      terminal: user.terminal,
+      tipoUsuario: user.tipoUsuario,
+      modulo: data.modulo,
+      type: ledgerType,
+      amount: amount,
+      balanceBefore: user.saldo + user.bonus,
+      balanceAfter: user.saldo + user.bonus + amount,
+      referenceId: `caixa-${Date.now()}`,
+      description: data.observacao
+    });
+
+    notify();
+  }, [user, notify]);
 
   // --- JDB PROFESSIONAL RESULTS SETTLEMENT ---
   const publishJDBResult = useCallback((id: string) => {
@@ -984,15 +1020,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const contextValue = useMemo(() => ({
     user, allUsers, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
-    activeBancaId: user?.bancaId || 'default', userLedger, fullLedger, banners, popups, news, apostas, postedResults, 
+    activeBancaId: user?.bancaId || 'default', userLedger, fullLedger, ledger: fullLedger, banners, popups, news, apostas, postedResults, 
     jdbResults, jdbSyncLogs, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
-    isFullscreen, toggleFullscreen, casinoSettings, updateCasinoSettings,
+    isFullscreen, toggleFullscreen, casinoSettings, updateCasinoSettings, registerCambistaMovement,
     bingoSettings, bingoDraws, bingoTickets, bingoPayouts,
     publishJDBResult, deleteJDBResult,
     updateBingoSettings, createBingoDraw, startBingoDraw, drawBingoBall, finishBingoDraw, cancelBingoDraw, 
     buyBingoTickets, refundBingoTicket, payBingoPayout,
     snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog,
-    snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerChatMessagesRaw: snookerChatMessages,
+    snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages,
+    snookerChatMessagesRaw: snookerChatMessages,
     snookerScoreboards,
     celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet,
     sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig,
@@ -1015,7 +1052,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall,
     casinoSettings, updateCasinoSettings, publishJDBResult, deleteJDBResult,
     updateBingoSettings, createBingoDraw, startBingoDraw, finishBingoDraw, cancelBingoDraw, 
-    buyBingoTickets, refundBingoTicket, payBingoPayout
+    buyBingoTickets, refundBingoTicket, payBingoPayout, registerCambistaMovement
   ]);
 
   return (
