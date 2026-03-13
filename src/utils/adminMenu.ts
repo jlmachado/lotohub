@@ -15,7 +15,8 @@ import {
   Search,
   Layers,
   ShieldCheck,
-  TrendingUp
+  TrendingUp,
+  CheckCircle2
 } from 'lucide-react';
 
 export function getAdminMenuItems(user: any, context: any, modules: any) {
@@ -26,6 +27,8 @@ export function getAdminMenuItems(user: any, context: any, modules: any) {
 
   if (modules && (modules.jogoDoBicho || modules.seninha || modules.quininha || modules.lotinha || modules.loteriaUruguai)) {
     items.push({ href: "/admin/loterias", label: "Loterias", icon: Ticket });
+    // Novo item de Resultados
+    items.push({ href: "/admin/resultados-bicho", label: "Resultados Bicho", icon: CheckCircle2 });
   }
 
   if (modules?.bingo) items.push({ href: "/admin/bingo", label: "Bingo", icon: Star });
