@@ -7,15 +7,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { 
   RefreshCw, CheckCircle2, Search, Filter, 
-  AlertTriangle, Send, Database, History, Info, Eye, Trash2, MapPin, Download
+  AlertTriangle, Send, Database, History, Info, Eye, Trash2, MapPin, Download, 
+  Clock, Play, Settings2, ShieldCheck, Zap
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { ResultsSyncService } from '@/services/results-sync-service';
+import { ResultsAutoSyncService, AutoSyncConfig } from '@/services/results-auto-sync-service';
 import { JDBNormalizedResult } from '@/types/result-types';
-import { JDB_STATES } from '@/utils/jdb-constants';
+import { JDB_STATES, JDB_EXTRACTIONS } from '@/utils/jdb-constants';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -31,6 +34,17 @@ export default function AdminJDBResultsProfessionalPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedResult, setSelectedResult] = useState<JDBNormalizedResult | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  
+  // Auto Sync States
+  const [autoSyncCfg, setAutoSyncCfg] = useState<AutoSyncConfig>(ResultsAutoSyncService.getConfig());
+
+  useEffect(() => {
+    const handleDataChange = () => {
+      setAutoSyncCfg(ResultsAutoSyncService.getConfig());
+    };
+    window.addEventListener('app:data-changed', handleDataChange);
+    return () => window.removeEventListener('app:data-changed', handleDataChange);
+  }, []);
 
   const stats = useMemo(() => ({
     total: jdbResults.filter(r => r.date === dateFilter).length,
@@ -55,11 +69,13 @@ export default function AdminJDBResultsProfessionalPage() {
   const handleManualSync = async () => {
     setIsSyncing(true);
     try {
-      const summary = await ResultsSyncService.syncToday();
-      toast({ 
-        title: "Sincronização Finalizada", 
-        description: `${summary.news} novos resultados capturados.` 
-      });
+      const summary = await ResultsAutoSyncService.forceRun();
+      if (summary) {
+        toast({ 
+          title: "Sincronização Finalizada", 
+          description: `${summary.news} novos resultados capturados em ${summary.totalProcessed} verificações.` 
+        });
+      }
     } catch (e) {
       toast({ variant: "destructive", title: "Erro no Sync", description: "Falha ao conectar com o provedor." });
     } finally {
@@ -67,13 +83,17 @@ export default function AdminJDBResultsProfessionalPage() {
     }
   };
 
+  const handleToggleAutoSync = (enabled: boolean) => {
+    ResultsAutoSyncService.updateConfig({ enabled });
+    toast({ 
+      title: enabled ? "Automação Ativada" : "Automação Desativada",
+      description: enabled ? "O sistema verificará novos resultados periodicamente." : "As atualizações agora dependem de comando manual."
+    });
+  };
+
   const handleExportResults = () => {
     if (filteredResults.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Nada para exportar",
-        description: "Nenhum resultado encontrado com os filtros atuais."
-      });
+      toast({ variant: "destructive", title: "Nada para exportar", description: "Nenhum resultado encontrado com os filtros atuais." });
       return;
     }
 
@@ -97,19 +117,15 @@ export default function AdminJDBResultsProfessionalPage() {
       '1º prêmio', '2º prêmio', '3º prêmio', '4º prêmio', '5º prêmio', 'Importado em'
     ];
 
-    const success = downloadCSV(
-      `resultados_bicho_${dateFilter}_${stateFilter !== 'all' ? stateFilter : 'global'}.csv`,
-      exportData,
-      headers
-    );
-
-    if (success) {
-      toast({
-        title: "Exportação concluída",
-        description: `Arquivo CSV gerado com ${exportData.length} registros.`
-      });
-    }
+    downloadCSV(`resultados_bicho_${dateFilter}.csv`, exportData, headers);
+    toast({ title: "Exportação concluída", description: "Arquivo CSV gerado com sucesso." });
   };
+
+  const nextRunMinutes = useMemo(() => {
+    if (!autoSyncCfg.nextRunAt) return 0;
+    const diff = new Date(autoSyncCfg.nextRunAt).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / 60000));
+  }, [autoSyncCfg.nextRunAt]);
 
   return (
     <main className="space-y-6">
@@ -133,17 +149,39 @@ export default function AdminJDBResultsProfessionalPage() {
             disabled={isSyncing}
             className="h-11 rounded-xl font-bold border-white/10 bg-white/5"
           >
-            {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
-            Importar de Hoje
+            {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+            Sincronizar Hoje
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <StatCard title="Total no Dia" value={stats.total} icon={History} color="text-blue-400" />
         <StatCard title="Aguardando" value={stats.pendentes} icon={AlertTriangle} color="text-amber-500" />
         <StatCard title="Divergentes" value={stats.divergentes} icon={Info} color="text-red-500" />
         <StatCard title="Publicados" value={stats.publicados} icon={CheckCircle2} color="text-green-500" />
+        
+        {/* Auto Sync Monitoring Card */}
+        <Card className={cn(
+          "border-primary/20 shadow-inner overflow-hidden relative",
+          autoSyncCfg.enabled ? "bg-primary/5" : "bg-slate-900/50 grayscale opacity-70"
+        )}>
+          <CardHeader className="p-3 pb-0 flex flex-row items-center justify-between space-y-0">
+            <p className="text-[9px] font-black uppercase text-primary tracking-widest">Automação</p>
+            <Switch checked={autoSyncCfg.enabled} onCheckedChange={handleToggleAutoSync} className="scale-75" />
+          </CardHeader>
+          <CardContent className="p-3 pt-1">
+            <div className="flex items-center gap-2">
+              <RefreshCw size={14} className={cn("text-primary", autoSyncCfg.status === 'running' && 'animate-spin')} />
+              <p className="text-xs font-black text-white italic">
+                {autoSyncCfg.status === 'running' ? 'Sincronizando...' : autoSyncCfg.enabled ? `Próximo: ${nextRunMinutes}m` : 'Desativada'}
+              </p>
+            </div>
+            <p className="text-[8px] text-muted-foreground uppercase font-bold mt-1">
+              Último: {autoSyncCfg.lastRunAt ? new Date(autoSyncCfg.lastRunAt).toLocaleTimeString('pt-BR') : '--:--'}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="border-white/10 bg-card/50">

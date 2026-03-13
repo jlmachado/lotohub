@@ -26,6 +26,7 @@ import { FootballSettlementService } from '@/services/football-settlement-servic
 import { FootballLiveEngine } from '@/services/football-live-engine';
 import { checkApostaWinner } from '@/lib/draw-engine';
 import { JDBNormalizedResult, SyncLogEntry } from '@/types/result-types';
+import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
 
 // --- INTERFACES GERAIS ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -274,6 +275,7 @@ interface AppContextType {
   snookerActivityFeed: any[];
   snookerBetsFeed: any[];
   snookerChatMessages: SnookerChatMessage[];
+  snookerChatMessagesRaw: SnookerChatMessage[]; // Added for consistency
   snookerScoreboards: Record<string, SnookerScoreboard>;
   celebrationTrigger: boolean;
 
@@ -417,6 +419,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<LiveMiniPlayerConfig>(DEFAULT_PLAYER_CONFIG);
+
+  // Ativa a sincronização automática de resultados (apenas no cliente administrativo)
+  useResultsAutoSync();
 
   const loadLocalData = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -987,7 +992,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     updateBingoSettings, createBingoDraw, startBingoDraw, drawBingoBall, finishBingoDraw, cancelBingoDraw, 
     buyBingoTickets, refundBingoTicket, payBingoPayout,
     snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog,
-    snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerScoreboards,
+    snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerChatMessagesRaw: snookerChatMessages,
+    snookerScoreboards,
     celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet,
     sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig,
     updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel,

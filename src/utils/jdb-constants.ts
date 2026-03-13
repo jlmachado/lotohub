@@ -26,6 +26,19 @@ export const JDB_ANIMALS = [
   "Touro", "Tigre", "Urso", "Veado", "Vaca"
 ];
 
+/**
+ * Horários oficiais das extrações principais para monitoramento.
+ */
+export const JDB_EXTRACTIONS = [
+  { code: 'PPT', name: 'PPT', time: '09:20' },
+  { code: 'PTM', name: 'PTM', time: '11:20' },
+  { code: 'PT', name: 'PT', time: '14:20' },
+  { code: 'PTV', name: 'PTV', time: '16:20' },
+  { code: 'PTN', name: 'PTN', time: '18:20' },
+  { code: 'FEDERAL', name: 'FEDERAL', time: '19:20' },
+  { code: 'CORUJA', name: 'CORUJA', time: '21:20' }
+];
+
 export const getBichoByGroup = (group: number | string) => {
   const idx = parseInt(String(group), 10) - 1;
   return JDB_ANIMALS[idx] || "Desconhecido";
