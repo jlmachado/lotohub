@@ -94,6 +94,23 @@ const seedInitialUsers = (): User[] => {
       bancaId: 'default',
       createdAt: now,
       updatedAt: now
+    },
+    {
+      id: 'u-cambista-01',
+      terminal: '20001',
+      email: 'cambista@demo.com',
+      password: '1234',
+      nome: 'Cambista Matriz',
+      status: 'ACTIVE',
+      tipoUsuario: 'CAMBISTA',
+      permissoes: getDefaultPermissions('CAMBISTA'),
+      saldo: 0,
+      bonus: 0,
+      bancaId: 'default',
+      promotorConfig: { porcentagemComissao: 10 },
+      cambistaConfig: { loginFechamento: 'caixa20001', senhaFechamento: '1234' },
+      createdAt: now,
+      updatedAt: now
     }
   ];
   setStorageItem(USERS_KEY, initialUsers);
