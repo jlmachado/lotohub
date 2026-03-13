@@ -2,28 +2,39 @@ import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 
 /**
- * @fileOverview Scraper Profissional para PortalBrasil.net (CORRIGIDO)
- * Extrai resultados reais do Jogo do Bicho ignorando variações de heading e 
- * assumindo RJ como estado padrão da página principal.
+ * @fileOverview Scraper Multiestado para PortalBrasil.net
+ * Captura resultados de 13 regiões diferentes de forma paralela.
  */
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET() {
-  const url = 'https://portalbrasil.net/jogodobicho/resultado-do-jogo-do-bicho/';
+const PORTAL_BRASIL_STATES = [
+  { code: "RJ", name: "Rio de Janeiro", url: "https://portalbrasil.net/jogodobicho/resultado-do-jogo-do-bicho/" },
+  { code: "SP", name: "São Paulo", url: "https://portalbrasil.net/jogodobicho/sao-paulo/" },
+  { code: "BA", name: "Bahia", url: "https://portalbrasil.net/jogodobicho/bahia/" },
+  { code: "GO", name: "Goiás", url: "https://portalbrasil.net/jogodobicho/goias/" },
+  { code: "DF", name: "Brasília", url: "https://portalbrasil.net/jogodobicho/brasilia-df/" },
+  { code: "PB", name: "Paraíba", url: "https://portalbrasil.net/jogodobicho/paraiba/" },
+  { code: "MG", name: "Minas Gerais", url: "https://portalbrasil.net/jogodobicho/minas-gerais/" },
+  { code: "CE", name: "Ceará", url: "https://portalbrasil.net/jogodobicho/ceara/" },
+  { code: "PR", name: "Paraná", url: "https://portalbrasil.net/jogodobicho/parana/" },
+  { code: "PE", name: "Pernambuco", url: "https://portalbrasil.net/jogodobicho/pernambuco/" },
+  { code: "RN", name: "Rio Grande do Norte", url: "https://portalbrasil.net/jogodobicho/rio-grande-do-norte/" },
+  { code: "RS", name: "Rio Grande do Sul", url: "https://portalbrasil.net/jogodobicho/rio-grande-do-sul/" },
+  { code: "SE", name: "Sergipe", url: "https://portalbrasil.net/jogodobicho/sergipe/" }
+];
 
+async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
   try {
-    const response = await fetch(url, {
+    const response = await fetch(state.url, {
       next: { revalidate: 60 },
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
-    if (!response.ok) {
-      return NextResponse.json({ error: 'Erro ao acessar fonte externa' }, { status: 502 });
-    }
+    if (!response.ok) return [];
 
     const html = await response.text();
     const $ = cheerio.load(html);
@@ -35,47 +46,42 @@ export async function GET() {
     const dateMatch = fullText.match(/(\d{2})\/(\d{2})\/(\d{4})/) || fullText.match(/(\d{2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i);
     
     if (dateMatch) {
-      if (dateMatch[3]) { // Formato DD/MM/YYYY
-        pageDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+      if (dateMatch[3]) {
+        if (dateMatch[0].includes('/')) {
+           pageDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+        } else {
+           const meses: Record<string, string> = {
+             'janeiro': '01', 'fevereiro': '02', 'marco': '03', 'março': '03', 'abril': '04', 'maio': '05', 'junho': '06',
+             'julho': '07', 'agosto': '08', 'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
+           };
+           const mes = meses[dateMatch[2].toLowerCase()] || '01';
+           pageDate = `${dateMatch[3]}-${mes}-${dateMatch[1].padStart(2, '0')}`;
+        }
       }
     }
 
     // 2. Percorrer Headings (h3 ou h2) que contêm o padrão de horário/extração
     $('h3, h2').each((_, el) => {
       const title = $(el).text().trim();
-      
-      // Regex para capturar Horário e Sigla (Ex: ...das 11h00 – PTM)
-      // Suporta hífens simples, travessões e espaços variados
       const drawMatch = title.match(/das\s+(\d{2})h(\d{2})\s*[–-]\s*([A-ZÇÃÕÉÊÍÓÚ\s]+)/i);
       if (!drawMatch) return;
 
-      const hours = drawMatch[1];
-      const minutes = drawMatch[2];
-      const time = `${hours}:${minutes}`;
+      const time = `${drawMatch[1]}:${drawMatch[2]}`;
       const extractionName = drawMatch[3].trim();
 
-      // 3. Coletar todo o texto útil entre este heading e o próximo
       let contentText = "";
       let nextElem = $(el).next();
-      
       while (nextElem.length > 0 && !['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(nextElem.get(0).tagName)) {
         contentText += nextElem.text() + "\n";
         nextElem = nextElem.next();
       }
 
-      if (!contentText.trim() || contentText.includes("clique aqui para atualizar") || contentText.includes("Não há extrações")) {
-        return;
-      }
+      if (!contentText.trim() || contentText.includes("clique aqui para atualizar") || contentText.includes("Não há extrações")) return;
 
-      // 4. Parsear linhas de prêmio dentro do bloco de texto acumulado
       const lines = contentText.split('\n');
       const prizes: any[] = [];
-
       lines.forEach(line => {
-        // Regex robusta para capturar posição e milhar
-        // Padrão esperado: 1º ► 0718-05 — CACHORRO ou 1º 0718-05
         const prizeMatch = line.match(/(\d+)[º°]?.*?(\d{3,4})-(\d{2})\s*[—–-]?\s*(.*)/i);
-        
         if (prizeMatch) {
           const milhar = prizeMatch[2].padStart(4, '0');
           prizes.push({
@@ -89,11 +95,10 @@ export async function GET() {
         }
       });
 
-      // 5. Validar consistência (Mínimo de 5 prêmios para ser considerado válido)
       if (prizes.length >= 5) {
         results.push({
-          stateName: "Rio de Janeiro",
-          stateCode: "RJ",
+          stateName: state.name,
+          stateCode: state.code,
           extractionName,
           time,
           date: pageDate,
@@ -103,12 +108,24 @@ export async function GET() {
       }
     });
 
+    return results;
+  } catch (error) {
+    console.error(`[JDB Scraper] Erro ao processar ${state.code}:`, error);
+    return [];
+  }
+}
+
+export async function GET() {
+  try {
+    // Execução paralela para melhor performance
+    const allResultsArrays = await Promise.all(PORTAL_BRASIL_STATES.map(scrapeState));
+    const flattenedResults = allResultsArrays.flat();
+
     return NextResponse.json({
       success: true,
-      source: 'Portal Brasil',
-      date: pageDate,
-      count: results.length,
-      data: results
+      source: 'Portal Brasil Multi-State',
+      count: flattenedResults.length,
+      data: flattenedResults
     });
 
   } catch (error: any) {

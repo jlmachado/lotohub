@@ -3,7 +3,6 @@
  */
 
 import { JDBNormalizedResult, JDBPrizeDetail } from "@/types/result-types";
-import { JDB_STATES } from "@/utils/jdb-constants";
 
 export class PortalBrasilProvider {
   static async fetchResults(): Promise<JDBNormalizedResult[]> {
@@ -15,14 +14,8 @@ export class PortalBrasilProvider {
       if (!json.success || !json.data) return [];
 
       return json.data.map((ext: any) => {
-        // Tentar encontrar o código do estado pelo nome
-        const state = JDB_STATES.find(s => 
-          ext.stateName.toLowerCase().includes(s.name.toLowerCase()) || 
-          s.name.toLowerCase().includes(ext.stateName.toLowerCase())
-        );
-
-        const stateCode = state?.code || "UN";
-        const stateName = state?.name || ext.stateName;
+        const stateCode = ext.stateCode || "UN";
+        const stateName = ext.stateName || "Desconhecido";
 
         return {
           id: `jdb-${ext.date}-${ext.time}-${stateCode.toLowerCase()}-${ext.extractionName.toLowerCase().replace(/\s/g, '-')}`,

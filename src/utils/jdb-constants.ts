@@ -6,6 +6,7 @@ export const JDB_STATES = [
   { code: "RJ", name: "Rio de Janeiro" },
   { code: "SP", name: "São Paulo" },
   { code: "GO", name: "Goiás" },
+  { code: "DF", name: "Brasília (DF)" },
   { code: "PB", name: "Paraíba" },
   { code: "BA", name: "Bahia" },
   { code: "CE", name: "Ceará" },
