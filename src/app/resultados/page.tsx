@@ -6,331 +6,253 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useState, useEffect, useMemo } from 'react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Printer, Share2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { toJpeg } from 'html-to-image';
-import ResultadosJogoDoBicho from '@/components/ResultadosJogoDoBicho';
-import { useAppContext } from '@/context/AppContext';
+import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Search, Share2, Printer, Calendar, Clock, MapPin, Hash, RotateCcw } from 'lucide-react';
+import { useAppContext } from '@/context/AppContext';
+import { useToast } from '@/hooks/use-toast';
+import { formatBRL } from '@/utils/currency';
+import { cn } from '@/lib/utils';
 
-interface ResultadoBicho {
-  premio: string;
-  milhar: string;
-  grupo: string;
-  animal: string;
-}
-
-export default function ResultadosPage() {
-  const [loteria, setLoteria] = useState<string>('');
-  const [jogoDoBichoLoteria, setJogoDoBichoLoteria] = useState<string>('');
-  const [horario, setHorario] = useState<string>('');
-  const [data, setData] = useState<string>('');
-  const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
-  const [showHorarioInput, setShowHorarioInput] = useState(false);
-
-  const [resultados, setResultados] = useState<ResultadoBicho[] | null>(null);
-  const [otherResultados, setOtherResultados] = useState<string[] | null>(null);
-  const [pesquisaFeita, setPesquisaFeita] = useState(false);
-
-  const [isClient, setIsClient] = useState(false);
+export default function ResultadosPublicPage() {
+  const { jdbResults, jdbLoterias, user, terminal } = useAppContext();
   const { toast } = useToast();
-  const { postedResults, jdbLoterias } = useAppContext();
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+  // Estados de Filtro
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedBanca, setSelectedBanca] = useState('all');
+  const [selectedTime, setSelectedTime] = useState('all');
 
-  const mainLoterias = [
-    { id: 'jogo-do-bicho', nome: 'Jogo do Bicho' },
-    { id: 'loteria-uruguai', nome: 'Loteria Uruguai' },
-    { id: 'seninha', nome: 'Seninha' },
-    { id: 'quininha', nome: 'Quininha' },
-    { id: 'lotinha', nome: 'Lotinha' },
-  ];
-  
-  const loteriasDisponiveisJogoDoBicho = useMemo(() => {
-    return jdbLoterias.map(l => ({
-      id: l.id,
-      nome: l.nome,
-      horarios: [...new Set(Object.values(l.dias).flatMap(d => d.selecionado ? d.horarios : []).filter(Boolean))].sort()
-    }));
-  }, [jdbLoterias]);
+  // Lista de bancas disponíveis nos resultados para o filtro
+  const availableBancas = useMemo(() => {
+    const names = new Set(jdbResults.map(r => r.lotteryName));
+    return Array.from(names).sort();
+  }, [jdbResults]);
 
-  useEffect(() => {
-    let horarios: string[] = [];
-    let showInput = false;
+  // Lista de horários disponíveis nos resultados para o filtro
+  const availableTimes = useMemo(() => {
+    const times = new Set(jdbResults.map(r => r.time));
+    return Array.from(times).sort();
+  }, [jdbResults]);
 
-    if (loteria === 'jogo-do-bicho' && jogoDoBichoLoteria) {
-      const jdbLoteria = loteriasDisponiveisJogoDoBicho.find(l => l.id === jogoDoBichoLoteria);
-      if (jdbLoteria?.horarios) {
-        horarios = jdbLoteria.horarios;
-      } else {
-        showInput = true;
-      }
-    } else if (loteria === 'loteria-uruguai') {
-      const selectedDate = new Date(data + 'T00:00:00');
-      const dayOfWeek = selectedDate.getDay(); 
-      if (dayOfWeek === 6) { 
-        horarios = ['21:00'];
-      } else if (dayOfWeek !== 0) { 
-        horarios = ['15:00', '21:00'];
-      }
-    } else if (['seninha', 'quininha', 'lotinha'].includes(loteria)) {
-      horarios = ['20:00'];
-    }
+  // Resultados filtrados (Apenas publicados para o público)
+  const filteredResults = useMemo(() => {
+    return jdbResults.filter(r => {
+      if (r.status !== 'PUBLICADO') return false;
+      const matchDate = r.date === date;
+      const matchBanca = selectedBanca === 'all' || r.lotteryName === selectedBanca;
+      const matchTime = selectedTime === 'all' || r.time === selectedTime;
+      return matchDate && matchBanca && matchTime;
+    }).sort((a, b) => b.time.localeCompare(a.time));
+  }, [jdbResults, date, selectedBanca, selectedTime]);
 
-    setHorariosDisponiveis(horarios);
-    setShowHorarioInput(showInput);
-    setHorario(''); // Reset horario when lottery changes
-  }, [loteria, jogoDoBichoLoteria, data, loteriasDisponiveisJogoDoBicho]);
+  const handleShare = async (result: any) => {
+    const prizesText = result.prizes
+      .map((p: any) => `${p.position}º ${p.milhar} - Gr. ${p.grupo} - ${p.animal.toUpperCase()}`)
+      .join('\n');
 
-  const handleLoteriaChange = (value: string) => {
-    setLoteria(value);
-    setJogoDoBichoLoteria('');
-    setHorario('');
-  };
-  
-  const handleJogoDoBichoLoteriaChange = (value: string) => {
-    setJogoDoBichoLoteria(value);
-    setHorario('');
-  };
+    const message = `🏆 *RESULTADO OFICIAL*
+📅 Data: ${new Date(result.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+⏰ Horário: ${result.time}
+🎰 Loteria: ${result.lotteryName}
 
-  const handlePesquisar = () => {
-    setPesquisaFeita(true);
-    setResultados(null);
-    setOtherResultados(null);
+${prizesText}
 
-    const foundResult = postedResults.find(r => 
-        r.loteria === loteria &&
-        r.data === data &&
-        r.horario === horario &&
-        (loteria !== 'jogo-do-bicho' || r.jogoDoBichoLoteria === jogoDoBichoLoteria)
-    );
+✅ *Confira no LotoHub*`;
 
-    if (foundResult) {
-        if (foundResult.loteria === 'jogo-do-bicho') {
-            setResultados(foundResult.resultados as ResultadoBicho[]);
-        } else {
-            setOtherResultados(foundResult.resultados as string[]);
-        }
-    }
-  };
-
-  const getResultDescription = () => {
-    const loteriaPrincipal = mainLoterias.find(l => l.id === loteria)?.nome;
-    const loteriaSpecifica = loteriasDisponiveisJogoDoBicho.find(l => l.id === jogoDoBichoLoteria)?.nome;
-    const dataFormatada = data ? new Date(data + 'T00:00:00').toLocaleDateString('pt-BR') : '';
-
-    let description = '';
-    if (loteriaPrincipal) description += loteriaPrincipal;
-    if (loteriaSpecifica) description += ` - ${loteriaSpecifica}`;
-    if (dataFormatada) description += ` | ${dataFormatada}`;
-    if (horario) description += ` | ${horario}`;
-    
-    return description;
-  }
-  
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleShare = async () => {
-    const resultsNode = document.getElementById('resultados-content');
-    if (!resultsNode) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao gerar imagem',
-        description: 'Não foi possível encontrar o conteúdo dos resultados para compartilhar.',
-      });
-      return;
-    }
-
-    const wasDarkMode = document.documentElement.classList.contains('dark');
-    if (wasDarkMode) {
-      document.documentElement.classList.remove('dark');
-    }
-
-    try {
-      const dataUrl = await toJpeg(resultsNode, {
-        quality: 0.95,
-        pixelRatio: 2,
-        backgroundColor: '#ffffff',
-        filter: (node) => {
-          const element = node as HTMLElement;
-          return !element.classList?.contains('print:hidden');
-        },
-      });
-
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
-      const file = new File([blob], 'resultados.jpg', { type: 'image/jpeg' });
-
-      if (isClient && navigator.share && navigator.canShare({ files: [file] })) {
+    if (navigator.share) {
+      try {
         await navigator.share({
-          files: [file],
-          title: `Resultados - ${getResultDescription()}`,
-          text: `Resultados para ${getResultDescription()}`,
+          title: `Resultado ${result.lotteryName}`,
+          text: message,
         });
-      } else {
-        const link = document.createElement('a');
-        link.download = 'resultados.jpg';
-        link.href = dataUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        toast({
-          title: 'Imagem dos resultados baixada',
-          description: 'A função de compartilhar não é suportada neste navegador. A imagem foi baixada.',
-        });
+      } catch (err) {
+        copyToClipboard(message);
       }
-    } catch (error: any) {
-      if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
-        toast({
-          variant: 'destructive',
-          title: 'Erro ao compartilhar',
-          description: 'Não foi possível gerar a imagem dos resultados. Tente imprimir.',
-        });
-        console.error('Erro ao gerar ou compartilhar a imagem dos resultados:', error);
-      }
-    } finally {
-      if (wasDarkMode) {
-        document.documentElement.classList.add('dark');
-      }
+    } else {
+      copyToClipboard(message);
     }
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copiado!", description: "Resultado copiado para a área de transferência." });
+  };
+
+  const handlePrint = (result: any) => {
+    const printData = {
+      banca: 'LOTOHUB',
+      ticketId: 'RESULTADO',
+      terminal: result.lotteryName,
+      datetime: `${new Date(result.date + 'T12:00:00').toLocaleDateString('pt-BR')} - ${result.time}`,
+      jogo: 'JOGO DO BICHO',
+      cliente: 'Resultado Oficial',
+      vendedor: 'Sistema LotoHub',
+      apostas: result.prizes.map((p: any) => ({
+        modalidade: `${p.position}º PRÊMIO`,
+        numero: `${p.milhar} - ${p.animal.toUpperCase()}`,
+        valor: `Gr. ${p.grupo}`
+      })),
+      total: 'EXTRAÇÃO OFICIAL',
+      possivelRetorno: 'BOA SORTE'
+    };
+
+    localStorage.setItem('PRINT_TICKET_DATA', JSON.stringify(printData));
+    window.open('/impressao.html', 'ImpressaoLotoHub', 'width=400,height=600');
+  };
 
   return (
-    <div>
+    <div className="min-h-screen bg-background pb-20">
       <Header />
-      <main className="p-4 md:p-8 flex flex-col items-center gap-6">
-        <ResultadosJogoDoBicho />
+      
+      <main className="p-4 md:p-8 max-w-4xl mx-auto space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Resultados</h1>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">
+              Confira as extrações oficiais do dia
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            onClick={() => { setDate(new Date().toISOString().split('T')[0]); setSelectedBanca('all'); setSelectedTime('all'); }}
+            className="h-9 border-white/10 text-[10px] uppercase font-black"
+          >
+            <RotateCcw className="mr-2 h-3.5 w-3.5" /> Limpar Filtros
+          </Button>
+        </div>
 
-        <Card className="w-full max-w-lg">
-          <CardHeader>
-            <CardTitle>Pesquisar Resultados Anteriores</CardTitle>
-            <CardDescription>
-              Filtre pela loteria, data e horário para ver os resultados.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="loteria">Loteria Principal</Label>
-                <Select value={loteria} onValueChange={handleLoteriaChange}>
-                  <SelectTrigger id="loteria">
-                    <SelectValue placeholder="Selecione a loteria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mainLoterias.map(l => (
-                      <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {/* Filtros */}
+        <Card className="border-white/10 bg-card/50 shadow-xl">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Data</Label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
+                  <Input 
+                    type="date" 
+                    value={date} 
+                    onChange={e => setDate(e.target.value)} 
+                    className="pl-9 h-11 bg-black/20 border-white/10 text-sm font-bold"
+                  />
+                </div>
               </div>
 
-              {loteria === 'jogo-do-bicho' && (
-                <div className="grid gap-2">
-                  <Label htmlFor="jdb-loteria">Loteria (Jogo do Bicho)</Label>
-                  <Select value={jogoDoBichoLoteria} onValueChange={handleJogoDoBichoLoteriaChange}>
-                    <SelectTrigger id="jdb-loteria">
-                      <SelectValue placeholder="Selecione a loteria específica" />
+              <div className="space-y-1.5">
+                <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Loteria / Banca</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
+                  <Select value={selectedBanca} onValueChange={setSelectedBanca}>
+                    <SelectTrigger className="pl-9 h-11 bg-black/20 border-white/10 text-sm font-bold">
+                      <SelectValue placeholder="Todas as Bancas" />
                     </SelectTrigger>
                     <SelectContent>
-                      {loteriasDisponiveisJogoDoBicho.map(l => (
-                        <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>
+                      <SelectItem value="all">Todas as Bancas</SelectItem>
+                      {availableBancas.map(b => (
+                        <SelectItem key={b} value={b}>{b}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-
-              <div className="grid gap-2">
-                <Label htmlFor="data">Data</Label>
-                <Input id="data" type="date" value={data} onChange={(e) => setData(e.target.value)} />
               </div>
-              
-              <div className="grid gap-2">
-                <Label htmlFor="horario">Horário</Label>
-                {horariosDisponiveis.length > 0 ? (
-                  <Select value={horario} onValueChange={setHorario} disabled={!loteria || (loteria === 'jogo-do-bicho' && !jogoDoBichoLoteria)}>
-                    <SelectTrigger id="horario">
-                      <SelectValue placeholder="Selecione o horário" />
+
+              <div className="space-y-1.5">
+                <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Horário</Label>
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
+                  <Select value={selectedTime} onValueChange={setSelectedTime}>
+                    <SelectTrigger className="pl-9 h-11 bg-black/20 border-white/10 text-sm font-bold">
+                      <SelectValue placeholder="Todos os Horários" />
                     </SelectTrigger>
                     <SelectContent>
-                      {horariosDisponiveis.map(h => (
-                         <SelectItem key={h} value={h}>{h}</SelectItem>
+                      <SelectItem value="all">Todos os Horários</SelectItem>
+                      {availableTimes.map(t => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                ) : showHorarioInput ? (
-                  <Input id="horario-input" type="time" value={horario} onChange={(e) => setHorario(e.target.value)} />
-                ) : (
-                  <Input id="horario-disabled" type="text" placeholder="Selecione os filtros" value={horario} disabled />
-                )}
+                </div>
               </div>
             </div>
           </CardContent>
-          <CardFooter>
-            <Button className="w-full" onClick={handlePesquisar} disabled={!loteria || !data || !horario}>Pesquisar</Button>
-          </CardFooter>
         </Card>
 
-        {pesquisaFeita && (
-            <Card className="w-full max-w-lg" id="resultados-content">
-                <CardHeader>
-                    <CardTitle>Resultado da Pesquisa</CardTitle>
-                    <CardDescription>{getResultDescription()}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {(resultados && resultados.length > 0) ? (
-                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                <TableHead>Prêmio</TableHead>
-                                <TableHead>Milhar</TableHead>
-                                <TableHead>Grupo</TableHead>
-                                <TableHead className="text-right">Bicho</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {resultados.map((res) => (
-                                <TableRow key={res.premio}>
-                                    <TableCell className="font-medium">{res.premio}</TableCell>
-                                    <TableCell className="font-mono">{res.milhar}</TableCell>
-                                    <TableCell className="font-mono">{res.grupo}</TableCell>
-                                    <TableCell className="text-right">{res.animal}</TableCell>
-                                </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    ) : (otherResultados && otherResultados.length > 0) ? (
-                        <div className="flex flex-wrap items-center justify-center gap-2">
-                            {otherResultados.map((res, i) => (
-                                <Badge key={i} variant="secondary" className="text-lg font-mono">{res}</Badge>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-center text-muted-foreground py-8">Nenhum resultado encontrado para os filtros selecionados.</p>
-                    )}
-                </CardContent>
-                {((resultados && resultados.length > 0) || (otherResultados && otherResultados.length > 0)) && (
-                  <CardFooter className="grid grid-cols-2 gap-4 print:hidden">
-                    <Button variant="outline" className="w-full" onClick={handleShare}>
-                      <Share2 className="mr-2 h-4 w-4" />
-                      Compartilhar
+        {/* Listagem de Resultados */}
+        <div className="grid gap-6">
+          {filteredResults.length === 0 ? (
+            <div className="py-32 text-center space-y-4 border-2 border-dashed border-white/5 rounded-3xl">
+              <Search className="h-12 w-12 mx-auto text-slate-700" />
+              <p className="text-muted-foreground font-bold uppercase text-xs tracking-widest">
+                Nenhum resultado publicado para os filtros selecionados.
+              </p>
+            </div>
+          ) : (
+            filteredResults.map((res) => (
+              <Card key={res.id} className="border-white/5 bg-slate-900/50 shadow-2xl overflow-hidden group hover:border-primary/20 transition-all">
+                <div className="bg-white/5 p-4 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-primary/10 p-2 rounded-xl">
+                      <Hash className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black uppercase italic text-white leading-none">{res.lotteryName}</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-[9px] font-mono h-4 border-primary/20 text-primary">
+                          {res.time}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold">
+                          {new Date(res.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      onClick={() => handleShare(res)} 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-9 rounded-lg font-bold border-white/10 hover:bg-primary hover:text-black gap-2"
+                    >
+                      <Share2 size={14} /> Compartilhar
                     </Button>
-                    <Button variant="outline" className="w-full" onClick={handlePrint}>
-                      <Printer className="mr-2 h-4 w-4" />
-                      Imprimir
+                    <Button 
+                      onClick={() => handlePrint(res)} 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-9 rounded-lg font-bold border-white/10 hover:bg-white/10 gap-2"
+                    >
+                      <Printer size={14} /> Imprimir
                     </Button>
-                  </CardFooter>
-                )}
-            </Card>
-        )}
+                  </div>
+                </div>
 
+                <CardContent className="p-0">
+                  <div className="divide-y divide-white/5">
+                    {res.prizes.map((p: any) => (
+                      <div key={p.position} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs font-black text-slate-500 w-6">{p.position}º</span>
+                          <span className="text-2xl font-black font-mono text-white tracking-tighter">{p.milhar}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-black text-primary uppercase italic leading-none">{p.animal}</p>
+                          <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Grupo: {p.group}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+                
+                <div className="p-3 bg-black/40 text-center border-t border-white/5">
+                  <p className="text-[8px] text-muted-foreground uppercase font-black tracking-[4px]">
+                    Fonte: {res.sourceName} • Verificado via LotoHub Cloud
+                  </p>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
       </main>
     </div>
   );
