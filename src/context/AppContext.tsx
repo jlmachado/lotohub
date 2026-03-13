@@ -25,6 +25,7 @@ import { filterProfanity } from '@/utils/profanity-filter';
 import { FootballSettlementService } from '@/services/football-settlement-service';
 import { FootballLiveEngine } from '@/services/football-live-engine';
 import { checkApostaWinner } from '@/lib/draw-engine';
+import { JDBNormalizedResult, SyncLogEntry } from '@/types/result-types';
 
 // --- INTERFACES GERAIS ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -35,20 +36,6 @@ export interface CasinoSettings {
   casinoName: string;
   casinoStatus: boolean;
   bannerMessage: string;
-}
-
-export interface JDBResult {
-  id: string;
-  date: string;
-  time: string;
-  lotteryId: string;
-  lotteryName: string;
-  status: 'PENDENTE' | 'CONFIRMADO' | 'PUBLICADO';
-  results: any[];
-  source: string;
-  bancaId: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface Aposta {
@@ -265,7 +252,8 @@ interface AppContextType {
   news: NewsMessage[];
   apostas: Aposta[];
   postedResults: any[];
-  jdbResults: JDBResult[];
+  jdbResults: JDBNormalizedResult[];
+  jdbSyncLogs: SyncLogEntry[];
   jdbLoterias: any[];
   genericLotteryConfigs: any[];
   casinoSettings: CasinoSettings;
@@ -312,8 +300,7 @@ interface AppContextType {
   toggleFullscreen: () => void;
   updateCasinoSettings: (s: CasinoSettings) => void;
 
-  // JDB Results Management
-  saveJDBResult: (result: JDBResult) => void;
+  // JDB Professional Results
   publishJDBResult: (id: string) => void;
   deleteJDBResult: (id: string) => void;
 
@@ -401,7 +388,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [fullLedger, setFullLedger] = useState<any[]>([]);
   const [apostas, setApostas] = useState<Aposta[]>([]);
   const [postedResults, setPostedResults] = useState<any[]>([]);
-  const [jdbResults, setJdbResults] = useState<JDBResult[]>([]);
+  const [jdbResults, setJdbResults] = useState<JDBNormalizedResult[]>([]);
+  const [jdbSyncLogs, setJdbSyncLogs] = useState<SyncLogEntry[]>([]);
   const [jdbLoterias, setJdbLoterias] = useState<any[]>([]);
   const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<any[]>([]);
   const [casinoSettings, setCasinoSettings] = useState<CasinoSettings>(DEFAULT_CASINO_SETTINGS);
@@ -452,6 +440,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setApostas(getStorageItem('app:apostas:v1', []));
     setPostedResults(getStorageItem('app:posted_results:v1', []));
     setJdbResults(getStorageItem('app:jdb_results:v1', []));
+    setJdbSyncLogs(getStorageItem('app:jdb_sync_logs:v1', []));
     setFootballBets(getStorageItem('app:football_bets:v1', []));
     setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS));
     setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES));
@@ -519,31 +508,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     notify();
   }, [notify]);
 
-  // --- JDB RESULTS SETTLEMENT ---
-  const saveJDBResult = useCallback((result: JDBResult) => {
-    const current = getStorageItem<JDBResult[]>('app:jdb_results:v1', []);
-    const exists = current.findIndex(r => r.id === result.id);
-    let updated;
-    if (exists >= 0) {
-      updated = current.map(r => r.id === result.id ? result : r);
-    } else {
-      updated = [result, ...current];
-    }
-    setStorageItem('app:jdb_results:v1', updated);
-    notify();
-  }, [notify]);
-
+  // --- JDB PROFESSIONAL RESULTS SETTLEMENT ---
   const publishJDBResult = useCallback((id: string) => {
-    const currentResults = getStorageItem<JDBResult[]>('app:jdb_results:v1', []);
+    const currentResults = getStorageItem<JDBNormalizedResult[]>('app:jdb_results:v1', []);
     const result = currentResults.find(r => r.id === id);
     if (!result) return;
 
     // 1. Marcar como PUBLICADO
-    const updatedResults = currentResults.map(r => r.id === id ? { ...r, status: 'PUBLICADO' as const } : r);
+    const updatedResults = currentResults.map(r => r.id === id ? { 
+      ...r, 
+      status: 'PUBLICADO' as const,
+      publishedAt: new Date().toISOString()
+    } : r);
     setStorageItem('app:jdb_results:v1', updatedResults);
 
-    // 2. Apuração Automática de Apostas
+    // 2. Apuração Automática de Apostas baseada no formato normalizado profissional
     const currentApostas = getStorageItem<Aposta[]>('app:apostas:v1', []);
+    
+    // Converter resultados detalhados para o formato que a engine de sorteio espera
+    const simpleResults = result.prizes.map(p => ({
+      premio: `${p.position}º`,
+      milhar: p.milhar,
+      grupo: p.grupo,
+      animal: p.animal
+    }));
+
     const updatedApostas = currentApostas.map(aposta => {
       const apostaData = aposta.data.split(',')[0].trim();
       const apostaHorario = aposta.detalhes?.[0]?.horario;
@@ -553,7 +542,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           apostaData === result.date && 
           apostaHorario === result.time) {
         
-        const { isWinner, prize } = checkApostaWinner(aposta, result.results, jdbLoterias);
+        const { isWinner, prize } = checkApostaWinner(aposta, simpleResults, jdbLoterias);
         
         if (isWinner) {
           const realUser = getUserByTerminal(aposta.userId) || getUsers().find(u => u.id === aposta.userId);
@@ -576,12 +565,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
 
     setStorageItem('app:apostas:v1', updatedApostas);
-    toast({ title: "Publicado!", description: "Resultado publicado e apostas apuradas." });
+    toast({ title: "Extração Publicada!", description: "Resultados disponibilizados e apostas apuradas automaticamente." });
     notify();
   }, [notify, jdbLoterias, toast]);
 
   const deleteJDBResult = useCallback((id: string) => {
-    const current = getStorageItem<JDBResult[]>('app:jdb_results:v1', []);
+    const current = getStorageItem<JDBNormalizedResult[]>('app:jdb_results:v1', []);
     setStorageItem('app:jdb_results:v1', current.filter(r => r.id !== id));
     notify();
   }, [notify]);
@@ -991,10 +980,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const contextValue = useMemo(() => ({
     user, allUsers, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '',
     activeBancaId: user?.bancaId || 'default', userLedger, fullLedger, banners, popups, news, apostas, postedResults, 
-    jdbResults, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
+    jdbResults, jdbSyncLogs, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig,
     isFullscreen, toggleFullscreen, casinoSettings, updateCasinoSettings,
     bingoSettings, bingoDraws, bingoTickets, bingoPayouts,
-    saveJDBResult, publishJDBResult, deleteJDBResult,
+    publishJDBResult, deleteJDBResult,
     updateBingoSettings, createBingoDraw, startBingoDraw, drawBingoBall, finishBingoDraw, cancelBingoDraw, 
     buyBingoTickets, refundBingoTicket, payBingoPayout,
     snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog,
@@ -1008,7 +997,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
     placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews
   }), [
-    user, allUsers, isLoading, userLedger, fullLedger, banners, popups, news, apostas, postedResults, jdbResults, jdbLoterias, genericLotteryConfigs, 
+    user, allUsers, isLoading, userLedger, fullLedger, banners, popups, news, apostas, postedResults, jdbResults, jdbSyncLogs, jdbLoterias, genericLotteryConfigs, 
     footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, bingoSettings, bingoDraws, 
     bingoTickets, bingoPayouts, snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, 
     snookerCashOutLog, snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, 
@@ -1018,7 +1007,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     settleSnookerRound, clearCelebration, loadLocalData, logout, handleFinalizarAposta, processarResultados, 
     syncFootballAll, updateLeagueConfig, placeFootballBet, addBanner, updateBanner, deleteBanner, 
     addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall,
-    casinoSettings, updateCasinoSettings, saveJDBResult, publishJDBResult, deleteJDBResult,
+    casinoSettings, updateCasinoSettings, publishJDBResult, deleteJDBResult,
     updateBingoSettings, createBingoDraw, startBingoDraw, finishBingoDraw, cancelBingoDraw, 
     buyBingoTickets, refundBingoTicket, payBingoPayout
   ]);
