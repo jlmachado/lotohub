@@ -35,11 +35,12 @@ export class ResultsSyncService {
       const newResultsList = [...currentResults];
 
       imported.forEach(result => {
-        // Chave única para evitar duplicidade entre estados e extrações
-        const uniqueKey = `${result.date}_${result.stateCode}_${result.extractionName}`.toLowerCase();
+        // CHAVE ÚNICA ATUALIZADA: Data + Estado + Nome da Extração + Horário
+        // Isso permite suportar múltiplas bancas no mesmo horário e estado (ex: Bahia)
+        const uniqueKey = `${result.date}_${result.stateCode}_${result.extractionName}_${result.time}`.toLowerCase();
         
         const existingIdx = newResultsList.findIndex(r => {
-          const rKey = `${r.date}_${r.stateCode}_${r.extractionName}`.toLowerCase();
+          const rKey = `${r.date}_${r.stateCode}_${r.extractionName}_${r.time}`.toLowerCase();
           return rKey === uniqueKey;
         });
         
@@ -69,7 +70,7 @@ export class ResultsSyncService {
         return dateTimeB.localeCompare(dateTimeA);
       });
 
-      setStorageItem(RESULTS_KEY, newResultsList.slice(0, 2000)); // Manter histórico saudável
+      setStorageItem(RESULTS_KEY, newResultsList.slice(0, 3000)); // Histórico estendido
       
       this.addLog(`Sync finalizado: ${news} novos, ${updated} atualizados.`, 'SUCCESS');
       window.dispatchEvent(new Event('app:data-changed'));
