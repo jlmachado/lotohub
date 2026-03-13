@@ -19,6 +19,7 @@ export interface SyncSummary {
 export class ResultsSyncService {
   /**
    * Sincroniza resultados usando os providers disponíveis.
+   * Agora publica automaticamente após a importação.
    */
   static async syncToday(): Promise<SyncSummary> {
     const currentResults = getStorageItem<JDBNormalizedResult[]>(RESULTS_KEY, []);
@@ -32,7 +33,6 @@ export class ResultsSyncService {
       
       const imported = await PortalBrasilProvider.fetchResults();
       
-      // Se falhar o fetch, imported virá como array vazio
       if (!imported || imported.length === 0) {
         this.addLog('Nenhum resultado capturado pela fonte.', 'WARNING');
         return { news: 0, updated: 0, errors: 0, totalProcessed: 0 };
@@ -41,6 +41,7 @@ export class ResultsSyncService {
       const newResultsList = [...currentResults];
 
       imported.forEach(result => {
+        // Chave única composta para evitar colisões entre bancas no mesmo horário
         const uniqueKey = `${result.date}_${result.stateCode}_${result.extractionName}_${result.time}`.toLowerCase();
         
         const existingIdx = newResultsList.findIndex(r => {
@@ -49,30 +50,32 @@ export class ResultsSyncService {
         });
         
         if (existingIdx === -1) {
-          // Resultado novo: Já entra como PUBLICADO e aguarda processamento pelo AppContext
+          // Resultado novo: Já entra como PUBLICADO (Auto-Publish)
           newResultsList.unshift({
             ...result,
             status: 'PUBLICADO',
             publishedAt: new Date().toISOString(),
-            isSettled: false
+            isSettled: false // Ativa apuração automática no AppContext
           });
           news++;
         } else {
           const existing = newResultsList[existingIdx];
-          // Se o checksum mudou (correção na fonte)
+          // Se o checksum mudou (correção na fonte), republica
           if (existing.checksum !== result.checksum) {
             newResultsList[existingIdx] = { 
               ...existing, 
               ...result, 
               status: 'PUBLICADO',
-              isSettled: false, // Força nova conferência se o resultado mudou
-              updatedAt: new Date().toISOString()
+              isSettled: false,
+              updatedAt: new Date().toISOString(),
+              publishedAt: new Date().toISOString()
             };
             updated++;
           }
         }
       });
 
+      // Ordena por data e hora (mais recentes primeiro)
       newResultsList.sort((a, b) => {
         const dateTimeA = `${a.date}T${a.time}`;
         const dateTimeB = `${b.date}T${b.time}`;
@@ -81,7 +84,7 @@ export class ResultsSyncService {
 
       setStorageItem(RESULTS_KEY, newResultsList.slice(0, 3000));
       
-      this.addLog(`Sync finalizado: ${news} novos, ${updated} atualizados.`, 'SUCCESS');
+      this.addLog(`Sync finalizado: ${news} publicados, ${updated} atualizados.`, 'SUCCESS');
       window.dispatchEvent(new Event('app:data-changed'));
 
       return { news, updated, errors, totalProcessed: imported.length };

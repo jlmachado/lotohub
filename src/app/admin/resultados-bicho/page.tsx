@@ -71,7 +71,7 @@ export default function AdminJDBResultsProfessionalPage() {
       if (summary) {
         toast({ 
           title: "Sincronização Finalizada", 
-          description: `${summary.news} resultados publicados automaticamente.` 
+          description: `${summary.news} novos resultados foram publicados automaticamente.` 
         });
       }
     } catch (e) {
@@ -97,29 +97,28 @@ export default function AdminJDBResultsProfessionalPage() {
         'Data': new Date(res.date + 'T12:00:00').toLocaleDateString('pt-BR'),
         'Hora': res.time,
         'Estado': res.stateName,
-        'Banca/Fonte': res.sourceName,
-        'Extração': res.extractionName,
+        'Banca': res.extractionName,
         'Status': res.status,
       };
       
-      // Adiciona colunas para até 10 prêmios
+      // Exporta até 10 prêmios dinamicamente
       for (let i = 1; i <= 10; i++) {
         const p = res.prizes.find(p => p.position === i);
         row[`${i}º prêmio`] = p ? `${p.milhar} - Gr. ${p.grupo} - ${p.animal}` : '';
       }
       
-      row['Importado em'] = new Date(res.importedAt).toLocaleString('pt-BR');
+      row['Capturado em'] = new Date(res.importedAt).toLocaleString('pt-BR');
       return row;
     });
 
     const headers = [
-      'Data', 'Hora', 'Estado', 'Banca/Fonte', 'Extração', 'Status', 
+      'Data', 'Hora', 'Estado', 'Banca', 'Status', 
       '1º prêmio', '2º prêmio', '3º prêmio', '4º prêmio', '5º prêmio',
       '6º prêmio', '7º prêmio', '8º prêmio', '9º prêmio', '10º prêmio',
-      'Importado em'
+      'Capturado em'
     ];
 
-    downloadCSV(`resultados_bicho_${dateFilter}.csv`, exportData, headers);
+    downloadCSV(`resultados_jdb_pro_${dateFilter}.csv`, exportData, headers);
     toast({ title: "Exportação concluída" });
   };
 
@@ -148,7 +147,7 @@ export default function AdminJDBResultsProfessionalPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        <StatCard title="Total no Dia" value={stats.total} icon={History} color="text-blue-400" />
+        <StatCard title="Resultados Hoje" value={stats.total} icon={History} color="text-blue-400" />
         <StatCard title="Publicados" value={stats.publicados} icon={CheckCircle2} color="text-green-500" />
         <StatCard title="Pendentes" value={stats.pendentes} icon={AlertTriangle} color="text-amber-500" />
         <StatCard title="Divergentes" value={stats.divergentes} icon={Info} color="text-red-500" />
@@ -202,7 +201,7 @@ export default function AdminJDBResultsProfessionalPage() {
             <TableHeader className="bg-slate-950/50">
               <TableRow className="border-white/5 h-10">
                 <TableHead className="text-[10px] uppercase font-black px-4">Hora</TableHead>
-                <TableHead className="text-[10px] uppercase font-black">Estado / Banca</TableHead>
+                <TableHead className="text-[10px] uppercase font-black">Extração / Estado</TableHead>
                 <TableHead className="text-[10px] uppercase font-black">Prêmios</TableHead>
                 <TableHead className="text-[10px] uppercase font-black">Status</TableHead>
                 <TableHead className="text-[10px] uppercase font-black text-right px-4">Ações</TableHead>
@@ -218,15 +217,15 @@ export default function AdminJDBResultsProfessionalPage() {
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="text-[11px] font-bold text-white uppercase italic">{result.extractionName}</span>
-                        <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-white/5 border-white/10 w-fit">{result.stateCode}</Badge>
+                        <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-white/5 border-white/10 w-fit">{result.stateName}</Badge>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1 flex-wrap max-w-[250px]">
+                      <div className="grid grid-cols-5 gap-1 max-w-[250px]">
                         {result.prizes.map((p, i) => (
-                          <div key={i} className="flex flex-col items-center bg-black/20 border border-white/5 rounded px-1.5 py-0.5 min-w-[45px]">
-                            <span className="text-[10px] font-black text-white font-mono">{p.milhar}</span>
-                            <span className="text-[7px] font-bold text-primary uppercase">{p.animal}</span>
+                          <div key={i} className="flex flex-col items-center bg-black/20 border border-white/5 rounded px-1 py-0.5 min-w-[42px]">
+                            <span className="text-[9px] font-black text-white font-mono leading-none">{p.milhar}</span>
+                            <span className="text-[6px] font-bold text-primary uppercase leading-tight">{p.animal}</span>
                           </div>
                         ))}
                       </div>

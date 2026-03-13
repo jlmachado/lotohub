@@ -3,8 +3,7 @@ import * as cheerio from 'cheerio';
 
 /**
  * @fileOverview Scraper Multiestado para PortalBrasil.net
- * Versão V3: Suporte a premiações variáveis (1-7, 1-10) e segmentação inteligente.
- * Adicionado controle de timeout para evitar "Failed to fetch".
+ * Versão V4: Suporte a premiações variáveis (1-10) e segmentação inteligente de seções.
  */
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +27,6 @@ const PORTAL_BRASIL_STATES = [
 
 async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
   try {
-    // Timeout individual de 10 segundos por estado
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -97,6 +95,7 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
 
       if (!contentText.trim() || contentText.includes("clique aqui para atualizar")) return;
 
+      // Suporte para estados com múltiplas bancas (ex: Bahia)
       const bankSubHeaders = contentText.match(/Resultado do jogo do bicho ([A-ZÇÃÕÉÊÍÓÚ\s]{3,})/gi);
       
       if (bankSubHeaders && bankSubHeaders.length > 1) {
@@ -121,39 +120,47 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
 
     return results;
   } catch (error) {
-    console.warn(`[JDB Scraper] Falha silenciosa em ${state.code} (Timeout ou Rede)`);
+    console.warn(`[JDB Scraper] Falha em ${state.code}`);
     return [];
   }
 }
 
 function parsePrizesFromText(text: string) {
-  const sectionSplitRegex = /Resultados\s+do\s+1º\s+ao\s+(\d+)º/gi;
+  // Regex para detectar seções como "Resultados do 1º ao 10º"
+  const sectionSplitRegex = /Resultados\s+do\s+1º\s+ao\s+(\d+)[º°]/gi;
   const sections: { count: number, content: string }[] = [];
   let match;
   let lastPos = 0;
 
-  while ((match = sectionSplitRegex.exec(text)) !== null) {
-    if (sections.length > 0) {
-      sections[sections.length - 1].content = text.substring(lastPos, match.index);
+  // Encontra todas as seções
+  const matches = Array.from(text.matchAll(sectionSplitRegex));
+  
+  if (matches.length > 0) {
+    for (let i = 0; i < matches.length; i++) {
+      const currentMatch = matches[i];
+      const start = currentMatch.index! + currentMatch[0].length;
+      const end = i < matches.length - 1 ? matches[i+1].index! : text.length;
+      
+      sections.push({
+        count: parseInt(currentMatch[1], 10),
+        content: text.substring(start, end)
+      });
     }
-    sections.push({ count: parseInt(match[1], 10), content: "" });
-    lastPos = match.index;
-  }
 
-  if (sections.length > 0) {
-    sections[sections.length - 1].content = text.substring(lastPos);
-    
+    // Processa cada seção e escolhe a mais completa que tenha prêmios válidos
     const parsedSections = sections.map(s => ({
       count: s.count,
       prizes: parseRawLines(s.content)
     })).filter(s => s.prizes.length >= 5);
 
     if (parsedSections.length > 0) {
+      // Ordena por quantidade de prêmios (mais completo primeiro)
       parsedSections.sort((a, b) => b.prizes.length - a.prizes.length);
       return parsedSections[0].prizes;
     }
   }
 
+  // Fallback se não encontrar cabeçalhos de seção
   return parseRawLines(text);
 }
 
@@ -163,7 +170,8 @@ function parseRawLines(text: string) {
   const seen = new Set();
 
   lines.forEach(line => {
-    const prizeMatch = line.match(/(\d+)[º°]?.*?(\d{3,4})-(\d{2})\s*[—–-]?\s*([A-ZÇÃÕÉÊÍÓÚ\s]+)/i);
+    // Regex tolerante para linhas de prêmio (1º ao 10º)
+    const prizeMatch = line.match(/(\d+)[º°]?\s*[►»\-:]?\s*(\d{3,4})-(\d{2})\s*[—–-]?\s*([A-ZÇÃÕÉÊÍÓÚ\s]+)/i);
     if (prizeMatch) {
       const position = parseInt(prizeMatch[1], 10);
       if (seen.has(position)) return;
@@ -203,13 +211,13 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      source: 'Portal Brasil Multi-State V3',
+      source: 'Portal Brasil Professional V4',
       count: flattenedResults.length,
       data: flattenedResults
     });
 
   } catch (error: any) {
-    console.error('[JDB Scraper API] Erro Crítico:', error.message);
+    console.error('[JDB Scraper API] Erro:', error.message);
     return NextResponse.json({ error: 'Falha na captura automática', details: error.message }, { status: 500 });
   }
 }

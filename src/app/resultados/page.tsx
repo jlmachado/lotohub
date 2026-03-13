@@ -127,7 +127,10 @@ ${prizesText}
 
         <div className="grid gap-6">
           {filteredResults.length === 0 ? (
-            <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl"><Search className="h-12 w-12 mx-auto text-slate-700 mb-4" /><p className="text-muted-foreground font-bold uppercase text-xs">Nenhum resultado.</p></div>
+            <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl">
+              <Search className="h-12 w-12 mx-auto text-slate-700 mb-4" />
+              <p className="text-muted-foreground font-bold uppercase text-xs">Nenhum resultado encontrado para estes filtros.</p>
+            </div>
           ) : (
             filteredResults.map((res) => (
               <Card key={res.id} className="border-white/5 bg-slate-900/50 shadow-2xl overflow-hidden group">
@@ -137,7 +140,7 @@ ${prizesText}
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-lg font-black uppercase italic text-white leading-none">{res.extractionName}</h3>
-                        <Badge variant="secondary" className="text-[8px] h-4 bg-white/5 border-white/10">{res.stateCode}</Badge>
+                        <Badge variant="secondary" className="text-[8px] h-4 bg-white/5 border-white/10">{res.stateName}</Badge>
                       </div>
                       <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">{res.time} • {new Date(res.date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
                     </div>
@@ -151,7 +154,7 @@ ${prizesText}
                 <CardContent className="p-0">
                   <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {res.prizes.map((p: any, idx: number) => (
-                      <div key={`${res.id}-${p.position}-${idx}`} className="flex items-center justify-between p-3 bg-black/20 border border-white/5 rounded-xl hover:bg-white/5 transition-colors">
+                      <div key={`${res.id}-p-${idx}`} className="flex items-center justify-between p-3 bg-black/20 border border-white/5 rounded-xl hover:bg-white/5 transition-colors">
                         <div className="flex items-center gap-3">
                           <span className="text-[10px] font-black text-slate-500 w-5">{p.position}º</span>
                           <span className="text-xl font-black font-mono text-white tracking-tighter">{p.milhar}</span>
