@@ -58,7 +58,10 @@ export function TicketDialog({
       if (isFootball) {
         return `${i.matchName || 'Jogo'}: ${i.pickLabel} (@${i.odd?.toFixed(2)})`;
       }
-      return `${i.modalabilityLabel || i.modalidadeLabel}: ${Array.isArray(i.numeros) ? i.numeros.join(',') : i.numero}`;
+      const regionInfo = i.estadoLabel ? `${i.estadoLabel}/` : '';
+      const bankInfo = i.loteriaLabel ? `${i.loteriaLabel} ` : '';
+      const timeInfo = i.horario ? `${i.horario}` : '';
+      return `[${regionInfo}${bankInfo}${timeInfo}] ${i.modalabilityLabel || i.modalidadeLabel}: ${Array.isArray(i.numeros) ? i.numeros.join(',') : i.numero}`;
     }).join('; ');
   };
 
@@ -124,8 +127,11 @@ export function TicketDialog({
             valor: (item.value || totalValue).toFixed(2),
           };
         }
+        
+        const regionalInfo = item.estadoLabel ? `${item.estadoLabel} - ${item.loteriaLabel} (${item.horario})` : '';
+        
         return {
-          modalidade: item.modalidadeLabel || '',
+          modalidade: `${item.modalidadeLabel}${regionalInfo ? '\n' + regionalInfo : ''}`,
           numero: Array.isArray(item.numeros) ? item.numeros.join(', ') : String(item.numero || ''),
           valor: (parseFloat(String(item.valor || '0').replace(',', '.')) || 0).toFixed(2),
         };

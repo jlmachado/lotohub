@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Versão V3: Suporte a publicação automática e resultados variáveis.
+ * Versão V4: Suporte total a JDB por Estado e Publicação Automática.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -37,6 +37,34 @@ export interface CasinoSettings {
   casinoName: string;
   casinoStatus: boolean;
   bannerMessage: string;
+}
+
+export interface JDBModalidade {
+  nome: string;
+  multiplicador: string;
+}
+
+export interface JDBDia {
+  selecionado: boolean;
+  horarios: string[];
+}
+
+export interface JDBLoteria {
+  id: string;
+  bancaId: string;
+  nome: string;
+  stateName?: string;
+  stateCode?: string;
+  modalidades: JDBModalidade[];
+  dias: Record<string, JDBDia>;
+}
+
+export interface GenericLotteryConfig {
+  id: string;
+  nome: string;
+  status: 'Ativa' | 'Inativa';
+  horarios: { dia: string; horas: string }[];
+  multiplicadores: { modalidade: string; multiplicador: string }[];
 }
 
 export interface Aposta {
@@ -256,8 +284,8 @@ interface AppContextType {
   postedResults: any[];
   jdbResults: JDBNormalizedResult[];
   jdbSyncLogs: SyncLogEntry[];
-  jdbLoterias: any[];
-  genericLotteryConfigs: any[];
+  jdbLoterias: JDBLoteria[];
+  genericLotteryConfigs: GenericLotteryConfig[];
   casinoSettings: CasinoSettings;
   
   // Bingo
@@ -394,8 +422,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [postedResults, setPostedResults] = useState<any[]>([]);
   const [jdbResults, setJdbResults] = useState<JDBNormalizedResult[]>([]);
   const [jdbSyncLogs, setJdbSyncLogs] = useState<SyncLogEntry[]>([]);
-  const [jdbLoterias, setJdbLoterias] = useState<any[]>([]);
-  const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<any[]>([]);
+  const [jdbLoterias, setJdbLoterias] = useState<JDBLoteria[]>([]);
+  const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<GenericLotteryConfig[]>([]);
   const [casinoSettings, setCasinoSettings] = useState<CasinoSettings>(DEFAULT_CASINO_SETTINGS);
   
   const [bingoSettings, setBingoSettings] = useState<BingoSettings>(DEFAULT_BINGO_SETTINGS);
@@ -448,7 +476,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setJdbResults(getStorageItem('app:jdb_results:v1', []));
     setJdbSyncLogs(getStorageItem('app:jdb_sync_logs:v1', []));
     setFootballBets(getStorageItem('app:football_bets:v1', []));
-    setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS));
+    
+    // Seed Inteligente: Garante que o catálogo nacional esteja presente
+    const savedJdb = getStorageItem<JDBLoteria[]>('app:jdb_loterias:v1', []);
+    if (savedJdb.length <= 1) { // Se estiver vazio ou só tiver o RJ legado
+      setStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS);
+      setJdbLoterias(INITIAL_JDB_LOTERIAS);
+    } else {
+      setJdbLoterias(savedJdb);
+    }
+
     setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES));
     setCasinoSettings(getStorageItem('app:casino_settings:v1', DEFAULT_CASINO_SETTINGS));
     

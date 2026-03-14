@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { X, ChevronLeft, AlertCircle, MapPin } from 'lucide-react';
+import { X, ChevronLeft, MapPin } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { TicketDialog } from '@/components/ticket-dialog';
@@ -25,6 +25,7 @@ interface ApostaItem {
   colocacaoLabel: string;
   loteria: string;
   loteriaLabel: string;
+  estadoLabel: string;
   horario: string;
   numeros: string[];
   valor: string;
@@ -96,11 +97,9 @@ export default function JogoDoBichoPage() {
   const [generatedTicketId, setGeneratedTicketId] = useState<string | null>(null);
   const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
 
-  // Deriva informações das loterias e estados disponíveis
   const loteriasEnriquecidas = useMemo(() => {
     return jdbLoterias.map(l => {
-      // Tenta inferir o estado se não existir formalmente
-      let state = l.stateName || l.stateCode;
+      let state = l.stateName || '';
       if (!state) {
         const nomeLower = l.nome.toLowerCase();
         if (nomeLower.includes('rio') || nomeLower.includes('rj')) state = 'Rio de Janeiro';
@@ -116,11 +115,7 @@ export default function JogoDoBichoPage() {
         if (d.selecionado) d.horarios.forEach(h => h && horariosUnicos.add(h));
       });
 
-      return {
-        ...l,
-        stateName: state,
-        horarios: Array.from(horariosUnicos).sort()
-      };
+      return { ...l, stateName: state, horarios: Array.from(horariosUnicos).sort() };
     });
   }, [jdbLoterias]);
 
@@ -153,7 +148,6 @@ export default function JogoDoBichoPage() {
     if (parts.length !== 2) return false;
     const horas = Number(parts[0]);
     const minutos = Number(parts[1]);
-    if (Number.isNaN(horas) || Number.isNaN(minutos)) return false;
     const horarioSorteio = new Date();
     horarioSorteio.setHours(horas, minutos, 0, 0);
     return agora.getTime() < (horarioSorteio.getTime() - 60000);
@@ -189,16 +183,6 @@ export default function JogoDoBichoPage() {
     }
   };
 
-  const handleAddNumero = () => {
-    if (!selectedModalidade) return;
-    const trimmedInput = numeroInput.trim();
-    if (!trimmedInput || trimmedInput.length !== selectedModalidade.digitLength) return;
-    if (selectedModalidade.numeroCount !== 1 && numeros.length >= selectedModalidade.numeroCount) return;
-    if (numeros.includes(trimmedInput)) return;
-    setNumeros([...numeros, trimmedInput]);
-    setNumeroInput('');
-  };
-
   const resetFullForm = () => {
     setStep(1);
     setApostaData(undefined);
@@ -227,6 +211,7 @@ export default function JogoDoBichoPage() {
       colocacaoLabel: allColocacoes.find(c => c.id === colocacao)?.nome || '',
       loteria,
       loteriaLabel: loteriasEnriquecidas.find(l => l.id === loteria)?.nome || '',
+      estadoLabel: estadoSelecionado || '',
       horario,
       numeros: numStr.split(','),
       valor: valorPorAposta.toFixed(2).replace('.',','),
@@ -234,11 +219,8 @@ export default function JogoDoBichoPage() {
     }));
 
     setBilhete([...bilhete, ...novasApostas]);
-    setModalidade(undefined);
-    setColocacao(undefined);
-    setNumeros([]);
-    setValor('');
-    setStep(5); // Volta para escolha da modalidade no mesmo contexto
+    setModalidade(undefined); setColocacao(undefined); setNumeros([]); setValor('');
+    setStep(5);
   };
 
   const handleFinalizarBilhete = () => {
@@ -261,9 +243,6 @@ export default function JogoDoBichoPage() {
     }
     setIsFinalizing(false);
   };
-
-  const totalBilheteValue = bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0);
-  const totalRetornoPossivel = bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0);
 
   const getStepDescription = (stepNum: number) => {
     switch (stepNum) {
@@ -291,12 +270,7 @@ export default function JogoDoBichoPage() {
           <CardContent className="space-y-6">
             <div className="flex items-center justify-center relative border-b pb-4 border-white/5">
               {step > 1 && (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => setStep(step - 1)} 
-                  className="absolute left-0 text-muted-foreground hover:text-white"
-                >
+                <Button variant="ghost" size="icon" onClick={() => setStep(step - 1)} className="absolute left-0 text-muted-foreground hover:text-white">
                   <ChevronLeft />
                 </Button>
               )}
@@ -308,96 +282,47 @@ export default function JogoDoBichoPage() {
 
             <div className="min-h-[280px] flex flex-col justify-center">
               {step === 1 && (
-                <RadioGroup 
-                  value={apostaData} 
-                  onValueChange={(v) => { setApostaData(v as any); setStep(2); }} 
-                  className="grid grid-cols-2 gap-4"
-                >
+                <RadioGroup value={apostaData} onValueChange={(v) => { setApostaData(v as any); setStep(2); }} className="grid grid-cols-2 gap-4">
                   <Label htmlFor="d1" className="border-2 border-white/5 p-8 rounded-2xl cursor-pointer text-center hover:border-primary/50 transition-all font-black uppercase italic text-lg">Hoje <RadioGroupItem value="hoje" id="d1" className="sr-only"/></Label>
                   <Label htmlFor="d2" className="border-2 border-white/5 p-8 rounded-2xl cursor-pointer text-center hover:border-primary/50 transition-all font-black uppercase italic text-lg">Amanhã <RadioGroupItem value="amanha" id="d2" className="sr-only"/></Label>
                 </RadioGroup>
               )}
 
               {step === 2 && (
-                <div className="space-y-4">
-                  <RadioGroup 
-                    value={estadoSelecionado} 
-                    onValueChange={(v) => { setEstadoSelecionado(v); setLoteria(undefined); setHorario(''); setStep(3); }} 
-                    className="grid grid-cols-2 md:grid-cols-3 gap-3"
-                  >
-                    {estadosDisponiveis.map(estado => (
-                      <Label 
-                        key={estado} 
-                        htmlFor={estado} 
-                        className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary/30 transition-all font-bold uppercase text-xs flex flex-col items-center gap-2"
-                      >
-                        <MapPin size={16} className="text-primary" />
-                        {estado} 
-                        <RadioGroupItem value={estado!} id={estado!} className="sr-only"/>
-                      </Label>
-                    ))}
-                  </RadioGroup>
-                  {estadosDisponiveis.length === 0 && (
-                    <p className="text-center text-muted-foreground italic py-8">Nenhuma região disponível.</p>
-                  )}
-                </div>
+                <RadioGroup value={estadoSelecionado} onValueChange={(v) => { setEstadoSelecionado(v); setStep(3); }} className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {estadosDisponiveis.map(estado => (
+                    <Label key={estado} htmlFor={estado} className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary/30 transition-all font-bold uppercase text-xs flex flex-col items-center gap-2">
+                      <MapPin size={16} className="text-primary" />
+                      {estado} <RadioGroupItem value={estado!} id={estado!} className="sr-only"/>
+                    </Label>
+                  ))}
+                </RadioGroup>
               )}
 
               {step === 3 && (
-                <div className="space-y-4">
-                  <RadioGroup 
-                    value={loteria} 
-                    onValueChange={(v) => { setLoteria(v); setHorario(''); setStep(4); }} 
-                    className="grid grid-cols-2 md:grid-cols-4 gap-3"
-                  >
-                    {loteriasDoEstado.map(l => (
-                      <Label 
-                        key={l.id} 
-                        htmlFor={l.id} 
-                        className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary/30 transition-all font-black uppercase italic text-[11px]"
-                      >
-                        {l.nome} 
-                        <RadioGroupItem value={l.id} id={l.id} className="sr-only"/>
-                      </Label>
-                    ))}
-                  </RadioGroup>
-                </div>
+                <RadioGroup value={loteria} onValueChange={(v) => { setLoteria(v); setStep(4); }} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {loteriasDoEstado.map(l => (
+                    <Label key={l.id} htmlFor={l.id} className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary/30 transition-all font-black uppercase italic text-[11px]">
+                      {l.nome} <RadioGroupItem value={l.id} id={l.id} className="sr-only"/>
+                    </Label>
+                  ))}
+                </RadioGroup>
               )}
 
               {step === 4 && (
-                <div className="space-y-4">
-                  <RadioGroup 
-                    value={horario} 
-                    onValueChange={(v) => { setHorario(v); setStep(5); }} 
-                    className="grid grid-cols-3 md:grid-cols-5 gap-3"
-                  >
-                    {loteriasDoEstado.find(l => l.id === loteria)?.horarios.filter(h => isHorarioDisponivel(h, apostaData!)).map(h => (
-                      <Label 
-                        key={h} 
-                        htmlFor={h} 
-                        className="border border-white/10 bg-white/5 p-3 rounded-xl cursor-pointer text-center hover:border-primary font-mono font-bold text-sm"
-                      >
-                        {h} 
-                        <RadioGroupItem value={h} id={h} className="sr-only"/>
-                      </Label>
-                    ))}
-                  </RadioGroup>
-                  <Button className="w-full h-12 rounded-xl font-bold" onClick={() => setStep(5)} disabled={!horario}>Próximo</Button>
-                </div>
+                <RadioGroup value={horario} onValueChange={(v) => { setHorario(v); setStep(5); }} className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                  {loteriasDoEstado.find(l => l.id === loteria)?.horarios.filter(h => isHorarioDisponivel(h, apostaData!)).map(h => (
+                    <Label key={h} htmlFor={h} className="border border-white/10 bg-white/5 p-3 rounded-xl cursor-pointer text-center hover:border-primary font-mono font-bold text-sm">
+                      {h} <RadioGroupItem value={h} id={h} className="sr-only"/>
+                    </Label>
+                  ))}
+                </RadioGroup>
               )}
 
               {step === 5 && (
-                <RadioGroup 
-                  value={modalidade} 
-                  onValueChange={(v) => { setModalidade(v); setStep(6); setNumeros([]); }} 
-                  className="grid grid-cols-2 md:grid-cols-4 gap-3"
-                >
+                <RadioGroup value={modalidade} onValueChange={(v) => { setModalidade(v); setStep(6); setNumeros([]); }} className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {modalidades.map(m => (
-                    <Label 
-                      key={m.id} 
-                      htmlFor={m.id} 
-                      className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center flex flex-col hover:border-primary/50 transition-all"
-                    >
+                    <Label key={m.id} htmlFor={m.id} className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center flex flex-col hover:border-primary/50 transition-all">
                       <b className="font-black uppercase italic text-xs text-white">{m.nome}</b>
                       <small className="text-primary font-black text-[10px] mt-1">{m.multiplicador}</small>
                       <RadioGroupItem value={m.id} id={m.id} className="sr-only"/>
@@ -407,19 +332,10 @@ export default function JogoDoBichoPage() {
               )}
 
               {step === 6 && (
-                <RadioGroup 
-                  value={colocacao} 
-                  onValueChange={(v) => { setColocacao(v); setStep(7); }} 
-                  className="grid grid-cols-1 md:grid-cols-2 gap-3"
-                >
+                <RadioGroup value={colocacao} onValueChange={(v) => { setColocacao(v); setStep(7); }} className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {colocacoes.map(c => (
-                    <Label 
-                      key={c.id} 
-                      htmlFor={c.id} 
-                      className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary font-black uppercase italic text-[11px]"
-                    >
-                      {c.nome} 
-                      <RadioGroupItem value={c.id} id={c.id} className="sr-only"/>
+                    <Label key={c.id} htmlFor={c.id} className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary font-black uppercase italic text-[11px]">
+                      {c.nome} <RadioGroupItem value={c.id} id={c.id} className="sr-only"/>
                     </Label>
                   ))}
                 </RadioGroup>
@@ -427,103 +343,44 @@ export default function JogoDoBichoPage() {
 
               {step === 7 && selectedModalidade && (
                 <div className="space-y-4">
-                  {selectedModalidade.digitLength === 2 && selectedModalidade.id === 'grupo' ? (
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-64 overflow-y-auto custom-scrollbar p-1">
-                      {gruposDoBicho.map(g => (
-                        <Button 
-                          key={g.grupo} 
-                          variant={numeros.includes(g.grupo) ? 'default' : 'outline'} 
-                          onClick={() => handleGrupoClick(g.grupo)} 
-                          className="flex-col h-auto py-2 rounded-xl border-white/10"
-                        >
-                          <span className="font-black text-lg">{g.grupo}</span>
-                          <small className="text-[8px] uppercase font-bold opacity-60">{g.animal}</small>
-                        </Button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <Input 
-                        value={numeroInput} 
-                        onChange={e => setNumeroInput(e.target.value.replace(/\D/g, ''))} 
-                        placeholder={`Digite ${selectedModalidade.digitLength} dígitos`} 
-                        type="tel" 
-                        maxLength={selectedModalidade.digitLength}
-                        className="h-12 bg-black/40 border-white/10 text-center font-bold text-lg"
-                      />
-                      <Button onClick={handleAddNumero} className="h-12 px-6 font-bold">Add</Button>
-                    </div>
-                  )}
+                  <div className="flex gap-2">
+                    <Input 
+                      value={numeroInput} 
+                      onChange={e => setNumeroInput(e.target.value.replace(/\D/g, ''))} 
+                      placeholder={`Digite ${selectedModalidade.digitLength} dígitos`} 
+                      type="tel" maxLength={selectedModalidade.digitLength}
+                      className="h-12 bg-black/40 border-white/10 text-center font-bold text-lg"
+                    />
+                    <Button onClick={() => { if(numeroInput.length === selectedModalidade.digitLength) { setNumeros([...numeros, numeroInput]); setNumeroInput(''); } }} className="h-12 px-6 font-bold">Add</Button>
+                  </div>
                   <div className="flex flex-wrap gap-2 justify-center">
                     {numeros.map(n => (
                       <Badge key={n} variant="secondary" className="h-8 px-3 text-sm bg-primary/20 text-primary border-primary/20">
-                        {n} 
-                        <X className="h-3 w-3 ml-2 cursor-pointer" onClick={() => setNumeros(numeros.filter(x => x !== n))}/>
+                        {n} <X className="h-3 w-3 ml-2 cursor-pointer" onClick={() => setNumeros(numeros.filter(x => x !== n))}/>
                       </Badge>
                     ))}
                   </div>
-                  <Button className="w-full h-12 rounded-xl font-bold lux-shine" onClick={() => setStep(8)} disabled={numeros.length === 0}>Próximo</Button>
+                  <Button className="w-full h-12 rounded-xl font-bold" onClick={() => setStep(8)} disabled={numeros.length === 0}>Próximo</Button>
                 </div>
               )}
 
               {step === 8 && (
                 <div className="space-y-6 flex flex-col items-center">
-                  <div className="text-center space-y-2">
-                    <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">Valor da Aposta (R$)</Label>
-                    <Input 
-                      value={valor} 
-                      onChange={e => setValor(e.target.value.replace(',', '.'))} 
-                      type="number" 
-                      placeholder="0.00"
-                      className="text-center text-3xl font-black italic h-20 w-full max-w-xs bg-black/40 border-white/10 text-primary"
-                    />
-                  </div>
-                  {numeros.length > 1 && selectedModalidade?.numeroCount === 1 && (
-                    <div className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/5">
-                      <Switch checked={divideValor} onCheckedChange={setDivideValor}/>
-                      <div className="flex flex-col">
-                        <Label className="text-xs font-bold text-white">Dividir valor</Label>
-                        <span className="text-[10px] text-muted-foreground">Ratear R$ {valor || '0'} entre as {numeros.length} apostas</span>
-                      </div>
-                    </div>
-                  )}
+                  <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">Valor da Aposta (R$)</Label>
+                  <Input value={valor} onChange={e => setValor(e.target.value.replace(',', '.'))} type="number" placeholder="0.00" className="text-center text-3xl font-black italic h-20 w-full max-w-xs bg-black/40 border-white/10 text-primary" />
                 </div>
               )}
             </div>
           </CardContent>
           <CardFooter>
-            <Button 
-              size="lg" 
-              className="w-full h-14 rounded-2xl font-black uppercase italic text-lg lux-shine" 
-              onClick={handleAddAposta} 
-              disabled={step !== 8 || !valor}
-            >
-              Adicionar ao Bilhete
-            </Button>
+            <Button size="lg" className="w-full h-14 rounded-2xl font-black uppercase italic text-lg lux-shine" onClick={handleAddAposta} disabled={step !== 8 || !valor}>Adicionar ao Bilhete</Button>
           </CardFooter>
         </Card>
 
-        <LotteryBetSlip 
-          items={bilhete} 
-          totalValue={totalBilheteValue} 
-          totalPossibleReturn={totalRetornoPossivel} 
-          onRemoveItem={(id) => setBilhete(bilhete.filter(b => b.id !== id))} 
-          onFinalize={handleFinalizarBilhete} 
-          lotteryName="Jogo do Bicho" 
-        />
+        <LotteryBetSlip items={bilhete} totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} totalPossibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} onRemoveItem={(id) => setBilhete(bilhete.filter(b => b.id !== id))} onFinalize={handleFinalizarBilhete} lotteryName="Jogo do Bicho" />
       </main>
 
-      <TicketDialog 
-        isOpen={isTicketDialogOpen} 
-        onOpenChange={setIsTicketDialogOpen} 
-        onNewBet={() => { setBilhete([]); resetFullForm(); }} 
-        ticketId={generatedTicketId} 
-        generationTime={ticketGenerationTime} 
-        lotteryName="Jogo do Bicho" 
-        ticketItems={bilhete} 
-        totalValue={totalBilheteValue} 
-        possibleReturn={totalRetornoPossivel} 
-      />
+      <TicketDialog isOpen={isTicketDialogOpen} onOpenChange={setIsTicketDialogOpen} onNewBet={() => { setBilhete([]); resetFullForm(); }} ticketId={generatedTicketId} generationTime={ticketGenerationTime} lotteryName="Jogo do Bicho" ticketItems={bilhete} totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} possibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} />
     </div>
   );
 }

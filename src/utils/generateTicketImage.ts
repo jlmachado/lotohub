@@ -1,8 +1,8 @@
-
 import QRCode from 'qrcode';
 
 /**
  * @fileOverview Gerador de bilhetes em imagem (PNG) usando Canvas API.
+ * Versão V2: Layout vertical otimizado.
  */
 
 export interface TicketImageData {
@@ -22,7 +22,7 @@ export async function generateTicketImage(ticket: TicketImageData): Promise<stri
   if (!ctx) throw new Error('Não foi possível obter o contexto do canvas');
 
   const width = 400;
-  const height = 650;
+  const height = 750; // Aumentado para comportar mais detalhes
   canvas.width = width;
   canvas.height = height;
 
@@ -52,19 +52,26 @@ export async function generateTicketImage(ticket: TicketImageData): Promise<stri
   
   const drawField = (label: string, value: string, y: number) => {
     ctx.fillStyle = '#64748B';
-    ctx.font = 'bold 14px Arial';
+    ctx.font = 'bold 12px Arial';
     ctx.fillText(label, 40, y);
     ctx.fillStyle = '#1E293B';
-    ctx.font = 'bold 16px Courier New';
-    ctx.fillText(value, 40, y + 25);
+    ctx.font = 'bold 14px Courier New';
+    
+    // Tratar quebra de linha se o valor for muito longo
+    if (value.length > 40) {
+      ctx.fillText(value.substring(0, 40), 40, y + 20);
+      ctx.fillText(value.substring(40, 80), 40, y + 35);
+    } else {
+      ctx.fillText(value, 40, y + 20);
+    }
   };
 
   drawField('POULE:', ticket.poule, 110);
-  drawField('TERMINAL:', ticket.terminal, 170);
-  drawField('JOGO:', ticket.jogo, 230);
-  drawField('APOSTA:', ticket.aposta.length > 35 ? ticket.aposta.substring(0, 32) + '...' : ticket.aposta, 290);
-  drawField('VALOR:', `R$ ${ticket.valor.toFixed(2).replace('.', ',')}`, 350);
-  drawField('DATA:', ticket.data, 410);
+  drawField('TERMINAL:', ticket.terminal, 160);
+  drawField('JOGO:', ticket.jogo, 210);
+  drawField('DETALHES:', ticket.aposta, 260);
+  drawField('VALOR TOTAL:', `R$ ${ticket.valor.toFixed(2).replace('.', ',')}`, 340);
+  drawField('DATA:', ticket.data, 390);
 
   // Status Badge
   ctx.fillStyle = '#F1F5F9';
@@ -85,21 +92,21 @@ export async function generateTicketImage(ticket: TicketImageData): Promise<stri
   const validationUrl = `${window.location.origin}/poule/${ticket.poule}`;
   const qrCodeDataUrl = await QRCode.toDataURL(validationUrl, {
     margin: 1,
-    width: 120,
+    width: 140,
     color: { dark: '#1E293B', light: '#FFFFFF' }
   });
 
   const qrImage = new Image();
   qrImage.src = qrCodeDataUrl;
   await new Promise((resolve) => { qrImage.onload = resolve; });
-  ctx.drawImage(qrImage, (width / 2) - 60, 460, 120, 120);
+  ctx.drawImage(qrImage, (width / 2) - 70, 480, 140, 140);
 
   // Rodapé
   ctx.fillStyle = '#94A3B8';
   ctx.font = 'italic 10px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('Bilhete válido somente mediante consulta', width / 2, 610);
-  ctx.fillText('da poule no sistema oficial LotoHub.', width / 2, 625);
+  ctx.fillText('Bilhete válido somente mediante consulta', width / 2, 680);
+  ctx.fillText('da poule no sistema oficial LotoHub.', width / 2, 695);
 
   return canvas.toDataURL('image/png');
 }

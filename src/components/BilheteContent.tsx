@@ -24,6 +24,8 @@ export function BilheteContent({
       <div className="space-y-3">
         {ticketItems.map((item, index) => {
           const isFootball = lotteryName === 'Futebol';
+          const isBicho = lotteryName === 'Jogo do Bicho';
+          
           const valorAposta = isFootball 
             ? (item.value || 0) 
             : (parseFloat(String(item.valor || '0').replace(',', '.')) || 0);
@@ -49,7 +51,8 @@ export function BilheteContent({
                     {item.colocacaoLabel ? ` - ${item.colocacaoLabel}` : item.premio ? ` - Até ${item.premio}º Prêmio` : ''}
                   </p>
                   <p className="text-[11px] text-muted-foreground font-bold uppercase">
-                    {item.loteriaLabel ? `Loteria: ${item.loteriaLabel} - ` : ''}
+                    {item.estadoLabel ? `${item.estadoLabel} - ` : ''}
+                    {item.loteriaLabel ? `${item.loteriaLabel} - ` : ''}
                     {item.horario ? `${item.horario} ` : ''}
                     (Aposta para {item.dataAposta})
                   </p>

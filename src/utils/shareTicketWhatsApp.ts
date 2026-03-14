@@ -1,6 +1,6 @@
-
 /**
  * @fileOverview Funções para compartilhamento de bilhetes no WhatsApp.
+ * Versão V2: Inclui detalhes regionais da aposta.
  */
 
 export interface ShareTicketData {
@@ -19,8 +19,8 @@ export function shareTicketWhatsApp(ticket: ShareTicketData) {
 *POULE:* \`${ticket.poule}\`
 *TERMINAL:* ${ticket.terminal || 'N/A'}
 *JOGO:* ${ticket.jogo}
-*APOSTA:* ${ticket.aposta}
-*VALOR:* R$ ${ticket.valor.toFixed(2).replace('.', ',')}
+*DETALHES:* ${ticket.aposta}
+*VALOR TOTAL:* R$ ${ticket.valor.toFixed(2).replace('.', ',')}
 
 ✅ *Consultar status oficial:*
 ${validationUrl}
