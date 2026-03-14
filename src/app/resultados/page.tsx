@@ -103,17 +103,27 @@ ${prizesText}
     if (navigator.share) {
       try {
         await navigator.share({ title: `Resultado ${result.extractionName}`, text: message });
-      } catch (err) {
-        copyToClipboard(message);
+      } catch (err: any) {
+        // Se o usuário cancelou o compartilhamento (AbortError), não fazemos nada.
+        // Se foi outro erro, tentamos o clipboard como fallback.
+        if (err.name !== 'AbortError') {
+          // Pequeno delay para garantir que o foco retornou à janela principal
+          setTimeout(() => copyToClipboard(message), 100);
+        }
       }
     } else {
       copyToClipboard(message);
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: "Copiado para área de transferência!" });
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Copiado para área de transferência!" });
+    } catch (err) {
+      console.warn('Falha ao copiar para o clipboard:', err);
+      // Em caso de falha silenciosa por falta de foco, não emitimos erro para o usuário
+    }
   };
 
   const handlePrint = (result: any) => {
