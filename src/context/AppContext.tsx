@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Versão V7: Adicionado suporte a sincronização automática de Sinuca com YouTube.
+ * Versão V8: Refatorada sincronização de Sinuca para nova arquitetura de serviços.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -27,7 +27,7 @@ import { FootballLiveEngine } from '@/services/football-live-engine';
 import { checkSingleItemWinner, isJDBItemEligible } from '@/lib/draw-engine';
 import { JDBNormalizedResult, SyncLogEntry } from '@/types/result-types';
 import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
-import { SnookerYoutubeSync } from '@/services/snooker-youtube-sync';
+import { SnookerSyncService } from '@/services/snooker-sync-service';
 
 // --- INTERFACES GERAIS ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -205,6 +205,9 @@ export interface SnookerChannel {
   priority: number;
   enabled: boolean;
   viewerCount?: number;
+  bancaId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SnookerBet {
@@ -747,58 +750,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const clearCelebration = useCallback(() => setCelebrationTrigger(false), []);
 
   const syncSnookerWithYoutube = useCallback(async () => {
-    try {
-      const response = await fetch('/api/snooker/sync');
-      if (!response.ok) throw new Error('Falha ao conectar com o motor de busca.');
-      const result = await response.json();
-      
-      if (result.success && Array.isArray(result.data)) {
-        const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
-        let added = 0;
-        let updated = 0;
-
-        const updatedChannels = [...currentChannels];
-
-        result.data.forEach((yt: any) => {
-          const embedId = yt.id.videoId || yt.id;
-          const existingIdx = updatedChannels.findIndex(c => c.embedId === embedId);
-          const mapped = SnookerYoutubeSync.mapToSnookerChannel(yt);
-
-          if (existingIdx >= 0) {
-            // Update only specific fields
-            updatedChannels[existingIdx] = { 
-              ...updatedChannels[existingIdx], 
-              status: mapped.status!,
-              title: mapped.title || updatedChannels[existingIdx].title
-            };
-            updated++;
-          } else {
-            // Create new channel
-            const newChannel: SnookerChannel = {
-              ...mapped,
-              id: `chan-yt-${embedId}`,
-              scoreA: 0,
-              scoreB: 0,
-              bancaId: user?.bancaId || 'default',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            } as SnookerChannel;
-            updatedChannels.unshift(newChannel);
-            added++;
-          }
-        });
-
-        setStorageItem('app:snooker_channels:v1', updatedChannels);
-        loadLocalData();
-        notify();
-        toast({ 
-          title: "Sincronização YouTube", 
-          description: `Sucesso: ${added} novos jogos encontrados e ${updated} atualizados.` 
-        });
-      }
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: "Erro na Sincronização", description: e.message });
-    }
+    const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+    const { updatedChannels, summary } = await SnookerSyncService.sync(currentChannels, user?.bancaId || 'default');
+    
+    setStorageItem('app:snooker_channels:v1', updatedChannels);
+    loadLocalData();
+    notify();
+    toast({ 
+      title: "Sincronização YouTube", 
+      description: `Sucesso: ${summary.added} novos jogos e ${summary.updated} atualizados.` 
+    });
   }, [user, notify, toast, loadLocalData]);
 
   const syncFootballAll = useCallback(async (force = false) => {
