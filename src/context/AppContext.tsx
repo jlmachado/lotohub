@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Reforçado com validações de YouTube para evitar vídeos indisponíveis.
+ * Reforçado com validações rigorosas de vídeo e seleção inteligente de transmissões.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -53,13 +53,12 @@ export interface SnookerChannel {
   description: string; 
   youtubeUrl: string; 
   embedId: string; 
-  syncHash?: string;
   scheduledAt: string; 
   startedAt?: string; 
   finishedAt?: string; 
   status: 'scheduled' | 'imminent' | 'live' | 'finished' | 'cancelled'; 
-  playerA: { name: string; level: number; avatarUrl?: string }; 
-  playerB: { name: string; level: number; avatarUrl?: string }; 
+  playerA: { name: string; level: number }; 
+  playerB: { name: string; level: number }; 
   scoreA: number; 
   scoreB: number; 
   odds: { A: number; B: number; D: number }; 
@@ -74,13 +73,12 @@ export interface SnookerChannel {
   source?: 'manual' | 'youtube'; 
   sourceName?: string;
   sourceId?: string;
-  sourceChannelName?: string;
-  sourceChannelHandle?: string;
   sourceVideoId?: string; 
   sourceType?: 'live' | 'upcoming' | 'video'; 
   sourceStatus?: 'detected' | 'parsed' | 'synced' | 'error'; 
   autoCreated?: boolean; 
   autoUpdatedAt?: string; 
+  syncHash?: string;
   eventTitle?: string; 
   tournamentName?: string; 
   modality?: string; 
@@ -93,6 +91,7 @@ export interface SnookerChannel {
   thumbnailUrl?: string; 
   isFeatured?: boolean; 
   isManualOverride?: boolean; 
+  isArchived?: boolean;
   bettingAvailability?: 'disabled' | 'prelive' | 'live_only' | 'all';
   bettingOpensAt?: string | null;
   bettingClosesAt?: string | null;
@@ -100,28 +99,7 @@ export interface SnookerChannel {
   originPriority?: number;
 }
 
-export interface SnookerAutomationSource {
-  id: string;
-  name: string;
-  platform: 'youtube';
-  channelUrl: string;
-  channelHandle: string;
-  enabled: boolean;
-  priority: number;
-  parseProfile: 'tv_snooker_brasil' | 'junior_snooker' | 'generic';
-  autoCreateChannels: boolean;
-  autoUpdateChannels: boolean;
-  requireAdminApproval: boolean;
-  allowPreMatchBetting: boolean;
-  allowLiveBetting: boolean;
-  createDefaultOddsIfMissing: boolean;
-  keepManualOdds: boolean;
-  markAsFeatured: boolean;
-  lastSyncAt?: string;
-  lastSyncStatus?: 'success' | 'error';
-  lastSyncMessage?: string;
-}
-
+export interface SnookerAutomationSource { id: string; name: string; platform: 'youtube'; channelUrl: string; channelHandle: string; enabled: boolean; priority: number; parseProfile: 'tv_snooker_brasil' | 'junior_snooker' | 'generic'; autoCreateChannels: boolean; autoUpdateChannels: boolean; requireAdminApproval: boolean; allowPreMatchBetting: boolean; allowLiveBetting: boolean; createDefaultOddsIfMissing: boolean; keepManualOdds: boolean; markAsFeatured: boolean; lastSyncAt?: string; lastSyncStatus?: 'success' | 'error'; lastSyncMessage?: string; }
 export interface SnookerSyncLog { id: string; createdAt: string; type: string; status: 'success' | 'warning' | 'error' | 'info'; message: string; sourceId?: string; sourceName?: string; relatedChannelId?: string; payload?: any; }
 export interface SnookerAutomationSettings { enabled: boolean; sourceMode: 'manual' | 'youtube' | 'hybrid'; sources: SnookerAutomationSource[]; syncIntervalSeconds: number; dedupeWindowHours: number; enabledOnHome: boolean; enabledOnPublicPage: boolean; autoMarkLive: boolean; autoMarkFinished: boolean; allowPreMatchBetting: boolean; allowLiveBetting: boolean; }
 export interface SnookerBet { id: string; userId: string; userName: string; channelId: string; pick: 'A' | 'B' | 'EMPATE'; amount: number; oddsA: number; oddsB: number; oddsD: number; status: 'open' | 'won' | 'lost' | 'refunded' | 'cash_out'; createdAt: string; isPreMatch?: boolean; }
@@ -153,8 +131,8 @@ const DEFAULT_SNOOKER_CFG: SnookerLiveConfig = { defaultChannelId: '', showLiveB
 const DEFAULT_CASINO_SETTINGS: CasinoSettings = { casinoName: 'LotoHub Casino', casinoStatus: true, bannerMessage: 'Sua sorte está a um clique de distância!' };
 
 const DEFAULT_SOURCES: SnookerAutomationSource[] = [
-  { id: 'src-tv-snooker', name: 'TV Snooker Brasil', platform: 'youtube', channelUrl: 'https://www.youtube.com/@TVSnookerBrasil', channelHandle: '@TVSnookerBrasil', enabled: true, priority: 10, parseProfile: 'tv_snooker_brasil', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: false, allowPreMatchBetting: true, allowLiveBetting: true, createDefaultOddsIfMissing: true, keepManualOdds: true, markAsFeatured: true },
-  { id: 'src-junior-snooker', name: 'Junior Snooker', platform: 'youtube', channelUrl: 'https://www.youtube.com/@juniorsnooker', channelHandle: '@juniorsnooker', enabled: true, priority: 5, parseProfile: 'junior_snooker', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: true, allowPreMatchBetting: true, allowLiveBetting: true, createDefaultOddsIfMissing: true, keepManualOdds: true, markAsFeatured: false }
+  { id: 'src-tv-snooker', name: 'TV Snooker Brasil', platform: 'youtube', channelUrl: 'https://www.youtube.com/@TVSnookerBrasil', channelHandle: '@TVSnookerBrasil', enabled: true, priority: 1, parseProfile: 'tv_snooker_brasil', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: false, allowPreMatchBetting: true, allowLiveBetting: true, createDefaultOddsIfMissing: true, keepManualOdds: true, markAsFeatured: true },
+  { id: 'src-junior-snooker', name: 'Junior Snooker', platform: 'youtube', channelUrl: 'https://www.youtube.com/@juniorsnooker', channelHandle: '@juniorsnooker', enabled: true, priority: 2, parseProfile: 'junior_snooker', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: true, allowPreMatchBetting: true, allowLiveBetting: true, createDefaultOddsIfMissing: true, keepManualOdds: true, markAsFeatured: false }
 ];
 
 const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = { enabled: true, sourceMode: 'hybrid', sources: DEFAULT_SOURCES, syncIntervalSeconds: 300, dedupeWindowHours: 24, enabledOnHome: true, enabledOnPublicPage: true, autoMarkLive: true, autoMarkFinished: true, allowPreMatchBetting: true, allowLiveBetting: true };
@@ -248,9 +226,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       let allLogs: SnookerSyncLog[] = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
 
       for (const source of sourcesToSync) {
-        const startLog: SnookerSyncLog = { id: `log-start-${Date.now()}-${source.id}`, createdAt: new Date().toISOString(), type: 'SYNC_START', status: 'info', message: `Iniciando sync: ${source.name}`, sourceId: source.id, sourceName: source.name };
-        allLogs = [startLog, ...allLogs].slice(0, 200);
-
         try {
           const { updatedChannels, summary } = await SnookerSyncService.sync(currentChannels, user?.bancaId || 'default', source, settings);
           currentChannels = updatedChannels;
@@ -333,7 +308,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const sendSnookerReaction = useCallback((channelId: string, reaction: string) => { if (!user) return; const entry = { id: Date.now(), channelId, text: `${user.nome || user.terminal} reagiu com ${reaction}`, createdAt: new Date().toISOString() }; const currentFeed = getStorageItem<any[]>('app:snooker_activity_feed:v1', []); setStorageItem('app:snooker_activity_feed:v1', [entry, ...currentFeed].slice(0, 50)); notify(); }, [user, notify]);
   const updateSnookerLiveConfig = useCallback((c: any) => { setStorageItem('app:snooker_cfg:v1', c); notify(); }, [notify]);
   const updateSnookerScoreboard = useCallback((id: string, s: any) => { const current = getStorageItem<Record<string, SnookerScoreboard>>('app:snooker_scores:v1', {}); setStorageItem('app:snooker_scores:v1', { ...current, [id]: s }); notify(); }, [notify]);
-  const addSnookerChannel = useCallback((c: any) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); const newId = `chan-${Date.now()}`; setStorageItem('app:snooker_channels:v1', [...current, { ...c, id: newId, scoreA: 0, scoreB: 0, status: 'scheduled', enabled: true, odds: { A: 1.95, B: 1.95, D: 3.20 } }]); const currentScores = getStorageItem<Record<string, SnookerScoreboard>>('app:snooker_scores:v1', {}); currentScores[newId] = { matchTitle: c.title, playerA: { name: c.playerA.name, score: 0 }, playerB: { name: c.playerB.name, score: 0 }, scoreA: 0, scoreB: 0, statusText: 'Aguardando início', frame: 0, round: { number: 1 } }; setStorageItem('app:snooker_scores:v1', currentScores); notify(); }, [notify]);
+  const addSnookerChannel = useCallback((c: any) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); const newId = c.id || `manual_${Date.now()}`; setStorageItem('app:snooker_channels:v1', [...current, { ...c, id: newId, scoreA: 0, scoreB: 0, status: 'scheduled', enabled: true, odds: { A: 1.95, B: 1.95, D: 3.20 } }]); const currentScores = getStorageItem<Record<string, SnookerScoreboard>>('app:snooker_scores:v1', {}); currentScores[newId] = { matchTitle: c.title, playerA: { name: c.playerA.name, score: 0 }, playerB: { name: c.playerB.name, score: 0 }, scoreA: 0, scoreB: 0, statusText: 'Aguardando início', frame: 0, round: { number: 1 } }; setStorageItem('app:snooker_scores:v1', currentScores); notify(); }, [notify]);
   const updateSnookerChannel = useCallback((c: any) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', current.map(i => i.id === c.id ? c : i)); notify(); }, [notify]);
   const deleteSnookerChannel = useCallback((id: string) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', current.filter(i => i.id !== id)); notify(); }, [notify]);
   const settleSnookerRound = useCallback((channelId: string, winner: string) => { const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); const channel = currentChannels.find(c => c.id === channelId); const currentBets = getStorageItem<SnookerBet[]>('app:snooker_bets:v1', []); const betsToSettle = currentBets.filter(b => b.channelId === channelId && b.status === 'open'); let totalPot = 0, totalPayout = 0; betsToSettle.forEach(bet => { totalPot += bet.amount; if (bet.pick === winner) { const oddsMap = { A: bet.oddsA, B: bet.oddsB, EMPATE: bet.oddsD }; const prize = bet.amount * (oddsMap[bet.pick as keyof typeof oddsMap]); totalPayout += prize; const realUser = getUserByTerminal(bet.userName) || getUsers().find(u => u.id === u.id); if (realUser) { upsertUser({ terminal: realUser.terminal, saldo: realUser.saldo + prize }); LedgerService.addEntry({ bancaId: realUser.bancaId || 'default', userId: realUser.id, terminal: realUser.terminal, tipoUsuario: realUser.tipoUsuario, modulo: 'Sinuca', type: 'BET_WIN', amount: prize, balanceBefore: realUser.saldo, balanceAfter: realUser.saldo + prize, referenceId: bet.id, description: `Prêmio Sinuca` }); } } }); const historyEntry = { id: `fin-${Date.now()}`, channelId, channelTitle: channel?.title || 'Canal', totalPot, totalPayout, houseProfit: totalPot - totalPayout, settledAt: new Date().toISOString() }; const currentHistory = getStorageItem<any[]>('app:snooker_history:v1', []); setStorageItem('app:snooker_history:v1', [historyEntry, ...currentHistory]); setStorageItem('app:snooker_bets:v1', currentBets.map(b => b.channelId === channelId && b.status === 'open' ? { ...b, status: b.pick === winner ? 'won' as const : 'lost' as const } : b)); if (winner !== 'EMPATE') setCelebrationTrigger(true); notify(); }, [notify]);

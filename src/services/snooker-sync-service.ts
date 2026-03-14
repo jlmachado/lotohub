@@ -1,6 +1,6 @@
 /**
  * @fileOverview Orquestrador de sincronização Multicanal de Sinuca.
- * Reforçado com validação de Video ID e proteção de Player.
+ * Implementa regras rígidas de validação de vídeo e anti-duplicação.
  */
 
 import { SnookerYoutubeService, YoutubeApiResponse } from './snooker-youtube-service';
@@ -18,14 +18,6 @@ export interface SyncSummary {
 
 export class SnookerSyncService {
   /**
-   * Gera um hash único para identificar o evento e evitar duplicidade.
-   */
-  static generateSyncHash(videoId: string, title: string, date: string): string {
-    const norm = (s: string) => SnookerParserService.normalizeForHash(s);
-    return `sync_${videoId}_${norm(title)}_${date.split('T')[0]}`;
-  }
-
-  /**
    * Executa a sincronização para uma fonte específica.
    */
   static async sync(
@@ -42,22 +34,24 @@ export class SnookerSyncService {
 
       const newChannelsList = [...currentChannels];
 
-      youtubeData.forEach((yt: YoutubeApiResponse) => {
+      youtubeData.forEach((yt: any) => {
         try {
           const videoId = yt.id.videoId;
           
-          // VALIDAÇÃO CRÍTICA DE VÍDEO
-          const isVideoValid = isValidYoutubeVideoId(videoId);
-          if (!isVideoValid) {
+          // 1. VALIDAÇÃO OBRIGATÓRIA DE VÍDEO
+          if (!isValidYoutubeVideoId(videoId)) {
             summary.invalidVideos++;
-            return; // Pula itens com IDs mal formatados
+            return; 
           }
 
           const parsed = SnookerParserService.parse(yt.snippet.title, yt.snippet.description, source.parseProfile);
           const scheduledAt = yt.snippet.scheduledStartTime || new Date().toISOString();
-          const syncHash = this.generateSyncHash(videoId, yt.snippet.title, scheduledAt);
           
-          const existingIdx = newChannelsList.findIndex(c => c.sourceVideoId === videoId || c.syncHash === syncHash);
+          // 2. BUSCA POR CANAL EXISTENTE (Anti-duplicação por videoId ou Hash)
+          const existingIdx = newChannelsList.findIndex(c => 
+            c.sourceVideoId === videoId || 
+            c.id === `yt_${videoId}`
+          );
 
           let status: SnookerChannel['status'] = 'scheduled';
           if (yt.snippet.liveBroadcastContent === 'live') status = 'live';
@@ -69,6 +63,7 @@ export class SnookerSyncService {
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
             
+            // Proteção de Override Manual
             if (existing.isManualOverride) {
               if (status !== existing.status) {
                 newChannelsList[existingIdx] = { ...existing, status, updatedAt: new Date().toISOString() };
@@ -77,6 +72,7 @@ export class SnookerSyncService {
               return;
             }
 
+            // Atualização de Canal Existente
             newChannelsList[existingIdx] = {
               ...existing,
               status,
@@ -84,26 +80,21 @@ export class SnookerSyncService {
               tournamentName: parsed.tournamentName,
               modality: parsed.modality,
               phase: parsed.phase,
-              prize: parsed.prize,
               prizeLabel: parsed.prizeLabel,
-              metadataConfidence: parsed.confidence,
-              parserNotes: parsed.notes,
               thumbnailUrl: yt.snippet.thumbnails.medium.url,
               sourceStatus: 'synced',
               sourceName: source.name,
               sourceId: source.id,
               originPriority: source.priority,
               updatedAt: new Date().toISOString(),
-              autoUpdatedAt: new Date().toISOString(),
-              // Garante que o embedId seja o videoId validado
               embedId: videoId,
               youtubeUrl: buildYoutubeWatchUrl(videoId)
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
+            // Criação de Novo Canal (ID amarrado ao VideoId)
             const newChannel: SnookerChannel = {
-              id: `chan-auto-${videoId}`,
-              syncHash,
+              id: `yt_${videoId}`,
               title: parsed.eventTitle,
               description: yt.snippet.description.substring(0, 200),
               youtubeUrl: buildYoutubeWatchUrl(videoId),
@@ -132,10 +123,6 @@ export class SnookerSyncService {
               tournamentName: parsed.tournamentName,
               modality: parsed.modality,
               phase: parsed.phase,
-              prize: parsed.prize,
-              prizeLabel: parsed.prizeLabel,
-              metadataConfidence: parsed.confidence,
-              parserNotes: parsed.notes,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               isFeatured: source.markAsFeatured,

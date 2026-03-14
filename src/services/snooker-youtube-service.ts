@@ -1,9 +1,9 @@
 /**
  * @fileOverview Serviço de comunicação com a fonte de dados do YouTube (Multicanal).
- * Reforçado com validações de Video ID.
+ * Reforçado com validações rigorosas de Video ID para evitar players quebrados.
  */
 
-import { isValidYoutubeVideoId, extractYoutubeVideoId } from '@/utils/youtube';
+import { isValidYoutubeVideoId, buildYoutubeWatchUrl, extractYoutubeVideoId } from '@/utils/youtube';
 
 export interface YoutubeApiResponse {
   id: { videoId: string };
@@ -21,6 +21,7 @@ export interface YoutubeApiResponse {
 export class SnookerYoutubeService {
   /**
    * Busca dados de transmissões via proxy interno.
+   * Aplica validação de segurança antes de permitir que o item siga para o sync.
    */
   static async fetchChannelData(channelUrl?: string): Promise<YoutubeApiResponse[]> {
     try {
@@ -38,8 +39,20 @@ export class SnookerYoutubeService {
       
       const result = await response.json();
       if (result.success && Array.isArray(result.data)) {
-        // Retorna todos, mas o SyncService filtrará por validade do ID
-        return result.data;
+        // Filtragem e Validação Granular
+        return result.data.map((item: any) => {
+          const videoId = item.id.videoId;
+          const isValid = isValidYoutubeVideoId(videoId);
+          
+          return {
+            ...item,
+            videoValidation: {
+              valid: isValid,
+              reason: isValid ? null : 'ID do YouTube inválido (deve ter 11 caracteres)'
+            },
+            isEmbeddableCandidate: isValid && !item.isMock
+          };
+        });
       }
       return [];
     } catch (error: any) {

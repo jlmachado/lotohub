@@ -1,6 +1,6 @@
 'use client';
 import { Card } from "@/components/ui/card";
-import { Eye, Volume2, VolumeX, Maximize, Timer, AlertCircle, ShieldAlert } from "lucide-react";
+import { Eye, Volume2, VolumeX, Maximize, Timer, AlertCircle, ShieldAlert, MonitorOff } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
 import { useAppContext } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
@@ -51,6 +51,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
         snookerPresence[channelId]?.viewers.length || channel?.viewerCount || 0,
     [snookerPresence, channelId, channel?.viewerCount]);
 
+    // Validação de vídeo para o player
     const isVideoValid = useMemo(() => 
         isValidYoutubeVideoId(channel?.embedId), 
     [channel?.embedId]);
@@ -106,19 +107,17 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-8 text-center bg-slate-950">
                         <div className="bg-red-500/10 p-4 rounded-full border border-red-500/20">
-                            <AlertCircle className="h-10 w-10 text-red-500" />
+                            <MonitorOff className="h-10 w-10 text-red-500" />
                         </div>
                         <div className="space-y-1">
-                            <p className="text-white font-black uppercase italic tracking-tighter text-lg">Vídeo não disponível</p>
-                            <p className="text-white/40 text-[10px] font-bold uppercase max-w-[250px] leading-relaxed">
-                                O link de transmissão deste evento é inválido ou ainda não foi liberado pelo YouTube.
+                            <p className="text-white font-black uppercase italic tracking-tighter text-lg">Transmissão Indisponível</p>
+                            <p className="text-white/40 text-[10px] font-bold uppercase max-w-[300px] leading-relaxed">
+                                O link do vídeo é inválido ou o conteúdo foi removido. Aguardando sinal oficial.
                             </p>
-                            {channel.sourceVideoId && (
-                                <div className="mt-4 p-2 bg-white/5 rounded-lg border border-white/10 flex items-center gap-2 justify-center">
-                                    <ShieldAlert size={12} className="text-amber-500" />
-                                    <span className="text-[9px] font-mono text-slate-400 uppercase">ID Técnico: {channel.sourceVideoId}</span>
-                                </div>
-                            )}
+                            <div className="mt-4 p-2 bg-white/5 rounded-lg border border-white/10 flex items-center gap-2 justify-center">
+                                <ShieldAlert size={12} className="text-amber-500" />
+                                <span className="text-[9px] font-mono text-slate-400 uppercase">ID Técnico: {channel.embedId || 'N/A'}</span>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -133,7 +132,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
                     </span>
                 </div>
                 {!isVideoValid && (
-                    <Badge variant="outline" className="text-[7px] border-red-500/20 text-red-500 bg-red-500/5 h-4 px-1.5 font-black">ERRO DE SINAL</Badge>
+                    <Badge variant="destructive" className="text-[7px] h-4 px-1.5 font-black">LINK INVÁLIDO</Badge>
                 )}
             </div>
         </Card>
@@ -143,7 +142,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
 const Badge = ({ children, variant, className }: any) => (
   <span className={cn(
     "px-2 py-0.5 rounded-full text-[9px] font-black border flex items-center justify-center whitespace-nowrap",
-    variant === 'outline' ? "border-slate-300 dark:border-white/20 text-slate-500 dark:text-white/50" : "bg-primary text-primary-foreground border-transparent",
+    variant === 'destructive' ? "bg-red-600 text-white border-transparent" : "bg-primary text-primary-foreground border-transparent",
     className
   )}>
     {children}
