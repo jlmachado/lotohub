@@ -7,7 +7,7 @@ import {
   CheckCircle2, AlertTriangle, Info, Trash2, Eye, 
   ExternalLink, MousePointer2, Save, RotateCcw, 
   Play, ShieldCheck, Database, LayoutList, Check, X,
-  PlusCircle, Edit, Power, PowerOff
+  PlusCircle, Edit, Power, PowerOff, Video
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -22,6 +22,7 @@ import { useAppContext, SnookerChannel, SnookerSyncLog, SnookerAutomationSetting
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { isValidYoutubeVideoId } from '@/utils/youtube';
 
 export default function AdminSnookerAutomationPage() {
   const { 
@@ -53,6 +54,7 @@ export default function AdminSnookerAutomationPage() {
     total: autoChannels.length,
     live: autoChannels.filter(c => c.status === 'live').length,
     pending: autoChannels.filter(c => c.sourceStatus === 'detected').length,
+    invalid: autoChannels.filter(c => !isValidYoutubeVideoId(c.embedId)).length,
     activeSources: snookerAutomationSettings.sources.filter(s => s.enabled).length,
     errors: snookerSyncLogs.filter(l => l.status === 'error').length
   }), [autoChannels, snookerSyncLogs, snookerAutomationSettings.sources]);
@@ -100,10 +102,12 @@ export default function AdminSnookerAutomationPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <StatCard title="Fontes Ativas" value={stats.activeSources} icon={Database} color="text-primary" />
         <StatCard title="Ao Vivo" value={stats.live} icon={Play} color="text-red-500" />
         <StatCard title="Pendentes" value={stats.pending} icon={MousePointer2} color="text-amber-500" />
+        <StatCard title="Vídeos Inválidos" value={stats.invalid} icon={Video} color="text-red-400" />
+        
         <Card className={cn(
           "border-white/5 bg-slate-900 shadow-inner overflow-hidden relative",
           snookerSyncState === 'syncing' && "animate-pulse"
@@ -151,15 +155,13 @@ export default function AdminSnookerAutomationPage() {
                     </div>
                     <Badge variant="outline" className="text-[8px] h-5 border-white/10 uppercase bg-black/20">Prioridade: {source.priority}</Badge>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleEditSource(source)}><Edit size={16}/></Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className={cn("h-9 w-9", source.enabled ? "text-green-500" : "text-red-500")}
+                      <button className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-white" onClick={() => handleEditSource(source)}><Edit size={16}/></button>
+                      <button 
+                        className={cn("h-9 w-9 flex items-center justify-center", source.enabled ? "text-green-500" : "text-red-500")}
                         onClick={() => toggleSnookerSource(source.id, !source.enabled)}
                       >
                         {source.enabled ? <Power size={16}/> : <PowerOff size={16}/>}
-                      </Button>
+                      </button>
                       <Button variant="outline" size="sm" onClick={() => syncSnookerFromYoutube(true, source.id)} className="h-9 font-bold text-[10px] px-3 border-white/10 bg-white/5 ml-2">SYNC</Button>
                     </div>
                   </div>
@@ -181,7 +183,7 @@ export default function AdminSnookerAutomationPage() {
                 <TableRow className="border-white/5 h-10">
                   <TableHead className="text-[9px] uppercase font-black px-4">Thumb / Jogo</TableHead>
                   <TableHead className="text-[9px] uppercase font-black">Origem / Canal</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Metadados</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Status do Vídeo</TableHead>
                   <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -189,54 +191,60 @@ export default function AdminSnookerAutomationPage() {
                 {autoChannels.length === 0 ? (
                   <TableRow><TableCell colSpan={4} className="text-center py-24 text-muted-foreground italic">Nenhum item automático detectado.</TableCell></TableRow>
                 ) : (
-                  autoChannels.map(channel => (
-                    <TableRow key={channel.id} className="border-white/5 hover:bg-white/5 transition-colors group">
-                      <TableCell className="px-4 py-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-20 h-12 rounded-lg overflow-hidden border border-white/10 relative shrink-0">
-                            <img src={channel.thumbnailUrl || 'https://picsum.photos/seed/thumb/80/48'} className="object-cover w-full h-full" alt="" />
-                            {channel.status === 'live' && <div className="absolute inset-0 bg-red-600/20 flex items-center justify-center animate-pulse"><Zap size={14} className="text-white" /></div>}
+                  autoChannels.map(channel => {
+                    const isVideoValid = isValidYoutubeVideoId(channel.embedId);
+                    return (
+                      <TableRow key={channel.id} className="border-white/5 hover:bg-white/5 transition-colors group">
+                        <TableCell className="px-4 py-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-20 h-12 rounded-lg overflow-hidden border border-white/10 relative shrink-0">
+                              <img src={channel.thumbnailUrl || 'https://picsum.photos/seed/thumb/80/48'} className="object-cover w-full h-full" alt="" />
+                              {channel.status === 'live' && isVideoValid && <div className="absolute inset-0 bg-red-600/20 flex items-center justify-center animate-pulse"><Zap size={14} className="text-white" /></div>}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-black text-white uppercase italic truncate">{channel.playerA.name} vs {channel.playerB.name}</p>
+                              <p className="text-[9px] text-muted-foreground uppercase font-bold truncate">{channel.tournamentName || channel.title}</p>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-black text-white uppercase italic truncate">{channel.playerA.name} vs {channel.playerB.name}</p>
-                            <p className="text-[9px] text-muted-foreground uppercase font-bold truncate">{channel.tournamentName || channel.title}</p>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-primary uppercase italic">{channel.sourceName}</span>
+                            <span className="text-[8px] text-slate-500 font-mono">{channel.sourceVideoId || 'N/A'}</span>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[10px] font-black text-primary uppercase italic">{channel.sourceName}</span>
-                          <span className="text-[8px] text-slate-500 font-mono">{channel.sourceVideoId}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase bg-black/20">Confiança: {((channel.metadataConfidence || 0) * 100).toFixed(0)}%</Badge>
-                          {channel.prizeLabel && <Badge variant="outline" className="text-[8px] h-4 border-green-500/20 text-green-500 uppercase bg-green-500/5">{channel.prizeLabel}</Badge>}
-                          <Badge className={cn(
-                            "text-[8px] h-4 uppercase font-black italic",
-                            channel.sourceStatus === 'synced' ? "bg-green-600/20 text-green-500" : "bg-amber-600/20 text-amber-500"
-                          )}>
-                            {channel.sourceStatus === 'synced' ? 'SINC' : 'PENDENTE'}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right px-4 space-x-1">
-                        {channel.sourceStatus === 'detected' && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-green-500 hover:bg-green-500/10"
-                            onClick={() => approveAutoSnookerChannel(channel.id)}
-                          >
-                            <Check size={14} />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-white/30 hover:text-white" onClick={() => window.open(channel.youtubeUrl, '_blank')}><ExternalLink size={14} /></Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => archiveAutoSnookerChannel(channel.id)}><Trash2 size={14} /></Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge variant="outline" className={cn(
+                              "text-[8px] h-4 uppercase font-black px-1.5",
+                              isVideoValid ? "border-green-500/20 text-green-500 bg-green-500/5" : "border-red-500/20 text-red-500 bg-red-500/5"
+                            )}>
+                              {isVideoValid ? <Check size={8} className="mr-1"/> : <X size={8} className="mr-1"/>}
+                              Video {isVideoValid ? 'OK' : 'Inválido'}
+                            </Badge>
+                            <Badge className={cn(
+                              "text-[8px] h-4 uppercase font-black italic",
+                              channel.sourceStatus === 'synced' ? "bg-green-600/20 text-green-500" : "bg-amber-600/20 text-amber-500"
+                            )}>
+                              {channel.sourceStatus === 'synced' ? 'SINC' : 'PENDENTE'}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right px-4 space-x-1">
+                          {channel.sourceStatus === 'detected' && isVideoValid && (
+                            <button 
+                              className="h-8 w-8 text-green-500 hover:bg-green-500/10 flex items-center justify-center rounded-lg"
+                              onClick={() => approveAutoSnookerChannel(channel.id)}
+                            >
+                              <Check size={14} />
+                            </button>
+                          )}
+                          <button className="h-8 w-8 text-white/30 hover:text-white flex items-center justify-center" onClick={() => window.open(channel.youtubeUrl, '_blank')}><ExternalLink size={14} /></button>
+                          <button className="h-8 w-8 text-destructive hover:bg-destructive/10 flex items-center justify-center rounded-lg" onClick={() => archiveAutoSnookerChannel(channel.id)}><Trash2 size={14} /></button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -278,7 +286,7 @@ export default function AdminSnookerAutomationPage() {
                       <TableCell className="text-center">
                         <Badge className={cn(
                           "text-[7px] h-4 uppercase font-black px-1.5",
-                          log.status === 'success' ? "bg-green-600/20 text-green-500" : "bg-red-600/20 text-red-500"
+                          log.status === 'success' ? "bg-green-600/20 text-green-500" : log.status === 'error' ? "bg-red-600/20 text-red-500" : "bg-amber-600/20 text-amber-500"
                         )}>
                           {log.status}
                         </Badge>

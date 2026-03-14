@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Gerencia o estado global, persistência local e automação Multicanal de Sinuca/Futebol.
+ * Reforçado com validações de YouTube para evitar vídeos indisponíveis.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -26,7 +26,7 @@ import { FootballLiveEngine } from '@/services/football-live-engine';
 import { JDBNormalizedResult, SyncLogEntry } from '@/types/result-types';
 import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
 import { SnookerSyncService } from '@/services/snooker-sync-service';
-import { SnookerParserService } from '@/services/snooker-parser-service';
+import { isValidYoutubeVideoId } from '@/utils/youtube';
 
 // --- INTERFACES ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -97,6 +97,7 @@ export interface SnookerChannel {
   bettingOpensAt?: string | null;
   bettingClosesAt?: string | null;
   preMatchOddsLocked?: boolean;
+  originPriority?: number;
 }
 
 export interface SnookerAutomationSource {
@@ -122,7 +123,7 @@ export interface SnookerAutomationSource {
 }
 
 export interface SnookerSyncLog { id: string; createdAt: string; type: string; status: 'success' | 'warning' | 'error' | 'info'; message: string; sourceId?: string; sourceName?: string; relatedChannelId?: string; payload?: any; }
-export interface SnookerAutomationSettings { enabled: boolean; sourceMode: 'manual' | 'youtube' | 'hybrid'; sources: SnookerAutomationSource[]; syncIntervalSeconds: number; dedupeWindowHours: number; enabledOnHome: boolean; enabledOnPublicPage: boolean; autoMarkLive: boolean; autoMarkFinished: boolean; }
+export interface SnookerAutomationSettings { enabled: boolean; sourceMode: 'manual' | 'youtube' | 'hybrid'; sources: SnookerAutomationSource[]; syncIntervalSeconds: number; dedupeWindowHours: number; enabledOnHome: boolean; enabledOnPublicPage: boolean; autoMarkLive: boolean; autoMarkFinished: boolean; allowPreMatchBetting: boolean; allowLiveBetting: boolean; }
 export interface SnookerBet { id: string; userId: string; userName: string; channelId: string; pick: 'A' | 'B' | 'EMPATE'; amount: number; oddsA: number; oddsB: number; oddsD: number; status: 'open' | 'won' | 'lost' | 'refunded' | 'cash_out'; createdAt: string; isPreMatch?: boolean; }
 export interface SnookerFinancialSummary { id: string; channelId: string; channelTitle: string; totalPot: number; totalPayout: number; houseProfit: number; settledAt: string; roundNumber?: number; }
 export interface SnookerLiveConfig { defaultChannelId: string; showLiveBadge: boolean; betsEnabled: boolean; minBet: number; maxBet: number; cashOutMargin: number; chatEnabled: boolean; reactionsEnabled: boolean; profanityFilterEnabled: boolean; updatedAt: string; }
@@ -156,7 +157,7 @@ const DEFAULT_SOURCES: SnookerAutomationSource[] = [
   { id: 'src-junior-snooker', name: 'Junior Snooker', platform: 'youtube', channelUrl: 'https://www.youtube.com/@juniorsnooker', channelHandle: '@juniorsnooker', enabled: true, priority: 5, parseProfile: 'junior_snooker', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: true, allowPreMatchBetting: true, allowLiveBetting: true, createDefaultOddsIfMissing: true, keepManualOdds: true, markAsFeatured: false }
 ];
 
-const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = { enabled: true, sourceMode: 'hybrid', sources: DEFAULT_SOURCES, syncIntervalSeconds: 300, dedupeWindowHours: 24, enabledOnHome: true, enabledOnPublicPage: true, autoMarkLive: true, autoMarkFinished: true };
+const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = { enabled: true, sourceMode: 'hybrid', sources: DEFAULT_SOURCES, syncIntervalSeconds: 300, dedupeWindowHours: 24, enabledOnHome: true, enabledOnPublicPage: true, autoMarkLive: true, autoMarkFinished: true, allowPreMatchBetting: true, allowLiveBetting: true };
 
 // --- PROVIDER ---
 export const AppProvider = ({ children }: { children: ReactNode }) => {
@@ -254,17 +255,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           const { updatedChannels, summary } = await SnookerSyncService.sync(currentChannels, user?.bancaId || 'default', source, settings);
           currentChannels = updatedChannels;
 
-          // Auto-create scoreboards
           currentChannels.forEach(chan => {
             if (!currentScores[chan.id] && chan.source === 'youtube') {
               currentScores[chan.id] = { matchTitle: chan.tournamentName || chan.title, playerA: { name: chan.playerA.name, score: 0 }, playerB: { name: chan.playerB.name, score: 0 }, scoreA: 0, scoreB: 0, statusText: chan.status === 'live' ? 'AO VIVO' : 'Aguardando início', frame: 0, round: { number: 1 } };
             }
           });
 
-          const finishLog: SnookerSyncLog = { id: `log-fin-${Date.now()}-${source.id}`, createdAt: new Date().toISOString(), type: 'SYNC_FINISH', status: 'success', message: `Sync OK: ${source.name}. Criados: ${summary.created} | Atualizados: ${summary.updated}`, sourceId: source.id, sourceName: source.name, payload: summary };
+          const finishLog: SnookerSyncLog = { id: `log-fin-${Date.now()}-${source.id}`, createdAt: new Date().toISOString(), type: 'SYNC_FINISH', status: 'success', message: `Sync OK: ${source.name}. Criados: ${summary.created} | Atualizados: ${summary.updated} | Inválidos: ${summary.invalidVideos}`, sourceId: source.id, sourceName: source.name, payload: summary };
           allLogs = [finishLog, ...allLogs].slice(0, 200);
 
-          // Update source metadata
           source.lastSyncAt = new Date().toISOString();
           source.lastSyncStatus = 'success';
           source.lastSyncMessage = `OK: ${summary.created} criados`;

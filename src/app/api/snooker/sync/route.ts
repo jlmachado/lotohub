@@ -1,43 +1,50 @@
 import { NextResponse } from 'next/server';
 
 /**
- * @fileOverview Rota de API para simular ou buscar dados do canal TV Snooker Brasil.
- * Em produção, aqui seria feita a chamada real à YouTube Data API v3.
+ * @fileOverview Rota de API para simular ou buscar dados de canais de sinuca.
+ * Corrigido para não retornar Video IDs inválidos.
  */
 
 export async function GET() {
   try {
-    // Simulação de dados reais baseados nos padrões observados no canal TV Snooker Brasil
+    // Simulação de dados reais com IDs de 11 caracteres (sintaticamente válidos)
+    // Em produção, esses IDs viriam da YouTube Data API v3
     const mockYoutubeData = [
       {
-        id: { videoId: "baianinho_maycon_live" },
+        id: { videoId: "hW_W_L7R_As" }, // Exemplo de ID real (apenas para teste de estrutura)
         snippet: {
           title: "AO VIVO: BAIANINHO DE MAUÁ X MAYCON DE TEIXEIRA - DESAFIO DE GIGANTES MD11",
           description: "Acompanhe agora o maior desafio de sinuca do Brasil. Baianinho de Mauá vs Maycon de Teixeira na modalidade sinuquinha.",
           liveBroadcastContent: "live",
           actualStartTime: new Date().toISOString(),
           thumbnails: { medium: { url: "https://images.unsplash.com/photo-1596838132731-3301c3fd4317?q=80&w=400" } }
-        }
+        },
+        isMock: true,
+        isEmbeddableCandidate: true
       },
       {
-        id: { videoId: "upcoming_torneio_verao" },
+        id: { videoId: "L_jWHffIx5E" },
         snippet: {
           title: "PRÓXIMO: BRUNINHO VS COCO - SEMIFINAL TORNEIO DE VERÃO - MD9",
           description: "Grande semifinal agendada para hoje à noite no canal TV Snooker Brasil.",
           liveBroadcastContent: "upcoming",
           scheduledStartTime: new Date(Date.now() + 3600000 * 2).toISOString(), // 2h depois
           thumbnails: { medium: { url: "https://images.unsplash.com/photo-1511193311914-0346f16efe90?q=80&w=400" } }
-        }
+        },
+        isMock: true,
+        isEmbeddableCandidate: true
       },
       {
-        id: { videoId: "recent_final_video" },
+        id: { videoId: "invalid_id" }, // Este deve ser rejeitado pelo sistema de sync
         snippet: {
-          title: "FINAL: FELIPINHO X ITAZINHO - CIRCUITO MINEIRO SNOOKER",
-          description: "Confira como foi a final eletrizante do circuito mineiro de sinuca.",
-          liveBroadcastContent: "none", // Indica vídeo/finalizado
+          title: "VÍDEO DE TESTE COM ID INVÁLIDO",
+          description: "Este item deve ser marcado como erro pelo sincronizador por possuir ID fora do padrão.",
+          liveBroadcastContent: "none",
           actualStartTime: new Date(Date.now() - 86400000).toISOString(),
           thumbnails: { medium: { url: "https://images.unsplash.com/photo-1596838132731-3301c3fd4317?q=80&w=400" } }
-        }
+        },
+        isMock: true,
+        isEmbeddableCandidate: false
       }
     ];
 

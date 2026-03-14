@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { 
   ChevronLeft, PlusCircle, Edit, Trash2, Zap, RefreshCw, 
   History, Info, ExternalLink, Copy, Check, X, Filter, 
-  Video, MonitorPlay, ShieldAlert
+  Video, MonitorPlay, ShieldAlert, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { useAppContext, SnookerChannel } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+import { isValidYoutubeVideoId, extractYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
 
 type FormState = Omit<SnookerChannel, 'id' | 'createdAt' | 'updatedAt' | 'bancaId' | 'status' | 'odds' | 'scoreA' | 'scoreB'>;
 
@@ -35,13 +36,6 @@ const initialFormState: FormState = {
   priority: 10,
   enabled: true,
   isManualOverride: false
-};
-
-const getYoutubeEmbedId = (url: string): string | null => {
-    if (!url) return null;
-    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
 };
 
 export default function AdminSinucaCanaisPage() {
@@ -61,7 +55,7 @@ export default function AdminSinucaCanaisPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     
     // Filtros
-    const [filterType, setFilterType] = useState<'all' | 'manual' | 'youtube' | 'live' | 'pending'>('all');
+    const [filterType, setFilterType] = useState<'all' | 'manual' | 'youtube' | 'live' | 'pending' | 'invalid'>('all');
     const [originFilter, setOriginFilter] = useState('all');
 
     const filteredChannels = useMemo(() => {
@@ -71,6 +65,7 @@ export default function AdminSinucaCanaisPage() {
         if (filterType === 'youtube') items = items.filter(c => c.source === 'youtube');
         if (filterType === 'live') items = items.filter(c => c.status === 'live');
         if (filterType === 'pending') items = items.filter(c => c.sourceStatus === 'detected');
+        if (filterType === 'invalid') items = items.filter(c => !isValidYoutubeVideoId(c.embedId));
         
         if (originFilter !== 'all') {
           items = items.filter(c => c.sourceId === originFilter);
@@ -120,7 +115,7 @@ export default function AdminSinucaCanaisPage() {
             return;
         }
 
-        const embedId = getYoutubeEmbedId(currentChannel.youtubeUrl);
+        const embedId = extractYoutubeVideoId(currentChannel.youtubeUrl);
         if (!embedId) {
             toast({ variant: 'destructive', title: 'URL Inválida', description: 'O link do YouTube não foi reconhecido.' });
             return;
@@ -168,6 +163,19 @@ export default function AdminSinucaCanaisPage() {
         }
     };
 
+    const getVideoStatusBadge = (embedId: string) => {
+        const isValid = isValidYoutubeVideoId(embedId);
+        return (
+            <Badge variant="outline" className={cn(
+                "text-[7px] font-black h-4 px-1 gap-1 uppercase",
+                isValid ? "border-green-500/20 text-green-500 bg-green-500/5" : "border-red-500/20 text-red-500 bg-red-500/5"
+            )}>
+                {isValid ? <Check size={8}/> : <AlertTriangle size={8}/>}
+                Video {isValid ? 'OK' : 'Erro'}
+            </Badge>
+        );
+    };
+
     const getOriginBadge = (channel: SnookerChannel) => {
         if (channel.source === 'youtube') return <Badge className="bg-red-600/10 text-red-500 border-red-500/20 text-[8px] h-4 uppercase">{channel.sourceName || 'YouTube'}</Badge>;
         return <Badge variant="outline" className="text-[8px] h-4 uppercase opacity-60">Manual</Badge>;
@@ -203,6 +211,7 @@ export default function AdminSinucaCanaisPage() {
                     <FilterBtn active={filterType === 'all'} onClick={() => setFilterType('all')} label="Todos" />
                     <FilterBtn active={filterType === 'live'} onClick={() => setFilterType('live')} label="Ao Vivo" color="text-red-500" />
                     <FilterBtn active={filterType === 'pending'} onClick={() => setFilterType('pending')} label="Pendentes" color="text-amber-500" />
+                    <FilterBtn active={filterType === 'invalid'} onClick={() => setFilterType('invalid')} label="Erro de Vídeo" color="text-red-400" />
                     <FilterBtn active={filterType === 'youtube'} onClick={() => setFilterType('youtube')} label="YouTube" />
                     <FilterBtn active={filterType === 'manual'} onClick={() => setFilterType('manual')} label="Manual" />
                 </div>
@@ -258,9 +267,10 @@ export default function AdminSinucaCanaisPage() {
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-1.5">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
                                                 {getOriginBadge(channel)}
                                                 <Badge variant={getStatusVariant(channel.status)} className="text-[8px] h-4 uppercase font-black italic">{channel.status}</Badge>
+                                                {getVideoStatusBadge(channel.embedId)}
                                             </div>
                                             {channel.isManualOverride && <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[8px] h-4 uppercase font-black w-fit"><ShieldAlert size={8} className="mr-1" /> Override</Badge>}
                                         </div>
@@ -268,7 +278,13 @@ export default function AdminSinucaCanaisPage() {
                                     <TableCell className="text-center">
                                         <Switch 
                                             checked={channel.enabled} 
-                                            onCheckedChange={(v) => updateSnookerChannel({...channel, enabled: v})} 
+                                            onCheckedChange={(v) => {
+                                                if (v && !isValidYoutubeVideoId(channel.embedId)) {
+                                                    toast({ variant: 'destructive', title: 'Erro', description: 'Não é possível ativar um canal com ID de vídeo inválido.' });
+                                                    return;
+                                                }
+                                                updateSnookerChannel({...channel, enabled: v});
+                                            }} 
                                             className="scale-75"
                                         />
                                     </TableCell>
@@ -278,8 +294,8 @@ export default function AdminSinucaCanaisPage() {
                                                 <Check size={14} />
                                             </Button>
                                         )}
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(channel)}><Edit size={14} /></Button>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-400" onClick={() => handleDuplicateAsManual(channel)} title="Duplicar"><Copy size={14} /></Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400" onClick={() => handleEdit(channel)}><Edit size={14} /></Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-400" onClick={() => handleDuplicateAsManual(channel)} title="Duplicar como Manual"><Copy size={14} /></Button>
                                         {channel.youtubeUrl && (
                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => window.open(channel.youtubeUrl, '_blank')}>
                                                 <ExternalLink size={14} />
@@ -328,8 +344,31 @@ export default function AdminSinucaCanaisPage() {
                                 <Input type="datetime-local" value={currentChannel.scheduledAt} onChange={(e) => setCurrentChannel({ ...currentChannel, scheduledAt: e.target.value })} className="h-11" />
                             </div>
                             <div className="space-y-1.5">
-                                <Label className="text-[9px] uppercase font-bold">URL YouTube</Label>
-                                <Input value={currentChannel.youtubeUrl} onChange={(e) => setCurrentChannel({ ...currentChannel, youtubeUrl: e.target.value })} className="h-11" />
+                                <div className="flex justify-between items-center px-1">
+                                    <Label className="text-[9px] uppercase font-bold">URL YouTube</Label>
+                                    {isValidYoutubeVideoId(currentChannel.embedId) ? (
+                                        <span className="text-[8px] font-black text-green-500 uppercase flex items-center gap-1"><CheckCircle2 size={8}/> ID OK</span>
+                                    ) : (
+                                        <span className="text-[8px] font-black text-red-500 uppercase flex items-center gap-1"><AlertTriangle size={8}/> ID INVÁLIDO</span>
+                                    )}
+                                </div>
+                                <Input 
+                                    value={currentChannel.youtubeUrl} 
+                                    onChange={(e) => {
+                                        const url = e.target.value;
+                                        const vid = extractYoutubeVideoId(url);
+                                        setCurrentChannel({ 
+                                            ...currentChannel, 
+                                            youtubeUrl: url,
+                                            embedId: vid || ''
+                                        });
+                                    }} 
+                                    placeholder="https://www.youtube.com/watch?v=..."
+                                    className="h-11" 
+                                />
+                                {currentChannel.embedId && (
+                                    <p className="text-[9px] font-mono text-muted-foreground mt-1 px-1">Embed ID: {currentChannel.embedId}</p>
+                                )}
                             </div>
                         </div>
 

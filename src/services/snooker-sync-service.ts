@@ -1,17 +1,19 @@
 /**
  * @fileOverview Orquestrador de sincronização Multicanal de Sinuca.
- * Gerencia o ciclo de vida dos canais detectados via YouTube de várias fontes.
+ * Reforçado com validação de Video ID e proteção de Player.
  */
 
 import { SnookerYoutubeService, YoutubeApiResponse } from './snooker-youtube-service';
 import { SnookerParserService } from './snooker-parser-service';
 import { SnookerChannel, SnookerAutomationSource, SnookerAutomationSettings } from '@/context/AppContext';
+import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
 
 export interface SyncSummary {
   itemsRead: number;
   created: number;
   updated: number;
   failures: number;
+  invalidVideos: number;
 }
 
 export class SnookerSyncService {
@@ -32,26 +34,29 @@ export class SnookerSyncService {
     source: SnookerAutomationSource,
     settings: SnookerAutomationSettings
   ): Promise<{ updatedChannels: SnookerChannel[], summary: SyncSummary }> {
-    const summary: SyncSummary = { itemsRead: 0, created: 0, updated: 0, failures: 0 };
+    const summary: SyncSummary = { itemsRead: 0, created: 0, updated: 0, failures: 0, invalidVideos: 0 };
     
     try {
-      // 1. Buscar dados do YouTube via proxy
       const youtubeData = await SnookerYoutubeService.fetchChannelData(source.channelUrl);
       summary.itemsRead = youtubeData.length;
 
       const newChannelsList = [...currentChannels];
 
-      // 2. Processar cada item encontrado
       youtubeData.forEach((yt: YoutubeApiResponse) => {
         try {
           const videoId = yt.id.videoId;
-          if (!videoId) return;
+          
+          // VALIDAÇÃO CRÍTICA DE VÍDEO
+          const isVideoValid = isValidYoutubeVideoId(videoId);
+          if (!isVideoValid) {
+            summary.invalidVideos++;
+            return; // Pula itens com IDs mal formatados
+          }
 
           const parsed = SnookerParserService.parse(yt.snippet.title, yt.snippet.description, source.parseProfile);
           const scheduledAt = yt.snippet.scheduledStartTime || new Date().toISOString();
           const syncHash = this.generateSyncHash(videoId, yt.snippet.title, scheduledAt);
           
-          // Verificar se já existe (por VideoId ou por Hash de conteúdo)
           const existingIdx = newChannelsList.findIndex(c => c.sourceVideoId === videoId || c.syncHash === syncHash);
 
           let status: SnookerChannel['status'] = 'scheduled';
@@ -64,7 +69,6 @@ export class SnookerSyncService {
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
             
-            // Regra de Proteção Manual
             if (existing.isManualOverride) {
               if (status !== existing.status) {
                 newChannelsList[existingIdx] = { ...existing, status, updatedAt: new Date().toISOString() };
@@ -73,7 +77,6 @@ export class SnookerSyncService {
               return;
             }
 
-            // Atualizar canal existente
             newChannelsList[existingIdx] = {
               ...existing,
               status,
@@ -91,17 +94,19 @@ export class SnookerSyncService {
               sourceId: source.id,
               originPriority: source.priority,
               updatedAt: new Date().toISOString(),
-              autoUpdatedAt: new Date().toISOString()
+              autoUpdatedAt: new Date().toISOString(),
+              // Garante que o embedId seja o videoId validado
+              embedId: videoId,
+              youtubeUrl: buildYoutubeWatchUrl(videoId)
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
-            // Criar novo canal automático
             const newChannel: SnookerChannel = {
               id: `chan-auto-${videoId}`,
               syncHash,
               title: parsed.eventTitle,
               description: yt.snippet.description.substring(0, 200),
-              youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+              youtubeUrl: buildYoutubeWatchUrl(videoId),
               embedId: videoId,
               sourceVideoId: videoId,
               source: 'youtube',

@@ -12,6 +12,7 @@ import { ReactionsPanel } from "@/components/sinuca/ReactionsPanel";
 import { BettingPanel } from "@/components/sinuca/BettingPanel";
 import { ActivityTicker } from "@/components/sinuca/ActivityTicker";
 import { MySnookerBets } from "@/components/sinuca/MySnookerBets";
+import { isValidYoutubeVideoId } from "@/utils/youtube";
 
 export default function SinucaAoVivoPage() {
     const { snookerLiveConfig, snookerChannels, joinChannel, leaveChannel, celebrationTrigger, clearCelebration, user } = useAppContext();
@@ -26,11 +27,20 @@ export default function SinucaAoVivoPage() {
     useEffect(() => {
         if (!isClient || activeChannelId || !snookerChannels || snookerChannels.length === 0) return;
 
-        // Priorities: 1. Live, 2. Imminent, 3. Scheduled, 4. Default Config
-        const enabled = snookerChannels.filter(c => c.enabled);
-        const live = enabled.find(c => c.status === 'live');
-        const imminent = enabled.find(c => c.status === 'imminent');
-        const scheduled = [...enabled].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()).find(c => c.status === 'scheduled');
+        // PRIORIDADES DE SELEÇÃO:
+        // 1. Live habilitado E com vídeo válido
+        // 2. Imminent habilitado E com vídeo válido
+        // 3. Scheduled habilitado E com vídeo válido
+        // 4. Fallback para o primeiro habilitado (mesmo que sem vídeo)
+        
+        const enabled = snookerChannels.filter(c => c.enabled && !c.isArchived);
+        const withValidVideo = enabled.filter(c => isValidYoutubeVideoId(c.embedId));
+
+        const live = withValidVideo.find(c => c.status === 'live');
+        const imminent = withValidVideo.find(c => c.status === 'imminent');
+        const scheduled = [...withValidVideo]
+            .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+            .find(c => c.status === 'scheduled');
 
         if (live) setActiveChannelId(live.id);
         else if (imminent) setActiveChannelId(imminent.id);

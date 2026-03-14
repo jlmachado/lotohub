@@ -1,6 +1,9 @@
 /**
  * @fileOverview Serviço de comunicação com a fonte de dados do YouTube (Multicanal).
+ * Reforçado com validações de Video ID.
  */
+
+import { isValidYoutubeVideoId, extractYoutubeVideoId } from '@/utils/youtube';
 
 export interface YoutubeApiResponse {
   id: { videoId: string };
@@ -12,31 +15,12 @@ export interface YoutubeApiResponse {
     actualStartTime?: string;
     thumbnails: { medium: { url: string } };
   };
+  isMock?: boolean;
 }
 
 export class SnookerYoutubeService {
   /**
-   * Valida se uma string é uma URL válida do YouTube.
-   */
-  static isValidYoutubeUrl(url: string): boolean {
-    if (!url) return false;
-    const regex = /^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|@)|youtu\.be\/)[a-zA-Z0-9_-]+(?:&.*)?$/;
-    return regex.test(url);
-  }
-
-  /**
-   * Extrai o handle ou videoId de uma URL.
-   */
-  static extractVideoId(url: string): string | null {
-    if (!url) return null;
-    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-  }
-
-  /**
    * Busca dados de transmissões via proxy interno.
-   * Suporta passagem de channelUrl para busca dinâmica.
    */
   static async fetchChannelData(channelUrl?: string): Promise<YoutubeApiResponse[]> {
     try {
@@ -54,6 +38,7 @@ export class SnookerYoutubeService {
       
       const result = await response.json();
       if (result.success && Array.isArray(result.data)) {
+        // Retorna todos, mas o SyncService filtrará por validade do ID
         return result.data;
       }
       return [];
