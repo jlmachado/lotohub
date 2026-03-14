@@ -8,19 +8,21 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Search, Share2, Printer, Calendar, Clock, MapPin, Hash, RotateCcw } from 'lucide-react';
+import { Search, Share2, Printer, Calendar, Clock, MapPin, Hash, RotateCcw, Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { JDB_STATES } from '@/utils/jdb-constants';
 import { cn } from '@/lib/utils';
+import { ResultsAutoSyncService } from '@/services/results-auto-sync-service';
 
 export default function ResultadosPublicPage() {
-  const { jdbResults } = useAppContext();
+  const { jdbResults, refreshData } = useAppContext();
   const { toast } = useToast();
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedState, setSelectedState] = useState('all');
   const [selectedTime, setSelectedTime] = useState('all');
+  const [isSearching, setIsSearching] = useState(false);
 
   const availableTimes = useMemo(() => {
     const times = new Set(jdbResults.filter(r => r.status === 'PUBLICADO').map(r => r.time));
@@ -36,6 +38,52 @@ export default function ResultadosPublicPage() {
       return matchDate && matchState && matchTime;
     }).sort((a, b) => b.time.localeCompare(a.time));
   }, [jdbResults, date, selectedState, selectedTime]);
+
+  const handleSearchResults = async () => {
+    if (isSearching) return;
+
+    setIsSearching(true);
+    toast({ 
+      title: "Pesquisando resultados...", 
+      description: "Consultando bases oficiais em tempo real para todos os estados." 
+    });
+
+    try {
+      // Executa a mesma lógica de força bruta do admin
+      const summary = await ResultsAutoSyncService.forceRun();
+      
+      if (summary) {
+        if (summary.news > 0 || summary.updated > 0) {
+          toast({ 
+            title: "Resultados Atualizados", 
+            description: `${summary.news} novas extrações encontradas e publicadas.` 
+          });
+        } else {
+          toast({ 
+            title: "Sem novidades", 
+            description: "Todos os resultados disponíveis já estão importados." 
+          });
+        }
+      }
+      
+      // Garante que o contexto local seja atualizado
+      refreshData();
+    } catch (error) {
+      toast({ 
+        variant: "destructive", 
+        title: "Falha na sincronização", 
+        description: "Não foi possível conectar ao servidor de extração. Tente novamente." 
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleClear = () => {
+    setDate(new Date().toISOString().split('T')[0]);
+    setSelectedState('all');
+    setSelectedTime('all');
+  };
 
   const handleShare = async (result: any) => {
     const prizesText = result.prizes
@@ -65,7 +113,7 @@ ${prizesText}
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: "Copiado!" });
+    toast({ title: "Copiado para área de transferência!" });
   };
 
   const handlePrint = (result: any) => {
@@ -96,40 +144,72 @@ ${prizesText}
       <main className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Resultados</h1>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Extrações Oficiais Regionalizadas</p>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Resultados Oficiais</h1>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Extrações em Tempo Real • Todos os Estados</p>
           </div>
-          <Button variant="outline" onClick={() => { setDate(new Date().toISOString().split('T')[0]); setSelectedState('all'); setSelectedTime('all'); }} className="h-9 border-white/10 text-[10px] uppercase font-black"><RotateCcw className="mr-2 h-3.5 w-3.5" /> Limpar</Button>
         </div>
 
         <Card className="border-white/10 bg-card/50 shadow-xl">
-          <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Data</Label>
-              <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-11 bg-black/20 border-white/10 font-bold" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Estado</Label>
-              <Select value={selectedState} onValueChange={setSelectedState}>
-                <SelectTrigger className="h-11 bg-black/20 border-white/10 font-bold"><SelectValue placeholder="Todos" /></SelectTrigger>
-                <SelectContent>{JDB_STATES.map(s => <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Horário</Label>
-              <Select value={selectedTime} onValueChange={setSelectedTime}>
-                <SelectTrigger className="h-11 bg-black/20 border-white/10 font-bold"><SelectValue placeholder="Todos" /></SelectTrigger>
-                <SelectContent>{availableTimes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              <div className="md:col-span-3 space-y-1.5">
+                <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Data da Extração</Label>
+                <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-11 bg-black/20 border-white/10 font-bold" />
+              </div>
+              
+              <div className="md:col-span-3 space-y-1.5">
+                <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Filtrar Estado</Label>
+                <Select value={selectedState} onValueChange={setSelectedState}>
+                  <SelectTrigger className="h-11 bg-black/20 border-white/10 font-bold">
+                    <SelectValue placeholder="Todos os Estados" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Estados</SelectItem>
+                    {JDB_STATES.map(s => <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="md:col-span-2 space-y-1.5">
+                <Label className="text-[9px] uppercase font-black text-muted-foreground ml-1">Horário</Label>
+                <Select value={selectedTime} onValueChange={setSelectedTime}>
+                  <SelectTrigger className="h-11 bg-black/20 border-white/10 font-bold">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {availableTimes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="md:col-span-4 flex gap-2">
+                <Button 
+                  onClick={handleSearchResults} 
+                  disabled={isSearching}
+                  className="flex-1 h-11 bg-primary text-black font-black uppercase italic rounded-xl lux-shine gap-2"
+                >
+                  {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  {isSearching ? 'Buscando...' : 'Pesquisar'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleClear} 
+                  className="h-11 px-4 border-white/10 text-[10px] uppercase font-black rounded-xl"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         <div className="grid gap-6">
           {filteredResults.length === 0 ? (
-            <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl">
-              <Search className="h-12 w-12 mx-auto text-slate-700 mb-4" />
-              <p className="text-muted-foreground font-bold uppercase text-xs">Nenhum resultado encontrado para estes filtros.</p>
+            <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl bg-slate-900/20">
+              <Search className="h-12 w-12 mx-auto text-slate-700 mb-4 opacity-20" />
+              <p className="text-muted-foreground font-bold uppercase text-xs tracking-widest">Nenhum resultado encontrado.</p>
+              <p className="text-[10px] text-slate-600 uppercase mt-1">Tente clicar em pesquisar para atualizar os dados.</p>
             </div>
           ) : (
             filteredResults.map((res) => (
@@ -146,8 +226,12 @@ ${prizesText}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button onClick={() => handleShare(res)} variant="outline" size="sm" className="h-9 rounded-lg font-bold border-white/10 hover:bg-primary hover:text-black gap-2"><Share2 size={14} /> WhatsApp</Button>
-                    <Button onClick={() => handlePrint(res)} variant="outline" size="sm" className="h-9 rounded-lg font-bold border-white/10 gap-2"><Printer size={14} /> Imprimir</Button>
+                    <Button onClick={() => handleShare(res)} variant="outline" size="sm" className="h-9 rounded-lg font-bold border-white/10 hover:bg-primary hover:text-black gap-2 transition-all">
+                      <Share2 size={14} /> WhatsApp
+                    </Button>
+                    <Button onClick={() => handlePrint(res)} variant="outline" size="sm" className="h-9 rounded-lg font-bold border-white/10 gap-2 transition-all">
+                      <Printer size={14} /> Imprimir
+                    </Button>
                   </div>
                 </div>
 
