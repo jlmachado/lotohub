@@ -1,6 +1,11 @@
+/**
+ * @fileOverview Player de Vídeo para Sinuca ao Vivo.
+ * Reforçado com validação de VideoID para evitar erros de incorporação.
+ */
+
 'use client';
 import { Card } from "@/components/ui/card";
-import { Eye, Volume2, VolumeX, Maximize, Timer, ShieldAlert, MonitorOff } from "lucide-react";
+import { Eye, Volume2, VolumeX, Maximize, Timer, MonitorOff, ShieldAlert } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
 import { useAppContext } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
@@ -8,35 +13,6 @@ import { isValidYoutubeVideoId, buildYoutubeEmbedUrl } from "@/utils/youtube";
 
 interface LivePlayerProps {
     channelId: string;
-}
-
-const ElapsedTime = ({ startedAt }: { startedAt: string | undefined }) => {
-    const [elapsed, setElapsed] = useState<number | null>(null);
-
-    useEffect(() => {
-        if (!startedAt) {
-            setElapsed(null);
-            return;
-        }
-
-        const tick = () => {
-            const start = new Date(startedAt).getTime();
-            setElapsed(Math.max(0, Math.floor((Date.now() - start) / 60000)));
-        };
-
-        tick();
-        const interval = setInterval(tick, 30000);
-        return () => clearInterval(interval);
-    }, [startedAt]);
-
-    if (elapsed === null || elapsed === 0) return null;
-
-    return (
-        <div className="viewer-count border-primary/20">
-            <Timer className="h-3 w-3 text-primary" />
-            <span className="font-mono text-[10px] font-bold text-primary">{elapsed}'</span>
-        </div>
-    );
 }
 
 export const LivePlayer = ({ channelId }: LivePlayerProps) => {
@@ -51,8 +27,8 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
         snookerPresence[channelId]?.viewers.length || channel?.viewerCount || 0,
     [snookerPresence, channelId, channel?.viewerCount]);
 
-    // VALIDAÇÃO CRÍTICA: Bloqueia a montagem de iframes com IDs inválidos
-    const isVideoValid = useMemo(() => 
+    // VALIDAÇÃO OBRIGATÓRIA ANTES DE RENDERIZAR IFRAME
+    const isVideoReady = useMemo(() => 
         isValidYoutubeVideoId(channel?.embedId), 
     [channel?.embedId]);
 
@@ -64,13 +40,12 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
         <Card className="casino-card-glow relative overflow-hidden bg-black rounded-2xl group shadow-2xl">
             {/* Overlays */}
             <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
-                {showBadge && isVideoValid && (
+                {showBadge && isVideoReady && (
                     <div className="live-badge live-badge-pulsing shadow-xl shadow-red-600/20">
                         <span className="live-pulse"></span>
                         AO VIVO
                     </div>
                 )}
-                {channel.status === 'live' && <ElapsedTime startedAt={channel.startedAt} />}
                 <div className="viewer-count">
                     <Eye className="h-3 w-3 text-white/70" />
                     <span className="text-[10px] font-bold">{viewerCount.toLocaleString('pt-BR')}</span>
@@ -78,7 +53,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
             </div>
 
             <div className="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                {isVideoValid && (
+                {isVideoReady && (
                     <>
                         <button onClick={() => setIsMuted(!isMuted)} className="player-control-btn h-9 w-9 bg-black/60 border border-white/10 rounded-xl hover:bg-black/80">
                             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
@@ -94,11 +69,11 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
             </div>
             
             <div className="aspect-video bg-[#020617] relative">
-                {isVideoValid ? (
+                {isVideoReady ? (
                     <iframe
                         id="youtube-player"
                         className="w-full h-full"
-                        src={`${buildYoutubeEmbedUrl(channel.embedId)}?autoplay=1&mute=${isMuted ? 1 : 0}&controls=0&showinfo=0&rel=0&loop=1&playsinline=1&playlist=${channel.embedId}&modestbranding=1`}
+                        src={`${buildYoutubeEmbedUrl(channel.embedId!)}?autoplay=1&mute=${isMuted ? 1 : 0}&controls=0&showinfo=0&rel=0&loop=1&playsinline=1&playlist=${channel.embedId}&modestbranding=1`}
                         title={channel.title}
                         frameBorder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -112,39 +87,32 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
                         <div className="space-y-1">
                             <p className="text-white font-black uppercase italic tracking-tighter text-lg">Transmissão Indisponível</p>
                             <p className="text-white/40 text-[10px] font-bold uppercase max-w-[300px] leading-relaxed">
-                                O link do vídeo é inválido ou o conteúdo foi removido. Aguardando sinal oficial.
+                                O vídeo original não foi encontrado ou o link de transmissão é inválido.
                             </p>
                             <div className="mt-4 p-2 bg-white/5 rounded-lg border border-white/10 flex items-center gap-2 justify-center">
                                 <ShieldAlert size={12} className="text-amber-500" />
-                                <span className="text-[9px] font-mono text-slate-400 uppercase">ID Técnico: {channel.embedId || 'N/A'}</span>
+                                <span className="text-[9px] font-mono text-slate-400">ID TÉCNICO: {channel.embedId || 'N/A'}</span>
                             </div>
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* CHANNEL BRANDING FOOTER */}
             <div className="bg-black/40 border-t border-white/5 py-2 px-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <div className={cn("w-1 h-1 rounded-full", isVideoValid ? "bg-red-500" : "bg-slate-600")} />
+                    <div className={cn("w-1 h-1 rounded-full", isVideoReady ? "bg-red-500" : "bg-slate-600")} />
                     <span className="text-[8px] font-black uppercase tracking-[3px] text-white/30 italic">
-                        {channel.source === 'youtube' ? (channel.sourceName || 'YouTube Network') : 'Transmissão Privada'}
+                        {channel.sourceName || 'Transmissão Oficial'}
                     </span>
                 </div>
-                {!isVideoValid && (
-                    <Badge variant="destructive" className="text-[7px] h-4 px-1.5 font-black">LINK INVÁLIDO</Badge>
+                {channel.source === 'youtube' && (
+                    <Badge className="bg-primary/10 text-primary border-primary/20 text-[7px] h-4 font-black uppercase">LIVE SYNC</Badge>
                 )}
             </div>
         </Card>
     );
 }
 
-const Badge = ({ children, variant, className }: any) => (
-  <span className={cn(
-    "px-2 py-0.5 rounded-full text-[9px] font-black border flex items-center justify-center whitespace-nowrap",
-    variant === 'destructive' ? "bg-red-600 text-white border-transparent" : "bg-primary text-primary-foreground border-transparent",
-    className
-  )}>
-    {children}
-  </span>
+const Badge = ({ children, className }: any) => (
+  <span className={cn("px-2 py-0.5 rounded-full text-[9px] font-black border flex items-center justify-center whitespace-nowrap", className)}>{children}</span>
 );

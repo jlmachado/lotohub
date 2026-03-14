@@ -3,7 +3,7 @@
  */
 
 /**
- * Valida se um ID de vídeo do YouTube é sintaticamente correto (11 caracteres alfanuméricos/especiais).
+ * Valida se um ID de vídeo do YouTube é sintaticamente correto (11 caracteres).
  */
 export function isValidYoutubeVideoId(videoId: string | null | undefined): boolean {
   if (!videoId || typeof videoId !== 'string') return false;
@@ -14,11 +14,11 @@ export function isValidYoutubeVideoId(videoId: string | null | undefined): boole
 
 /**
  * Extrai o Video ID de diversos formatos de URL do YouTube.
+ * Suporta: watch?v=, youtu.be/, /live/, /embed/, /shorts/
  */
 export function extractYoutubeVideoId(url: string | null | undefined): string | null {
   if (!url || typeof url !== 'string') return null;
   
-  // Suporta: watch?v=, youtu.be/, /live/, /embed/, /shorts/
   const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts|live|watch)\/|.*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
   const match = url.match(regex);
   const id = match ? match[1] : null;
@@ -27,7 +27,7 @@ export function extractYoutubeVideoId(url: string | null | undefined): string | 
 }
 
 /**
- * Constrói uma URL de visualização padrão.
+ * Constrói uma URL de visualização padrão (watch).
  */
 export function buildYoutubeWatchUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${videoId}`;
@@ -41,14 +41,14 @@ export function buildYoutubeEmbedUrl(videoId: string): string {
 }
 
 /**
- * Verifica se o vídeo é um candidato válido para incorporação.
+ * Verifica se uma URL é uma URL de vídeo válida e suportada.
  */
-export function isEmbeddableCandidate(videoId: string | null | undefined): boolean {
-  return isValidYoutubeVideoId(videoId);
+export function isValidYoutubeUrl(url: string | null | undefined): boolean {
+  return !!extractYoutubeVideoId(url);
 }
 
 /**
- * Normaliza uma entrada (pode ser URL ou apenas ID) para uma URL de visualização válida.
+ * Normaliza uma entrada (URL ou apenas ID) para uma URL de visualização válida.
  */
 export function normalizeYoutubeUrl(input: string | null | undefined): string | null {
   if (!input) return null;
@@ -57,8 +57,8 @@ export function normalizeYoutubeUrl(input: string | null | undefined): string | 
 }
 
 /**
- * Verifica se uma URL é uma URL de vídeo válida e suportada.
+ * Verifica se o vídeo é um candidato válido para incorporação.
  */
-export function isValidYoutubeUrl(url: string | null | undefined): boolean {
-  return !!extractYoutubeVideoId(url);
+export function isEmbeddableCandidate(videoId: string | null | undefined): boolean {
+  return isValidYoutubeVideoId(videoId);
 }

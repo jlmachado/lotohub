@@ -1,63 +1,75 @@
 /**
- * @fileOverview Serviço de comunicação com a fonte de dados do YouTube (Multicanal).
- * Reforçado com validações rigorosas de Video ID para evitar players quebrados.
+ * @fileOverview Serviço de normalização de dados reais da YouTube API para o sistema de Sinuca.
+ * Reforçado com validações rigorosas de Video ID.
  */
 
-import { isValidYoutubeVideoId } from '@/utils/youtube';
+import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
 
-export interface YoutubeApiResponse {
-  id: { videoId: string };
-  snippet: {
-    title: string;
-    description: string;
-    liveBroadcastContent: 'live' | 'upcoming' | 'none';
-    scheduledStartTime?: string;
-    actualStartTime?: string;
-    thumbnails: { medium: { url: string } };
-  };
-  isMock?: boolean;
+export interface SnookerYoutubeItem {
+  sourceVideoId: string;
+  youtubeUrl: string;
+  embedId: string;
+  title: string;
+  description: string;
+  thumbnailUrl: string;
+  publishedAt: string;
+  status: 'live' | 'upcoming' | 'video';
+  isEmbeddable: boolean;
+  rawPayload: any;
 }
 
 export class SnookerYoutubeService {
   /**
-   * Busca dados de transmissões via proxy interno.
-   * Aplica validação de segurança antes de permitir que o item siga para o sync.
+   * Busca dados de canais via API interna (que faz a ponte com YouTube Data API).
    */
-  static async fetchChannelData(channelUrl?: string): Promise<YoutubeApiResponse[]> {
+  static async fetchChannelData(channelHandle: string): Promise<any[]> {
     try {
       const url = new URL('/api/snooker/sync', window.location.origin);
-      if (channelUrl) url.searchParams.append('channelUrl', channelUrl);
+      url.searchParams.append('channelHandle', channelHandle);
 
-      const response = await fetch(url.toString(), { 
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
+      const response = await fetch(url.toString(), { cache: 'no-store' });
       
       if (!response.ok) {
-        throw new Error(`Erro na API de Sinuca: HTTP ${response.status}`);
+        const error = await response.json();
+        throw new Error(error.message || 'Falha na sincronização');
       }
       
       const result = await response.json();
-      if (result.success && Array.isArray(result.data)) {
-        // Filtragem e Validação Granular
-        return result.data.map((item: any) => {
-          const videoId = item.id.videoId;
-          const isValid = isValidYoutubeVideoId(videoId);
-          
-          return {
-            ...item,
-            videoValidation: {
-              valid: isValid,
-              reason: isValid ? null : 'ID do YouTube inválido (deve ter 11 caracteres)'
-            },
-            isEmbeddableCandidate: isValid && !item.isMock
-          };
-        });
-      }
-      return [];
+      return result.success ? (result.data || []) : [];
     } catch (error: any) {
-      console.error('[SnookerYoutubeService] Falha técnica:', error.message);
+      console.error('[SnookerYoutubeService] Erro ao buscar dados:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Normaliza o item da API do YouTube para o formato interno.
+   */
+  static normalizeItem(ytItem: any): SnookerYoutubeItem | null {
+    const videoId = ytItem.id?.videoId;
+    
+    if (!isValidYoutubeVideoId(videoId)) {
+      console.warn('[SnookerYoutubeService] Ignorando item com VideoID inválido:', videoId);
+      return null;
+    }
+
+    const statusMap: Record<string, 'live' | 'upcoming' | 'video'> = {
+      'live': 'live',
+      'upcoming': 'upcoming',
+      'none': 'video'
+    };
+
+    return {
+      sourceVideoId: videoId,
+      youtubeUrl: buildYoutubeWatchUrl(videoId),
+      embedId: videoId,
+      title: ytItem.snippet.title,
+      description: ytItem.snippet.description,
+      thumbnailUrl: ytItem.snippet.thumbnails?.medium?.url || ytItem.snippet.thumbnails?.default?.url,
+      publishedAt: ytItem.snippet.publishedAt,
+      status: statusMap[ytItem.snippet.liveBroadcastContent] || 'video',
+      isEmbeddable: ytItem.isEmbeddableCandidate !== false,
+      rawPayload: ytItem
+    };
   }
 }
