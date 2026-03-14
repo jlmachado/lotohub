@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Versão V8: Refatorada sincronização de Sinuca para nova arquitetura de serviços.
+ * Versão V9: Interfaces expandidas para Automação de Sinuca.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -208,6 +208,65 @@ export interface SnookerChannel {
   bancaId: string;
   createdAt: string;
   updatedAt: string;
+  
+  // Novos campos para automação
+  source?: 'manual' | 'youtube';
+  sourceChannelName?: string;
+  sourceChannelId?: string;
+  sourceVideoId?: string;
+  sourceType?: 'live' | 'upcoming' | 'video';
+  sourceStatus?: 'detected' | 'parsed' | 'synced' | 'error';
+  autoCreated?: boolean;
+  autoUpdatedAt?: string;
+  syncHash?: string;
+  eventTitle?: string;
+  tournamentName?: string;
+  modality?: string;
+  phase?: string;
+  prize?: number | null;
+  prizeLabel?: string;
+  location?: string;
+  metadataConfidence?: number;
+  parserNotes?: string[];
+  thumbnailUrl?: string;
+  isFeatured?: boolean;
+  isManualOverride?: boolean;
+}
+
+export interface SnookerSyncLog {
+  id: string;
+  createdAt: string;
+  type: string;
+  status: 'success' | 'warning' | 'error' | 'info';
+  message: string;
+  relatedChannelId?: string;
+  payload?: any;
+}
+
+export interface SnookerAutomationSettings {
+  enabled: boolean;
+  sourceMode: 'manual' | 'youtube' | 'hybrid';
+  youtubeChannelUrl: string;
+  autoCreateChannels: boolean;
+  autoUpdateChannels: boolean;
+  autoMarkLive: boolean;
+  autoMarkFinished: boolean;
+  autoFillPlayers: boolean;
+  autoFillTournament: boolean;
+  autoFillSchedule: boolean;
+  autoFillPrize: boolean;
+  syncIntervalSeconds: number;
+  dedupeWindowHours: number;
+  requireAdminApproval: boolean;
+  overwriteManualFields: boolean;
+  createScoreboardIfMissing: boolean;
+  createDefaultOddsIfMissing: boolean;
+  keepManualOdds: boolean;
+  enabledOnHome: boolean;
+  enabledOnPublicPage: boolean;
+  lastSyncAt?: string;
+  lastSyncStatus?: string;
+  lastSyncMessage?: string;
 }
 
 export interface SnookerBet {
@@ -310,6 +369,8 @@ interface AppContextType {
   snookerChatMessages: SnookerChatMessage[];
   snookerChatMessagesRaw: SnookerChatMessage[];
   snookerScoreboards: Record<string, SnookerScoreboard>;
+  snookerSyncLogs: SnookerSyncLog[];
+  snookerAutomationSettings: SnookerAutomationSettings;
   celebrationTrigger: boolean;
 
   // Futebol
@@ -367,6 +428,7 @@ interface AppContextType {
   settleSnookerRound: (channelId: string, winner: string) => void;
   clearCelebration: () => void;
   syncSnookerWithYoutube: () => Promise<void>;
+  updateSnookerAutomationSettings: (s: SnookerAutomationSettings) => void;
 
   // Admin Methods
   addBanner: (b: Banner) => void;
@@ -408,6 +470,29 @@ const DEFAULT_CASINO_SETTINGS: CasinoSettings = {
   bannerMessage: 'Sua sorte está a um clique de distância!'
 };
 
+const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = {
+  enabled: true,
+  sourceMode: 'hybrid',
+  youtubeChannelUrl: 'https://www.youtube.com/@TVSnookerBrasil',
+  autoCreateChannels: true,
+  autoUpdateChannels: true,
+  autoMarkLive: true,
+  autoMarkFinished: true,
+  autoFillPlayers: true,
+  autoFillTournament: true,
+  autoFillSchedule: true,
+  autoFillPrize: true,
+  syncIntervalSeconds: 300,
+  dedupeWindowHours: 24,
+  requireAdminApproval: false,
+  overwriteManualFields: false,
+  createScoreboardIfMissing: true,
+  createDefaultOddsIfMissing: true,
+  keepManualOdds: true,
+  enabledOnHome: true,
+  enabledOnPublicPage: true,
+};
+
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const router = useRouter();
@@ -442,10 +527,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [snookerBets, setSnookerBets] = useState<SnookerBet[]>([]);
   const [snookerCashOutLog, setSnookerCashOutLog] = useState<any[]>([]);
   const [snookerLiveConfig, setSnookerLiveConfig] = useState<SnookerLiveConfig>(DEFAULT_SNOOKER_CFG);
-  const [snookerActivityFeed, setSnookerActivityFeed] = useState<any[]>([]);
-  const [snookerBetsFeed, setSnookerBetsFeed] = useState<any[]>([]);
   const [snookerChatMessages, setSnookerChatMessages] = useState<SnookerChatMessage[]>([]);
   const [snookerScoreboards, setSnookerScoreboards] = useState<Record<string, SnookerScoreboard>>({});
+  const [snookerSyncLogs, setSnookerSyncLogs] = useState<SnookerSyncLog[]>([]);
+  const [snookerAutomationSettings, setSnookerAutomationSettings] = useState<SnookerAutomationSettings>(DEFAULT_SNOOKER_AUTOMATION);
+  const [snookerActivityFeed, setSnookerActivityFeed] = useState<any[]>([]);
+  const [snookerBetsFeed, setSnookerBetsFeed] = useState<any[]>([]);
   const [celebrationTrigger, setCelebrationTrigger] = useState(false);
 
   const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
@@ -507,6 +594,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setSnookerScoreboards(getStorageItem('app:snooker_scores:v1', {}));
     setSnookerBetsFeed(getStorageItem('app:snooker_bets_feed:v1', []));
     setSnookerActivityFeed(getStorageItem('app:snooker_activity_feed:v1', []));
+    setSnookerSyncLogs(getStorageItem('app:snooker_sync_logs:v1', []));
+    setSnookerAutomationSettings(getStorageItem('app:snooker_automation_cfg:v1', DEFAULT_SNOOKER_AUTOMATION));
 
     setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', DEFAULT_PLAYER_CONFIG));
 
@@ -754,6 +843,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const { updatedChannels, summary } = await SnookerSyncService.sync(currentChannels, user?.bancaId || 'default');
     
     setStorageItem('app:snooker_channels:v1', updatedChannels);
+    
+    // Registrar log
+    const newLog: SnookerSyncLog = {
+      id: `log-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      type: 'YOUTUBE_SYNC',
+      status: 'success',
+      message: `Sincronização concluída: ${summary.added} novos, ${summary.updated} atualizados.`
+    };
+    const currentLogs = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
+    setStorageItem('app:snooker_sync_logs:v1', [newLog, ...currentLogs].slice(0, 50));
+
     loadLocalData();
     notify();
     toast({ 
@@ -761,6 +862,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       description: `Sucesso: ${summary.added} novos jogos e ${summary.updated} atualizados.` 
     });
   }, [user, notify, toast, loadLocalData]);
+
+  const updateSnookerAutomationSettings = useCallback((s: SnookerAutomationSettings) => {
+    setStorageItem('app:snooker_automation_cfg:v1', s);
+    notify();
+  }, [notify]);
 
   const syncFootballAll = useCallback(async (force = false) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
@@ -837,11 +943,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog,
     snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages,
     snookerChatMessagesRaw: snookerChatMessages,
-    snookerScoreboards,
+    snookerScoreboards, snookerSyncLogs, snookerAutomationSettings,
     celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet,
     sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig,
     updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel,
-    settleSnookerRound, clearCelebration, syncSnookerWithYoutube,
+    settleSnookerRound, clearCelebration, syncSnookerWithYoutube, updateSnookerAutomationSettings,
     refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, 
     updateLeagueConfig, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId || i.id !== b.id), b]),
     removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
@@ -851,12 +957,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, bingoSettings, bingoDraws, 
     bingoTickets, bingoPayouts, snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, 
     snookerCashOutLog, snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, 
-    snookerScoreboards, celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, 
-    sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, 
-    updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, 
-    settleSnookerRound, clearCelebration, syncSnookerWithYoutube, loadLocalData, logout, handleFinalizarAposta, processarResultados, 
-    syncFootballAll, updateLeagueConfig, placeFootballBet, addBanner, updateBanner, deleteBanner, 
-    addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall,
+    snookerScoreboards, snookerSyncLogs, snookerAutomationSettings, celebrationTrigger, joinChannel, leaveChannel, 
+    placeSnookerBet, cashOutSnookerBet, sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, 
+    updateSnookerLiveConfig, updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, 
+    settleSnookerRound, clearCelebration, syncSnookerWithYoutube, updateSnookerAutomationSettings, loadLocalData, 
+    logout, handleFinalizarAposta, processarResultados, syncFootballAll, updateLeagueConfig, placeFootballBet, addBanner, 
+    updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall,
     casinoSettings, updateCasinoSettings, publishJDBResult, deleteJDBResult,
     updateBingoSettings, createBingoDraw, startBingoDraw, finishBingoDraw, cancelBingoDraw, 
     buyBingoTickets, refundBingoTicket, payBingoPayout, registerCambistaMovement
