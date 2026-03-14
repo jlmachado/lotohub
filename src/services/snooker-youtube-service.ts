@@ -1,7 +1,5 @@
-
 /**
- * @fileOverview Serviço de comunicação com a fonte de dados do YouTube.
- * Responsável por buscar e validar metadados de transmissões.
+ * @fileOverview Serviço de comunicação com a fonte de dados do YouTube (Multicanal).
  */
 
 export interface YoutubeApiResponse {
@@ -22,12 +20,12 @@ export class SnookerYoutubeService {
    */
   static isValidYoutubeUrl(url: string): boolean {
     if (!url) return false;
-    const regex = /^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}(?:&.*)?$/;
+    const regex = /^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|@)|youtu\.be\/)[a-zA-Z0-9_-]+(?:&.*)?$/;
     return regex.test(url);
   }
 
   /**
-   * Extrai o videoId de uma URL de forma segura.
+   * Extrai o handle ou videoId de uma URL.
    */
   static extractVideoId(url: string): string | null {
     if (!url) return null;
@@ -38,10 +36,14 @@ export class SnookerYoutubeService {
 
   /**
    * Busca dados de transmissões via proxy interno.
+   * Suporta passagem de channelUrl para busca dinâmica.
    */
-  static async fetchChannelData(): Promise<YoutubeApiResponse[]> {
+  static async fetchChannelData(channelUrl?: string): Promise<YoutubeApiResponse[]> {
     try {
-      const response = await fetch('/api/snooker/sync', { 
+      const url = new URL('/api/snooker/sync', window.location.origin);
+      if (channelUrl) url.searchParams.append('channelUrl', channelUrl);
+
+      const response = await fetch(url.toString(), { 
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });

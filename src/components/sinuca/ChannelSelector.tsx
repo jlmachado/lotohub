@@ -60,7 +60,7 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
         const statusPriority = { 'live': 0, 'imminent': 1, 'scheduled': 2, 'finished': 3, 'cancelled': 4 };
         
         return (snookerChannels || [])
-            .filter(c => c.enabled)
+            .filter(c => c.enabled && !c.isArchived)
             .sort((a, b) => {
                 // First by status priority
                 if (statusPriority[a.status] !== statusPriority[b.status]) {
@@ -106,9 +106,14 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
                             <SelectItem key={channel.id} value={channel.id} className="hover:bg-white/5 cursor-pointer p-3 border-b border-white/5 last:border-0">
                                 <div className="flex flex-col gap-1 w-full min-w-[300px]">
                                     <div className="flex items-center justify-between">
-                                        <span className="font-black text-sm uppercase italic">
-                                            {channel.playerA.name} <span className="text-primary/50">vs</span> {channel.playerB.name}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-black text-sm uppercase italic">
+                                              {channel.playerA.name} <span className="text-primary/50">vs</span> {channel.playerB.name}
+                                          </span>
+                                          {channel.sourceName && (
+                                            <Badge variant="outline" className="h-3 text-[6px] opacity-50 px-1 border-white/10 uppercase">{channel.sourceName}</Badge>
+                                          )}
+                                        </div>
                                         <Badge variant={getStatusVariant(channel.status)} className="h-4 text-[7px] uppercase font-black">
                                             {channel.status}
                                         </Badge>
@@ -118,14 +123,14 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
                                             <Calendar size={10} />
                                             {new Date(channel.scheduledAt).toLocaleDateString('pt-BR')} • {new Date(channel.scheduledAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
                                         </div>
+                                        {channel.prizeLabel && (
+                                          <span className="text-green-500 font-black italic">{channel.prizeLabel}</span>
+                                        )}
                                         {channel.status === 'imminent' && (
                                             <div className="flex items-center gap-1 text-primary">
                                                 <Clock size={10} />
                                                 <CountdownTimer scheduledAt={channel.scheduledAt} />
                                             </div>
-                                        )}
-                                        {channel.tournamentName && (
-                                            <span className="text-primary/70 italic truncate max-w-[150px]">{channel.tournamentName}</span>
                                         )}
                                     </div>
                                 </div>

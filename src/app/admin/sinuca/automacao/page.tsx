@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -7,7 +6,8 @@ import {
   ChevronLeft, RefreshCw, Zap, Settings2, History, 
   CheckCircle2, AlertTriangle, Info, Trash2, Eye, 
   ExternalLink, MousePointer2, Save, RotateCcw, 
-  Play, ShieldCheck, Database, LayoutList, Check, X
+  Play, ShieldCheck, Database, LayoutList, Check, X,
+  PlusCircle, Edit, Power, PowerOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -18,9 +18,10 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAppContext, SnookerChannel, SnookerSyncLog, SnookerAutomationSettings } from '@/context/AppContext';
+import { useAppContext, SnookerChannel, SnookerSyncLog, SnookerAutomationSettings, SnookerAutomationSource } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
 export default function AdminSnookerAutomationPage() {
   const { 
@@ -32,23 +33,15 @@ export default function AdminSnookerAutomationPage() {
     syncSnookerFromYoutube,
     snookerSyncState,
     approveAutoSnookerChannel,
-    archiveAutoSnookerChannel
+    archiveAutoSnookerChannel,
+    toggleSnookerSource,
+    updateSnookerAutomationSource
   } = useAppContext();
   
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('settings');
-
-  // Local state for settings form
-  const [settings, setSettings] = useState(snookerAutomationSettings);
-
-  const handleSaveSettings = () => {
-    updateSnookerAutomationSettings(settings);
-    toast({ title: "Configurações Salvas", description: "O motor de automação foi atualizado." });
-  };
-
-  const handleManualSync = async () => {
-    await syncSnookerFromYoutube(true);
-  };
+  const [activeTab, setActiveTab] = useState('sources');
+  const [isSourceDialogOpen, setIsSourceDialogOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<SnookerAutomationSource | null>(null);
 
   // Filter channels created by automation
   const autoChannels = useMemo(() => 
@@ -60,9 +53,27 @@ export default function AdminSnookerAutomationPage() {
     total: autoChannels.length,
     live: autoChannels.filter(c => c.status === 'live').length,
     pending: autoChannels.filter(c => c.sourceStatus === 'detected').length,
-    synced: autoChannels.filter(c => c.sourceStatus === 'synced').length,
+    activeSources: snookerAutomationSettings.sources.filter(s => s.enabled).length,
     errors: snookerSyncLogs.filter(l => l.status === 'error').length
-  }), [autoChannels, snookerSyncLogs]);
+  }), [autoChannels, snookerSyncLogs, snookerAutomationSettings.sources]);
+
+  const handleManualSyncAll = async () => {
+    await syncSnookerFromYoutube(true);
+  };
+
+  const handleEditSource = (source: SnookerAutomationSource) => {
+    setEditingSource(source);
+    setIsSourceDialogOpen(true);
+  };
+
+  const handleSaveSource = () => {
+    if (editingSource) {
+      updateSnookerAutomationSource(editingSource.id, editingSource);
+      setIsSourceDialogOpen(false);
+      setEditingSource(null);
+      toast({ title: "Fonte Atualizada" });
+    }
+  };
 
   return (
     <main className="p-4 md:p-8 space-y-6">
@@ -72,32 +83,29 @@ export default function AdminSnookerAutomationPage() {
             <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central de Automação</h1>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Gestão Inteligente TV Snooker Brasil</p>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central Multicanal</h1>
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Gestão de Automação Híbrida YouTube</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button 
             variant="outline"
-            onClick={handleManualSync}
+            onClick={handleManualSyncAll}
             disabled={snookerSyncState === 'syncing'}
             className="h-11 rounded-xl font-bold border-white/10 bg-white/5"
           >
             {snookerSyncState === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-            Sincronizar Agora
-          </Button>
-          <Button onClick={handleSaveSettings} className="h-11 rounded-xl font-black uppercase italic lux-shine px-6">
-            <Save className="mr-2 h-4 w-4" /> Salvar Tudo
+            Sincronizar Tudo
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title="Jogos Sincronizados" value={stats.total} icon={LayoutList} color="text-blue-400" />
-        <StatCard title="Ao Vivo Agora" value={stats.live} icon={Play} color="text-red-500" />
-        <StatCard title="Aguardando Aprovação" value={stats.pending} icon={MousePointer2} color="text-amber-500" />
+        <StatCard title="Fontes Ativas" value={stats.activeSources} icon={Database} color="text-primary" />
+        <StatCard title="Ao Vivo" value={stats.live} icon={Play} color="text-red-500" />
+        <StatCard title="Pendentes" value={stats.pending} icon={MousePointer2} color="text-amber-500" />
         <Card className={cn(
-          "border-primary/20 bg-primary/5 shadow-inner overflow-hidden relative",
+          "border-white/5 bg-slate-900 shadow-inner overflow-hidden relative",
           snookerSyncState === 'syncing' && "animate-pulse"
         )}>
           <CardContent className="p-4 flex items-center gap-4">
@@ -105,7 +113,7 @@ export default function AdminSnookerAutomationPage() {
               <RefreshCw size={20} className={snookerSyncState === 'syncing' ? 'animate-spin' : ''} />
             </div>
             <div>
-              <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Motor de Sync</p>
+              <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Motor Global</p>
               <p className="text-xl font-black text-white italic uppercase">{snookerSyncState}</p>
             </div>
           </CardContent>
@@ -113,82 +121,56 @@ export default function AdminSnookerAutomationPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 md:w-[400px] bg-slate-900 border border-white/10 p-1 rounded-xl h-12">
-          <TabsTrigger value="settings" className="rounded-lg font-black uppercase italic text-[10px]">Configurações</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 md:w-[450px] bg-slate-900 border border-white/10 p-1 rounded-xl h-12">
+          <TabsTrigger value="sources" className="rounded-lg font-black uppercase italic text-[10px]">Fontes de Dados</TabsTrigger>
           <TabsTrigger value="preview" className="rounded-lg font-black uppercase italic text-[10px]">Itens Detectados</TabsTrigger>
-          <TabsTrigger value="logs" className="rounded-lg font-black uppercase italic text-[10px]">Logs do Sistema</TabsTrigger>
+          <TabsTrigger value="logs" className="rounded-lg font-black uppercase italic text-[10px]">Logs de Sync</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="settings" className="mt-6 space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2 border-white/10 bg-card/50">
-              <CardHeader className="border-b border-white/5 bg-white/5">
-                <CardTitle className="text-sm font-black uppercase italic flex items-center gap-2">
-                  <Settings2 size={16} className="text-primary" /> Parâmetros do Scraper
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-6">
-                <div className="grid gap-2">
-                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">URL do Canal Base (YouTube)</Label>
-                  <Input 
-                    value={settings.youtubeChannelUrl} 
-                    onChange={e => setSettings({...settings, youtubeChannelUrl: e.target.value})}
-                    placeholder="https://www.youtube.com/@Canal"
-                    className="bg-black/20 border-white/10 h-11"
-                  />
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm font-bold">Automação Ativa</Label>
-                      <p className="text-[10px] text-muted-foreground uppercase font-medium">Liga/Desliga o motor global.</p>
+        <TabsContent value="sources" className="mt-6 space-y-6">
+          <div className="grid gap-4">
+            {snookerAutomationSettings.sources.map(source => (
+              <Card key={source.id} className={cn(
+                "border-white/5 transition-all overflow-hidden",
+                source.enabled ? "bg-slate-900/50" : "bg-black opacity-60 grayscale"
+              )}>
+                <div className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/5">
+                      <Zap size={20} className={source.enabled ? "text-primary" : "text-slate-600"} />
                     </div>
-                    <Switch checked={settings.enabled} onCheckedChange={v => setSettings({...settings, enabled: v})} />
+                    <div>
+                      <h3 className="font-black text-sm text-white uppercase italic">{source.name}</h3>
+                      <p className="text-[10px] text-muted-foreground font-mono">{source.channelHandle}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm font-bold">Auto-Criar Canais</Label>
-                      <p className="text-[10px] text-muted-foreground uppercase font-medium">Cria novos jogos ao detectar.</p>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right hidden md:block">
+                      <p className="text-[9px] font-black uppercase text-muted-foreground">Último Sync</p>
+                      <p className="text-[10px] font-bold text-white">{source.lastSyncAt ? new Date(source.lastSyncAt).toLocaleString('pt-BR') : 'Nunca'}</p>
                     </div>
-                    <Switch checked={settings.autoCreateChannels} onCheckedChange={v => setSettings({...settings, autoCreateChannels: v})} />
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm font-bold text-amber-500">Exigir Aprovação</Label>
-                      <p className="text-[10px] text-muted-foreground uppercase font-medium">Novos jogos entram como pendentes.</p>
+                    <Badge variant="outline" className="text-[8px] h-5 border-white/10 uppercase bg-black/20">Prioridade: {source.priority}</Badge>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleEditSource(source)}><Edit size={16}/></Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className={cn("h-9 w-9", source.enabled ? "text-green-500" : "text-red-500")}
+                        onClick={() => toggleSnookerSource(source.id, !source.enabled)}
+                      >
+                        {source.enabled ? <Power size={16}/> : <PowerOff size={16}/>}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => syncSnookerFromYoutube(true, source.id)} className="h-9 font-bold text-[10px] px-3 border-white/10 bg-white/5 ml-2">SYNC</Button>
                     </div>
-                    <Switch checked={settings.requireAdminApproval} onCheckedChange={v => setSettings({...settings, requireAdminApproval: v})} />
-                  </div>
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm font-bold">Manter Odds Manuais</Label>
-                      <p className="text-[10px] text-muted-foreground uppercase font-medium">Não altera odds editadas no admin.</p>
-                    </div>
-                    <Switch checked={settings.keepManualOdds} onCheckedChange={v => setSettings({...settings, keepManualOdds: v})} />
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-white/10 bg-slate-900/50">
-              <CardHeader className="border-b border-white/5 bg-white/5">
-                <CardTitle className="text-sm font-black uppercase italic flex items-center gap-2">
-                  <Database size={16} className="text-primary" /> Inteligência de Dados
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                <ToggleItem label="Extrair Jogadores" checked={settings.autoFillPlayers} onChange={v => setSettings({...settings, autoFillPlayers: v})} />
-                <ToggleItem label="Extrair Torneio" checked={settings.autoFillTournament} onChange={v => setSettings({...settings, autoFillTournament: v})} />
-                <ToggleItem label="Extrair Agenda" checked={settings.autoFillSchedule} onChange={v => setSettings({...settings, autoFillSchedule: v})} />
-                <ToggleItem label="Extrair Premiação" checked={settings.autoFillPrize} onChange={v => setSettings({...settings, autoFillPrize: v})} />
-                <ToggleItem label="Auto-Live Sync" checked={settings.autoMarkLive} onChange={v => setSettings({...settings, autoMarkLive: v})} />
-                <ToggleItem label="Auto-Finish Sync" checked={settings.autoMarkFinished} onChange={v => setSettings({...settings, autoMarkFinished: v})} />
-              </CardContent>
-            </Card>
+                {source.lastSyncStatus === 'error' && (
+                  <div className="px-4 py-2 bg-red-600/10 border-t border-red-600/20 text-[10px] text-red-500 font-bold">
+                    <AlertTriangle className="inline h-3 w-3 mr-1" /> {source.lastSyncMessage}
+                  </div>
+                )}
+              </Card>
+            ))}
           </div>
         </TabsContent>
 
@@ -198,8 +180,8 @@ export default function AdminSnookerAutomationPage() {
               <TableHeader className="bg-slate-950/50">
                 <TableRow className="border-white/5 h-10">
                   <TableHead className="text-[9px] uppercase font-black px-4">Thumb / Jogo</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Metadados Detectados</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Status Sync</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Origem / Canal</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Metadados</TableHead>
                   <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -222,19 +204,22 @@ export default function AdminSnookerAutomationPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase bg-black/20">Confiança: {((channel.metadataConfidence || 0) * 100).toFixed(0)}%</Badge>
-                          {channel.modality && <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase bg-black/20">{channel.modality}</Badge>}
-                          {channel.prizeLabel && <Badge variant="outline" className="text-[8px] h-4 border-green-500/20 text-green-500 uppercase bg-green-500/5">{channel.prizeLabel}</Badge>}
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[10px] font-black text-primary uppercase italic">{channel.sourceName}</span>
+                          <span className="text-[8px] text-slate-500 font-mono">{channel.sourceVideoId}</span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={cn(
-                          "text-[8px] h-5 uppercase font-black italic",
-                          channel.sourceStatus === 'synced' ? "bg-green-600/20 text-green-500" : "bg-amber-600/20 text-amber-500"
-                        )}>
-                          {channel.sourceStatus === 'synced' ? 'SINCRONIZADO' : 'PENDENTE APROVAÇÃO'}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase bg-black/20">Confiança: {((channel.metadataConfidence || 0) * 100).toFixed(0)}%</Badge>
+                          {channel.prizeLabel && <Badge variant="outline" className="text-[8px] h-4 border-green-500/20 text-green-500 uppercase bg-green-500/5">{channel.prizeLabel}</Badge>}
+                          <Badge className={cn(
+                            "text-[8px] h-4 uppercase font-black italic",
+                            channel.sourceStatus === 'synced' ? "bg-green-600/20 text-green-500" : "bg-amber-600/20 text-amber-500"
+                          )}>
+                            {channel.sourceStatus === 'synced' ? 'SINC' : 'PENDENTE'}
+                          </Badge>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right px-4 space-x-1">
                         {channel.sourceStatus === 'detected' && (
@@ -247,22 +232,8 @@ export default function AdminSnookerAutomationPage() {
                             <Check size={14} />
                           </Button>
                         )}
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-white/30 hover:text-white"
-                          onClick={() => window.open(channel.youtubeUrl, '_blank')}
-                        >
-                          <ExternalLink size={14} />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                          onClick={() => archiveAutoSnookerChannel(channel.id)}
-                        >
-                          <Trash2 size={14} />
-                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-white/30 hover:text-white" onClick={() => window.open(channel.youtubeUrl, '_blank')}><ExternalLink size={14} /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => archiveAutoSnookerChannel(channel.id)}><Trash2 size={14} /></Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -276,17 +247,15 @@ export default function AdminSnookerAutomationPage() {
           <Card className="border-white/5 bg-card/50 overflow-hidden">
             <CardHeader className="bg-slate-950/50 border-b border-white/5 flex flex-row items-center justify-between p-4">
               <CardTitle className="text-xs font-black uppercase italic tracking-widest text-white flex items-center gap-2">
-                <History size={14} className="text-primary" /> Histórico de Sincronização
+                <History size={14} className="text-primary" /> Histórico Técnico
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={clearSnookerSyncLogs} className="h-7 text-[9px] font-black uppercase hover:bg-red-500/10 hover:text-red-500">
-                Limpar Logs
-              </Button>
+              <Button variant="ghost" size="sm" onClick={clearSnookerSyncLogs} className="h-7 text-[9px] font-black uppercase hover:bg-red-500/10 hover:text-red-500">Limpar Logs</Button>
             </CardHeader>
             <Table>
               <TableHeader className="bg-slate-950/20">
                 <TableRow className="border-white/5 h-8">
                   <TableHead className="text-[9px] uppercase font-black px-4">Data/Hora</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Operação</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Fonte</TableHead>
                   <TableHead className="text-[9px] uppercase font-black">Mensagem</TableHead>
                   <TableHead className="text-[9px] uppercase font-black text-center">Status</TableHead>
                 </TableRow>
@@ -301,7 +270,7 @@ export default function AdminSnookerAutomationPage() {
                         <span className="text-[10px] font-mono text-slate-400">{new Date(log.createdAt).toLocaleString('pt-BR')}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-[10px] font-black text-white uppercase italic">{log.type}</span>
+                        <span className="text-[10px] font-black text-white uppercase italic">{log.sourceName || 'Global'}</span>
                       </TableCell>
                       <TableCell>
                         <p className="text-[10px] text-slate-300 max-w-md truncate">{log.message}</p>
@@ -322,6 +291,52 @@ export default function AdminSnookerAutomationPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={isSourceDialogOpen} onOpenChange={setIsSourceDialogOpen}>
+        <DialogContent className="bg-[#0f172a] border-white/10 text-white sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black uppercase italic tracking-tighter">Editar Fonte YouTube</DialogTitle>
+          </DialogHeader>
+          {editingSource && (
+            <div className="grid gap-6 py-4">
+              <div className="grid gap-2">
+                <Label className="text-[10px] uppercase font-bold text-slate-400">Nome da Fonte</Label>
+                <Input value={editingSource.name} onChange={e => setEditingSource({...editingSource, name: e.target.value})} className="h-11 bg-black/20 border-white/10" />
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase font-bold text-slate-400">Perfil de Parser</Label>
+                  <Select value={editingSource.parseProfile} onValueChange={(v: any) => setEditingSource({...editingSource, parseProfile: v})}>
+                    <SelectTrigger className="h-11 bg-black/20 border-white/10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tv_snooker_brasil">TV Snooker Brasil</SelectItem>
+                      <SelectItem value="junior_snooker">Junior Snooker</SelectItem>
+                      <SelectItem value="generic">Genérico</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase font-bold text-slate-400">Prioridade (Sync)</Label>
+                  <Input type="number" value={editingSource.priority} onChange={e => setEditingSource({...editingSource, priority: parseInt(e.target.value) || 0})} className="h-11 bg-black/20 border-white/10" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-bold">Auto Aprovar Jogos</Label>
+                  <p className="text-[10px] text-muted-foreground">Se desligado, jogos entram como Pendentes.</p>
+                </div>
+                <Switch checked={!editingSource.requireAdminApproval} onCheckedChange={v => setEditingSource({...editingSource, requireAdminApproval: !v})} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline" className="border-white/10">Cancelar</Button></DialogClose>
+            <Button onClick={handleSaveSource} className="lux-shine font-black uppercase italic">Salvar Configuração</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
@@ -339,14 +354,5 @@ function StatCard({ title, value, icon: Icon, color }: any) {
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function ToggleItem({ label, checked, onChange, disabled = false }: any) {
-  return (
-    <div className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-      <Label className="text-[11px] font-bold text-slate-300 uppercase">{label}</Label>
-      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} className="scale-75" />
-    </div>
   );
 }

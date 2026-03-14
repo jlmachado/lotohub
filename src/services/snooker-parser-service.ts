@@ -1,7 +1,6 @@
-
 /**
- * @fileOverview Motor de parsing para metadados de Sinuca.
- * Extrai jogadores, torneios e fases a partir de títulos do YouTube.
+ * @fileOverview Motor de parsing Multiprofil para metadados de Sinuca.
+ * Extrai jogadores, torneios e fases a partir de títulos do YouTube conforme o canal.
  */
 
 export interface ParsedSnookerMatch {
@@ -19,6 +18,8 @@ export interface ParsedSnookerMatch {
   notes: string[];
 }
 
+export type ParseProfile = 'tv_snooker_brasil' | 'junior_snooker' | 'generic';
+
 export class SnookerParserService {
   /**
    * Normaliza uma string para geração de hash de sincronização.
@@ -34,13 +35,13 @@ export class SnookerParserService {
   }
 
   /**
-   * Processa título e descrição para extrair dados do jogo.
+   * Processa título e descrição para extrair dados do jogo baseado no perfil do canal.
    */
-  static parse(title: string, description: string = ''): ParsedSnookerMatch {
+  static parse(title: string, description: string = '', profile: ParseProfile = 'generic'): ParsedSnookerMatch {
     const notes: string[] = [];
     let confidence = 0.1;
 
-    // Limpeza de ruídos comuns
+    // Limpeza global de ruídos
     const cleanTitle = title.replace(/AO VIVO|LIVE|ASSISTA|AGORA|SN0OKER|SINUCA|TV SNOOKER BRASIL/gi, '').trim();
     const fullText = `${cleanTitle} ${description}`;
 
@@ -56,10 +57,15 @@ export class SnookerParserService {
 
     // 3. Extração de Premiação
     const { prize, prizeLabel } = this.extractPrize(fullText, notes);
-    if (prize) confidence += 0.1;
+    if (prize) confidence += 0.15;
 
-    // 4. Extração de Jogadores (Core)
-    const players = this.extractPlayers(cleanTitle, notes);
+    // 4. Extração de Jogadores baseada no perfil
+    let players = null;
+    if (profile === 'junior_snooker') {
+      players = this.extractPlayersJunior(cleanTitle, notes);
+    } else {
+      players = this.extractPlayersGeneric(cleanTitle, notes);
+    }
     
     if (players) {
       confidence += 0.5;
@@ -95,7 +101,7 @@ export class SnookerParserService {
     };
   }
 
-  private static extractPlayers(title: string, notes: string[]) {
+  private static extractPlayersGeneric(title: string, notes: string[]) {
     const patterns = [
       /(.+?)\s+(?:X|VS|VERSUS)\s+(.+?)(?:\s+[-|]\s+(.*))?$/i,
       /(.+?)\s+v\s+(.+?)(?:\s+[-|]\s+(.*))?$/i
@@ -115,8 +121,33 @@ export class SnookerParserService {
     return null;
   }
 
+  private static extractPlayersJunior(title: string, notes: string[]) {
+    // Junior Snooker costuma usar "DESAFIO - NOME X NOME" ou títulos mais "treta"
+    const patterns = [
+      /(?:DESAFIO|TIRA-TEIMA|FINAL|SEMIFINAL)?\s*[-|]?\s*(.+?)\s*(?:X|VS)\s*(.+?)(?:\s+[-|]\s+(.*))?$/i,
+      /AO\s+VIVO\s+(.+?)\s*(?:X|VS)\s*(.+?)(?:\s+.*)?$/i
+    ];
+
+    for (const pattern of patterns) {
+      const match = title.match(pattern);
+      if (match) {
+        const a = this.cleanName(match[1]);
+        const b = this.cleanName(match[2]);
+        if (a && b && a.length < 25 && b.length < 25) {
+          notes.push(`Jogadores (Junior Profile): ${a} vs ${b}`);
+          return { a, b, event: match[3]?.trim() };
+        }
+      }
+    }
+    return null;
+  }
+
   private static cleanName(name: string): string {
-    return name.replace(/\([^)]*\)/g, '').replace(/\b(SP|RJ|MG|RS|PR|BA|CE|GO|DF)\b/gi, '').trim();
+    return name
+      .replace(/\([^)]*\)/g, '')
+      .replace(/\b(SP|RJ|MG|RS|PR|BA|CE|GO|DF|SC|PE|RN|AL|MA|PI|AM|PA|ES|MT|MS)\b/gi, '')
+      .replace(/DESAFIO|AO VIVO|FINAL|SEMIFINAL|TRETA|VALENDO|PIX/gi, '')
+      .trim();
   }
 
   private static extractBestOf(text: string, notes: string[]): number {
@@ -133,22 +164,29 @@ export class SnookerParserService {
     if (/SIX\s*RED/i.test(text)) return 'Six Red';
     if (/SINUQUINHA/i.test(text)) return 'Sinuquinha';
     if (/MESÃO/i.test(text)) return 'Mesão';
+    if (/BOLA\s*8/i.test(text)) return 'Bola 8';
+    if (/BOLA\s*9/i.test(text)) return 'Bola 9';
     return undefined;
   }
 
   private static extractPhase(text: string, notes: string[]) {
-    if (/FINAL/i.test(text)) return 'Grande Final';
+    if (/FINAL/i.test(text) && !/SEMIFINAL/i.test(text)) return 'Grande Final';
     if (/SEMIFINAL/i.test(text)) return 'Semifinal';
     if (/QUARTAS/i.test(text)) return 'Quartas de Final';
+    if (/OITAVAS/i.test(text)) return 'Oitavas de Final';
+    if (/RODADA\s*\d+/i.test(text)) return text.match(/RODADA\s*\d+/i)![0];
     return undefined;
   }
 
   private static extractPrize(text: string, notes: string[]) {
-    const match = text.match(/(?:R\$|PRIZE)\s*([\d.]+)\s*(MIL)?/i);
+    // Regex aprimorada para capturar valores financeiros reais
+    const match = text.match(/(?:R\$|PRIZE|VALENDO|VALE)\s*([\d.]+)\s*(MIL|REAIS)?/i);
     if (match) {
-      let val = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
-      if (match[2]) val *= 1000;
-      return { prize: val, prizeLabel: match[0] };
+      let valStr = match[1].replace(/\./g, '').replace(',', '.');
+      let val = parseFloat(valStr);
+      if (match[2]?.toLowerCase() === 'mil') val *= 1000;
+      notes.push(`Prêmio detectado: R$ ${val}`);
+      return { prize: val, prizeLabel: `R$ ${val.toLocaleString('pt-BR')}` };
     }
     return { prize: null };
   }

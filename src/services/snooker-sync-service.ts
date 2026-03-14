@@ -1,12 +1,11 @@
-
 /**
- * @fileOverview Orquestrador de sincronização de Sinuca.
- * Gerencia a atualização de canais e criação de registros automáticos.
+ * @fileOverview Orquestrador de sincronização Multicanal de Sinuca.
+ * Gerencia o ciclo de vida dos canais detectados via YouTube de várias fontes.
  */
 
 import { SnookerYoutubeService, YoutubeApiResponse } from './snooker-youtube-service';
 import { SnookerParserService } from './snooker-parser-service';
-import { SnookerChannel, SnookerAutomationSettings } from '@/context/AppContext';
+import { SnookerChannel, SnookerAutomationSource, SnookerAutomationSettings } from '@/context/AppContext';
 
 export interface SyncSummary {
   itemsRead: number;
@@ -16,33 +15,43 @@ export interface SyncSummary {
 }
 
 export class SnookerSyncService {
+  /**
+   * Gera um hash único para identificar o evento e evitar duplicidade.
+   */
   static generateSyncHash(videoId: string, title: string, date: string): string {
     const norm = (s: string) => SnookerParserService.normalizeForHash(s);
     return `sync_${videoId}_${norm(title)}_${date.split('T')[0]}`;
   }
 
+  /**
+   * Executa a sincronização para uma fonte específica.
+   */
   static async sync(
     currentChannels: SnookerChannel[], 
     bancaId: string,
+    source: SnookerAutomationSource,
     settings: SnookerAutomationSettings
   ): Promise<{ updatedChannels: SnookerChannel[], summary: SyncSummary }> {
     const summary: SyncSummary = { itemsRead: 0, created: 0, updated: 0, failures: 0 };
     
     try {
-      const youtubeData = await SnookerYoutubeService.fetchChannelData();
+      // 1. Buscar dados do YouTube via proxy
+      const youtubeData = await SnookerYoutubeService.fetchChannelData(source.channelUrl);
       summary.itemsRead = youtubeData.length;
 
       const newChannelsList = [...currentChannels];
 
+      // 2. Processar cada item encontrado
       youtubeData.forEach((yt: YoutubeApiResponse) => {
         try {
           const videoId = yt.id.videoId;
           if (!videoId) return;
 
-          const parsed = SnookerParserService.parse(yt.snippet.title, yt.snippet.description);
+          const parsed = SnookerParserService.parse(yt.snippet.title, yt.snippet.description, source.parseProfile);
           const scheduledAt = yt.snippet.scheduledStartTime || new Date().toISOString();
           const syncHash = this.generateSyncHash(videoId, yt.snippet.title, scheduledAt);
           
+          // Verificar se já existe (por VideoId ou por Hash de conteúdo)
           const existingIdx = newChannelsList.findIndex(c => c.sourceVideoId === videoId || c.syncHash === syncHash);
 
           let status: SnookerChannel['status'] = 'scheduled';
@@ -54,6 +63,8 @@ export class SnookerSyncService {
 
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
+            
+            // Regra de Proteção Manual
             if (existing.isManualOverride) {
               if (status !== existing.status) {
                 newChannelsList[existingIdx] = { ...existing, status, updatedAt: new Date().toISOString() };
@@ -62,6 +73,7 @@ export class SnookerSyncService {
               return;
             }
 
+            // Atualizar canal existente
             newChannelsList[existingIdx] = {
               ...existing,
               status,
@@ -75,11 +87,15 @@ export class SnookerSyncService {
               parserNotes: parsed.notes,
               thumbnailUrl: yt.snippet.thumbnails.medium.url,
               sourceStatus: 'synced',
+              sourceName: source.name,
+              sourceId: source.id,
+              originPriority: source.priority,
               updatedAt: new Date().toISOString(),
               autoUpdatedAt: new Date().toISOString()
             };
             summary.updated++;
-          } else if (settings.autoCreateChannels) {
+          } else if (source.autoCreateChannels) {
+            // Criar novo canal automático
             const newChannel: SnookerChannel = {
               id: `chan-auto-${videoId}`,
               syncHash,
@@ -89,8 +105,11 @@ export class SnookerSyncService {
               embedId: videoId,
               sourceVideoId: videoId,
               source: 'youtube',
+              sourceName: source.name,
+              sourceId: source.id,
+              originPriority: source.priority,
               sourceType: yt.snippet.liveBroadcastContent === 'none' ? 'video' : 'live',
-              sourceStatus: settings.requireAdminApproval ? 'detected' : 'synced',
+              sourceStatus: source.requireAdminApproval ? 'detected' : 'synced',
               autoCreated: true,
               scheduledAt,
               status,
@@ -102,7 +121,7 @@ export class SnookerSyncService {
               houseMargin: 8,
               bestOf: parsed.bestOf,
               priority: 10,
-              enabled: !settings.requireAdminApproval,
+              enabled: !source.requireAdminApproval,
               bancaId,
               thumbnailUrl: yt.snippet.thumbnails.medium.url,
               tournamentName: parsed.tournamentName,
@@ -113,8 +132,11 @@ export class SnookerSyncService {
               metadataConfidence: parsed.confidence,
               parserNotes: parsed.notes,
               createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              updatedAt: new Date().toISOString(),
+              isFeatured: source.markAsFeatured,
+              bettingAvailability: 'all'
             };
+            
             newChannelsList.unshift(newChannel);
             summary.created++;
           }
