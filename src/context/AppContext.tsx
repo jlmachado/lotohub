@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Versão V5: Apuração Automática Precisa por Item e Multiestado.
+ * Versão V6: Liquidação Granular por Item para Bilhetes Mistos.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -24,7 +24,7 @@ import { MatchMapperService } from '@/services/match-mapper-service';
 import { filterProfanity } from '@/utils/profanity-filter';
 import { FootballSettlementService } from '@/services/football-settlement-service';
 import { FootballLiveEngine } from '@/services/football-live-engine';
-import { checkApostaWinner } from '@/lib/draw-engine';
+import { checkSingleItemWinner, isJDBItemEligible } from '@/lib/draw-engine';
 import { JDBNormalizedResult, SyncLogEntry } from '@/types/result-types';
 import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
 
@@ -477,9 +477,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setJdbSyncLogs(getStorageItem('app:jdb_sync_logs:v1', []));
     setFootballBets(getStorageItem('app:football_bets:v1', []));
     
-    // Seed Inteligente: Garante que o catálogo nacional esteja presente
     const savedJdb = getStorageItem<JDBLoteria[]>('app:jdb_loterias:v1', []);
-    if (savedJdb.length <= 1) { // Se estiver vazio ou só tiver o RJ legado
+    if (savedJdb.length <= 1) {
       setStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS);
       setJdbLoterias(INITIAL_JDB_LOTERIAS);
     } else {
@@ -520,14 +519,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // --- AUTO SETTLEMENT LOGIC (PRECISA POR ITEM) ---
+  // --- AUTO SETTLEMENT LOGIC (GRANULAR POR ITEM) ---
   useEffect(() => {
     if (isLoading || !jdbResults.length || !apostas.length) return;
 
     const unSettledPublic = jdbResults.filter(r => r.status === 'PUBLICADO' && !r.isSettled);
     if (unSettledPublic.length === 0) return;
 
-    console.log(`[Auto-Settlement] Processando ${unSettledPublic.length} resultados publicados...`);
+    console.log(`[Auto-Settlement] Processando ${unSettledPublic.length} resultados publicados para bilhetes mistos...`);
     
     let resultsChanged = false;
     let betsChanged = false;
@@ -539,35 +538,78 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (resultIdx === -1) return;
 
       currentApostas = currentApostas.map(aposta => {
-        if (aposta.status !== 'aguardando') return aposta;
+        // Aposta já resolvida inteiramente? Ignora.
+        if (aposta.status !== 'aguardando' && aposta.status !== 'premiado') return aposta;
+        if (aposta.loteria !== 'Jogo do Bicho' && aposta.loteria !== 'Loteria Uruguai') return aposta;
 
-        const { isWinner, prize, eligibleItemsCount } = checkApostaWinner(aposta, result, jdbLoterias);
-        
-        // Se este resultado contém itens deste bilhete
-        if (eligibleItemsCount > 0) {
-          betsChanged = true;
+        let prizeToCreditForThisResult = 0;
+        let anyItemProcessed = false;
+
+        const updatedDetails = (aposta.detalhes || []).map((item: any) => {
+          // Inicializa status para itens legados se necessário
+          if (!item.settlementStatus) item.settlementStatus = 'aguardando';
+
+          // Ignora se já resolvido por outro sorteio
+          if (item.settlementStatus !== 'aguardando') return item;
+
+          // Verifica se este item pertence EXATAMENTE a este sorteio (Estado, Banca, Hora, Data)
+          if (!isJDBItemEligible(item, result, aposta.createdAt)) return item;
+
+          // Processar liquidação do item
+          anyItemProcessed = true;
+          const { isWinner, prize } = checkSingleItemWinner(item, result, jdbLoterias);
+          
           if (isWinner) {
-            const realUser = getUserByTerminal(aposta.userId) || getUsers().find(u => u.id === aposta.userId);
-            if (realUser) {
-              const newBal = realUser.saldo + prize;
-              upsertUser({ terminal: realUser.terminal, saldo: newBal });
-              LedgerService.addEntry({
-                bancaId: aposta.bancaId, userId: realUser.id, terminal: realUser.terminal,
-                tipoUsuario: realUser.tipoUsuario, modulo: 'Jogo do Bicho', type: 'BET_WIN',
-                amount: prize, balanceBefore: realUser.saldo, balanceAfter: newBal,
-                referenceId: aposta.id, description: `Prêmio Auto: ${result.stateName} ${result.extractionName} (${result.time})`
-              });
-            }
-            return { ...aposta, status: 'premiado' as const };
-          } else {
-            // No protótipo, se o bilhete tinha itens elegíveis para este resultado e nenhum ganhou, 
-            // marcamos como perdedor para simplificar (assumindo bilhetes de extração única).
-            return { ...aposta, status: 'perdeu' as const };
+            prizeToCreditForThisResult += prize;
+          }
+
+          console.log(`[JDB Settlement] Bilhete ${aposta.id.substring(0,8)} item liquidado: ${isWinner ? 'GANHOU' : 'PERDEU'} - Valor R$ ${prize}`);
+
+          return {
+            ...item,
+            settlementStatus: isWinner ? 'premiado' : 'perdeu',
+            settledAt: new Date().toISOString(),
+            settlementResultId: result.id,
+            settlementAmount: prize,
+            isWinner
+          };
+        });
+
+        if (!anyItemProcessed) return aposta;
+
+        // Houve mudança real no bilhete
+        betsChanged = true;
+
+        // Crédito de Saldo apenas para os itens vencedores DESTE sorteio
+        if (prizeToCreditForThisResult > 0) {
+          const realUser = getUserByTerminal(aposta.userId) || getUsers().find(u => u.id === aposta.userId);
+          if (realUser) {
+            const newBal = realUser.saldo + prizeToCreditForThisResult;
+            upsertUser({ terminal: realUser.terminal, saldo: newBal });
+            LedgerService.addEntry({
+              bancaId: aposta.bancaId, userId: realUser.id, terminal: realUser.terminal,
+              tipoUsuario: realUser.tipoUsuario, modulo: aposta.loteria, type: 'BET_WIN',
+              amount: prizeToCreditForThisResult, balanceBefore: realUser.saldo, balanceAfter: newBal,
+              referenceId: aposta.id, description: `Prêmio Auto: ${result.stateName} ${result.extractionName} (${result.time})`
+            });
           }
         }
-        return aposta;
+
+        // Recalcular status global do bilhete baseado no conjunto de itens
+        const allItemsLiquidated = updatedDetails.every((it: any) => it.settlementStatus && it.settlementStatus !== 'aguardando');
+        const anyItemWinner = updatedDetails.some((it: any) => it.isWinner);
+
+        let finalStatus: Aposta['status'] = aposta.status;
+        if (anyItemWinner) {
+          finalStatus = 'premiado'; // Já garante visualização de vitória
+        } else if (allItemsLiquidated) {
+          finalStatus = 'perdeu'; // Só marca como derrota total se todos acabarem e nada ganhar
+        }
+
+        return { ...aposta, status: finalStatus, detalhes: updatedDetails };
       });
 
+      // Marca resultado como liquidado no sistema
       currentResults[resultIdx].isSettled = true;
       resultsChanged = true;
     });
@@ -602,13 +644,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // --- CASINO METHODS ---
   const updateCasinoSettings = useCallback((s: CasinoSettings) => {
     setStorageItem('app:casino_settings:v1', s);
     notify();
   }, [notify]);
 
-  // --- CAMBISTA METHODS ---
   const registerCambistaMovement = useCallback((data: { tipo: string, valor: number, modulo: string, observacao: string }) => {
     if (!user) return;
     const typeMap: Record<string, any> = { 'ENTRADA_MANUAL': 'CASH_IN', 'RECOLHE': 'CASH_OUT_RECOLHE', 'FECHAMENTO_CAIXA': 'CASH_CLOSE' };
@@ -635,7 +675,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     notify();
   }, [notify]);
 
-  // --- BINGO METHODS ---
   const updateBingoSettings = useCallback((s: BingoSettings) => { setStorageItem('app:bingo_settings:v1', s); notify(); }, [notify]);
   const createBingoDraw = useCallback((d: Partial<BingoDraw>) => {
     const current = getStorageItem<BingoDraw[]>('app:bingo_draws:v1', []);
@@ -730,7 +769,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     notify();
   }, [notify]);
 
-  // --- SINUCA METHODS ---
   const joinChannel = useCallback((channelId: string, userId: string) => { setSnookerPresence(prev => { const current = prev[channelId]?.viewers || []; if (current.includes(userId)) return prev; return { ...prev, [channelId]: { viewers: [...current, userId] } }; }); }, []);
   const leaveChannel = useCallback((channelId: string, userId: string) => { setSnookerPresence(prev => { const current = prev[channelId]?.viewers || []; return { ...prev, [channelId]: { viewers: current.filter(id => id !== userId) } }; }); }, []);
   const placeSnookerBet = useCallback((bet: any) => {
@@ -806,7 +844,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const clearCelebration = useCallback(() => setCelebrationTrigger(false), []);
 
-  // --- FOOTBALL METHODS ---
   const syncFootballAll = useCallback(async (force = false) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
     try {
@@ -844,7 +881,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return null;
   }, [user, betSlip, notify, router]);
 
-  // --- LOTTERY METHODS ---
   const handleFinalizarAposta = useCallback((aposta: any, valorTotal: number): string | null => {
     if (!user) { router.push('/login'); return null; }
     const pouleId = generatePoule();
@@ -861,7 +897,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setStorageItem('app:posted_results:v1', [dados, ...current]); notify();
   }, [notify]);
 
-  // --- ADMIN METHODS ---
   const addBanner = useCallback((b: Banner) => { const current = getStorageItem<Banner[]>('app:banners:v1', []); setStorageItem('app:banners:v1', [...current, b]); notify(); }, [notify]);
   const updateBanner = useCallback((b: Banner) => { const current = getStorageItem<Banner[]>('app:banners:v1', []); setStorageItem('app:banners:v1', current.map(i => i.id === b.id ? b : i)); notify(); }, [notify]);
   const deleteBanner = useCallback((id: string) => { const current = getStorageItem<Banner[]>('app:banners:v1', []); setStorageItem('app:banners:v1', current.filter(i => i.id !== id)); notify(); }, [notify]);

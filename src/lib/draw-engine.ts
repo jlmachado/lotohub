@@ -23,28 +23,31 @@ export const normalizeString = (str: string): string => {
 };
 
 /**
- * Verifica se um item de aposta pertence a um resultado específico
+ * Verifica se um item de aposta pertence a um resultado específico.
+ * Validando: Data, Estado, Banca e Horário.
  */
 export const isJDBItemEligible = (item: any, result: any, apostaCreatedAt: string): boolean => {
   if (!item || !result) return false;
 
-  // 1. Normalização de Nomes
+  // 1. Normalização de Nomes de Estado
   const itemEstado = normalizeString(item.estadoLabel || '');
   const resEstado = normalizeString(result.stateName || result.stateCode || '');
   
+  // 2. Normalização de Nomes de Banca/Loteria
   const itemLoteria = normalizeString(item.loteriaLabel || item.loteria || '');
   const resLoteria = normalizeString(result.extractionName || '');
 
-  // 2. Comparação de Estado e Banca (Busca parcial para nomes como "PTSP São Paulo")
+  // Comparação de Estado e Banca (Busca parcial para nomes como "PTSP São Paulo")
   const stateMatch = itemEstado === resEstado || resEstado.includes(itemEstado) || itemEstado.includes(resEstado);
   const bankMatch = itemLoteria === resLoteria || resLoteria.includes(itemLoteria) || itemLoteria.includes(resLoteria);
 
   if (!stateMatch || !bankMatch) return false;
 
-  // 3. Comparação de Horário
+  // 3. Comparação de Horário (HH:mm)
   if (item.horario !== result.time) return false;
 
-  // 4. Comparação de Data
+  // 4. Comparação de Data (YYYY-MM-DD)
+  // Resolve a data pretendida do sorteio baseada na criação e no campo dataAposta
   const betDate = new Date(apostaCreatedAt);
   if (item.dataAposta === 'amanha') {
     betDate.setDate(betDate.getDate() + 1);
@@ -123,7 +126,6 @@ const calculateJogoDoBichoPrize = (betItem: any, results: ResultadoBicho[], lote
     const valorAposta = parseFloat(String(valor || '0').replace(',', '.')) || 0;
     if (valorAposta <= 0) return 0;
     
-    // Tenta encontrar a banca específica para pegar o multiplicador real
     const loteriaConfig = loterias.find(l => 
       normalizeString(l.id) === normalizeString(loteriaId) || 
       normalizeString(l.nome) === normalizeString(betItem.loteriaLabel)
@@ -138,7 +140,6 @@ const calculateJogoDoBichoPrize = (betItem: any, results: ResultadoBicho[], lote
       if (modalidadeConfig) baseMultiplier = parseFloat(modalidadeConfig.multiplicador);
     }
 
-    // Fallback para multiplicador padrão se não encontrar config da banca
     if (!baseMultiplier) {
       const defaultMults: Record<string, number> = {
         'milhar': 5000, 'centena': 700, 'dezena': 60, 'grupo': 18,
@@ -154,31 +155,60 @@ const calculateJogoDoBichoPrize = (betItem: any, results: ResultadoBicho[], lote
     if (modalidade === 'milhar-e-centena') {
         const numeroApostado = numeros[0];
         if (numeroApostado.length !== 4) return 0;
-
         const milharWins = relevantResults.some(r => r.milhar === numeroApostado);
-        if (milharWins) {
-            return (baseMultiplier / divisorColocacao) * valorAposta;
-        }
-
+        if (milharWins) return (baseMultiplier / divisorColocacao) * valorAposta;
         const centenaApostada = numeroApostado.slice(-3);
         const centenaWins = relevantResults.some(r => r.milhar.slice(-3) === centenaApostada);
-        if (centenaWins) {
-            // No caso de M+C, se ganha só a centena o multiplicador é menor (geralmente o da centena pura)
-            const centenaMultiplier = 700; 
-            return (centenaMultiplier / divisorColocacao) * valorAposta;
-        }
+        if (centenaWins) return (700 / divisorColocacao) * valorAposta;
         return 0;
     }
     
     const isWinner = checkJogoDoBichoWin(betItem, results);
     if (isWinner) {
-        const multiplicadorAjustado = baseMultiplier / divisorColocacao;
-        return valorAposta * multiplicadorAjustado;
+        return valorAposta * (baseMultiplier / divisorColocacao);
     }
     
     return 0;
 };
 
+/**
+ * Motor de verificação para um único item de bilhete.
+ */
+export const checkSingleItemWinner = (
+  item: any, 
+  result: any, 
+  jdbLoterias: JDBLoteria[]
+): { isWinner: boolean, prize: number } => {
+    const simpleResults = (result.prizes || []).map((p: any) => ({
+      premio: `${p.position}º`,
+      milhar: p.milhar,
+      grupo: p.grupo,
+      animal: p.animal
+    }));
+
+    if (item.modalidade) {
+      // Jogo do Bicho
+      const isWinner = checkJogoDoBichoWin(item, simpleResults);
+      return { 
+        isWinner, 
+        prize: isWinner ? calculateJogoDoBichoPrize(item, simpleResults, jdbLoterias) : 0 
+      };
+    } else if (item.premio && item.numero) {
+      // Uruguai ou Genérica
+      const numDigits = item.modalidadeLabel?.includes('3') ? 3 : item.modalidadeLabel?.includes('2') ? 2 : 1;
+      const premioLimit = parseInt(item.premio, 10);
+      const relevantResults = (result.prizes || []).slice(0, premioLimit).map((p: any) => p.milhar);
+      if (relevantResults.some((r: string) => r.slice(-numDigits) === item.numero)) {
+        return { isWinner: true, prize: item.retornoPossivel || 0 };
+      }
+    }
+
+    return { isWinner: false, prize: 0 };
+};
+
+/**
+ * @deprecated Use checkSingleItemWinner no novo fluxo granular.
+ */
 export const checkApostaWinner = (
   aposta: Aposta, 
   result: any, 
@@ -189,40 +219,12 @@ export const checkApostaWinner = (
     let totalPrize = 0;
     let eligibleItemsCount = 0;
 
-    const simpleResults = result.prizes.map((p: any) => ({
-      premio: `${p.position}º`,
-      milhar: p.milhar,
-      grupo: p.grupo,
-      animal: p.animal
-    }));
-
     aposta.detalhes.forEach((item: any) => {
-        // Verifica se este item específico do bilhete é para este resultado
-        if (!isJDBItemEligible(item, result, aposta.createdAt)) {
-          return;
-        }
-
+        if (!isJDBItemEligible(item, result, aposta.createdAt)) return;
         eligibleItemsCount++;
-        let prize = 0;
-
-        if (aposta.loteria === 'Jogo do Bicho') {
-          prize = calculateJogoDoBichoPrize(item, simpleResults, jdbLoterias);
-        } else if (aposta.loteria === 'Loteria Uruguai') {
-          const numDigits = parseInt(item.modalidade.charAt(0), 10);
-          const premioLimit = parseInt(item.premio, 10);
-          const relevantResults = (result.prizes || []).slice(0, premioLimit).map((p: any) => p.milhar);
-          if (relevantResults.some((r: string) => r.slice(-numDigits) === item.numero)) {
-            prize = item.retornoPossivel || 0;
-          }
-        }
-        // ... (Outras loterias podem ser adicionadas aqui se necessário)
-
+        const { isWinner, prize } = checkSingleItemWinner(item, result, jdbLoterias);
         totalPrize += prize;
     });
 
-    return { 
-      isWinner: totalPrize > 0, 
-      prize: totalPrize,
-      eligibleItemsCount 
-    };
+    return { isWinner: totalPrize > 0, prize: totalPrize, eligibleItemsCount };
 }
