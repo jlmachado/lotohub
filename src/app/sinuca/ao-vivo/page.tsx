@@ -1,3 +1,4 @@
+
 'use client';
 import { CasinoLayout } from "@/components/sinuca/CasinoLayout";
 import { LiveChat } from "@/components/sinuca/LiveChat";
@@ -15,7 +16,7 @@ import { MySnookerBets } from "@/components/sinuca/MySnookerBets";
 import { isValidYoutubeVideoId } from "@/utils/youtube";
 
 export default function SinucaAoVivoPage() {
-    const { snookerLiveConfig, snookerChannels, joinChannel, leaveChannel, celebrationTrigger, clearCelebration, user } = useAppContext();
+    const { snookerLiveConfig, snookerChannels, snookerPrimaryChannelId, joinChannel, leaveChannel, celebrationTrigger, clearCelebration, user } = useAppContext();
     const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
     const [isClient, setIsClient] = useState(false);
 
@@ -23,31 +24,22 @@ export default function SinucaAoVivoPage() {
         setIsClient(true);
     }, []);
     
-    // Auto-select best channel
+    // Auto-select best channel based on Priority Score logic from Context
     useEffect(() => {
-        if (!isClient || activeChannelId || !snookerChannels || snookerChannels.length === 0) return;
+        if (!isClient || !snookerChannels || snookerChannels.length === 0) return;
 
-        // PRIORIDADES DE SELEÇÃO:
-        // 1. Live habilitado E com vídeo válido
-        // 2. Imminent habilitado E com vídeo válido
-        // 3. Scheduled habilitado E com vídeo válido
-        // 4. Fallback para o primeiro habilitado (mesmo que sem vídeo)
-        
-        const enabled = snookerChannels.filter(c => c.enabled && !c.isArchived);
-        const withValidVideo = enabled.filter(c => isValidYoutubeVideoId(c.embedId));
+        // If we have an elected primary channel and haven't manually changed it in this session yet
+        if (snookerPrimaryChannelId && !activeChannelId) {
+            setActiveChannelId(snookerPrimaryChannelId);
+            return;
+        }
 
-        const live = withValidVideo.find(c => c.status === 'live');
-        const imminent = withValidVideo.find(c => c.status === 'imminent');
-        const scheduled = [...withValidVideo]
-            .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-            .find(c => c.status === 'scheduled');
-
-        if (live) setActiveChannelId(live.id);
-        else if (imminent) setActiveChannelId(imminent.id);
-        else if (scheduled) setActiveChannelId(scheduled.id);
-        else if (snookerLiveConfig?.defaultChannelId) setActiveChannelId(snookerLiveConfig.defaultChannelId);
-        else if (enabled[0]) setActiveChannelId(enabled[0].id);
-    }, [isClient, activeChannelId, snookerChannels, snookerLiveConfig]);
+        // Fallback fallback: if primary is gone but we have channels, pick first enabled
+        if (!activeChannelId) {
+            const fallback = snookerChannels.find(c => c.enabled && !c.isArchived);
+            if (fallback) setActiveChannelId(fallback.id);
+        }
+    }, [isClient, snookerChannels, snookerPrimaryChannelId, activeChannelId]);
 
     useEffect(() => {
         if (!activeChannelId || !user) return;

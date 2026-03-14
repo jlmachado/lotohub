@@ -1,10 +1,11 @@
+
 'use client';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   ChevronLeft, PlusCircle, Edit, Trash2, Zap, RefreshCw, 
   History, Info, ExternalLink, Copy, Check, X, Filter, 
-  Video, MonitorPlay, ShieldAlert, AlertTriangle, CheckCircle2
+  Video, MonitorPlay, ShieldAlert, AlertTriangle, CheckCircle2, Star, BarChart3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,7 +43,8 @@ export default function AdminSinucaCanaisPage() {
     const { 
         snookerChannels, addSnookerChannel, updateSnookerChannel, 
         deleteSnookerChannel, syncSnookerFromYoutube, snookerSyncState,
-        approveAutoSnookerChannel
+        approveAutoSnookerChannel, snookerPrimaryChannelId, setManualPrimarySnookerChannel,
+        snookerAutomationSettings
     } = useAppContext();
     
     const { toast } = useToast();
@@ -66,7 +68,7 @@ export default function AdminSinucaCanaisPage() {
         if (filterType === 'pending') items = items.filter(c => c.sourceStatus === 'detected');
         if (filterType === 'invalid') items = items.filter(c => !isValidYoutubeVideoId(c.embedId));
         
-        return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        return items.sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0));
     }, [snookerChannels, filterType]);
 
     const handleAddNew = () => {
@@ -78,56 +80,31 @@ export default function AdminSinucaCanaisPage() {
     const handleEdit = (channel: SnookerChannel) => {
         setEditingId(channel.id);
         const { status, odds, scoreA, scoreB, bancaId, createdAt, updatedAt, ...editableData } = channel;
-        setCurrentChannel({
-            ...editableData,
-            isManualOverride: channel.isManualOverride || false
-        });
+        setCurrentChannel({ ...editableData, isManualOverride: channel.isManualOverride || false });
         setIsDialogOpen(true);
     };
 
-    const handleDeleteClick = (id: string) => {
-        setDeletingId(id);
-        setIsDeleteAlertOpen(true);
-    };
+    const handleDeleteClick = (id: string) => { setDeletingId(id); setIsDeleteAlertOpen(true); };
 
     const handleConfirmDelete = () => {
-        if (deletingId) {
-            deleteSnookerChannel(deletingId);
-            toast({ title: 'Canal excluído com sucesso!' });
-        }
-        setIsDeleteAlertOpen(false);
-        setDeletingId(null);
+        if (deletingId) { deleteSnookerChannel(deletingId); toast({ title: 'Canal excluído com sucesso!' }); }
+        setIsDeleteAlertOpen(false); setDeletingId(null);
     };
 
     const handleSave = () => {
-        if (!currentChannel.title || !currentChannel.youtubeUrl || !currentChannel.scheduledAt) {
-            toast({ variant: 'destructive', title: 'Erro', description: 'Preencha os campos obrigatórios.' });
-            return;
-        }
-
+        if (!currentChannel.title || !currentChannel.youtubeUrl || !currentChannel.scheduledAt) { toast({ variant: 'destructive', title: 'Erro', description: 'Preencha os campos obrigatórios.' }); return; }
         const embedId = extractYoutubeVideoId(currentChannel.youtubeUrl);
-        if (!embedId) {
-            toast({ variant: 'destructive', title: 'URL Inválida', description: 'O link do YouTube informado não é um vídeo real.' });
-            return;
-        }
-        
+        if (!embedId) { toast({ variant: 'destructive', title: 'URL Inválida', description: 'O link do YouTube informado não é um vídeo real.' }); return; }
         const channelData = { ...currentChannel, embedId };
-
-        if (editingId) {
-            updateSnookerChannel({ ...channelData, id: editingId } as SnookerChannel);
-            toast({ title: 'Canal atualizado!' });
-        } else {
-            addSnookerChannel({ ...channelData, id: `manual_${Date.now()}`, source: 'manual', sourceName: 'Manual', enabled: true });
-            toast({ title: 'Canal manual criado!' });
-        }
-        setIsDialogOpen(false);
-        setEditingId(null);
+        if (editingId) { updateSnookerChannel({ ...channelData, id: editingId } as SnookerChannel); toast({ title: 'Canal atualizado!' }); }
+        else { addSnookerChannel({ ...channelData, id: `manual_${Date.now()}`, source: 'manual', sourceName: 'Manual', enabled: true }); toast({ title: 'Canal manual criado!' }); }
+        setIsDialogOpen(false); setEditingId(null);
     };
 
-    const handleSyncManual = async () => {
-        setIsSyncing(true);
-        await syncSnookerFromYoutube(true);
-        setIsSyncing(false);
+    const handleTogglePrimary = (id: string) => {
+      const isManual = id === snookerAutomationSettings.manualPrimaryChannelId;
+      setManualPrimarySnookerChannel(isManual ? null : id);
+      toast({ title: isManual ? "Seleção manual removida" : "Canal fixado como principal" });
     };
     
     return (
@@ -141,14 +118,9 @@ export default function AdminSinucaCanaisPage() {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button 
-                        variant="outline"
-                        disabled={isSyncing || snookerSyncState === 'syncing'}
-                        onClick={handleSyncManual}
-                        className="h-11 rounded-xl font-bold border-white/10 bg-white/5"
-                    >
+                    <Button variant="outline" disabled={isSyncing || snookerSyncState === 'syncing'} onClick={() => syncSnookerFromYoutube(true)} className="h-11 rounded-xl font-bold border-white/10 bg-white/5">
                         {(isSyncing || snookerSyncState === 'syncing') ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-                        Sincronizar YouTube
+                        Sync YouTube
                     </Button>
                     <Button onClick={handleAddNew} className="lux-shine font-black uppercase rounded-xl h-11 px-6"><PlusCircle className="mr-2 h-4 w-4" /> Novo Canal</Button>
                 </div>
@@ -157,9 +129,7 @@ export default function AdminSinucaCanaisPage() {
             <div className="flex flex-wrap items-center gap-2 bg-slate-900/50 p-2 rounded-xl border border-white/5">
                 <FilterBtn active={filterType === 'all'} onClick={() => setFilterType('all')} label="Todos" />
                 <FilterBtn active={filterType === 'live'} onClick={() => setFilterType('live')} label="Ao Vivo" color="text-red-500" />
-                <FilterBtn active={filterType === 'invalid'} onClick={() => setFilterType('invalid')} label="Vídeo Inválido" color="text-red-400" />
                 <FilterBtn active={filterType === 'pending'} onClick={() => setFilterType('pending')} label="Pendentes" color="text-amber-500" />
-                <FilterBtn active={filterType === 'youtube'} onClick={() => setFilterType('youtube')} label="YouTube" />
                 <FilterBtn active={filterType === 'manual'} onClick={() => setFilterType('manual')} label="Manual" />
             </div>
 
@@ -168,9 +138,9 @@ export default function AdminSinucaCanaisPage() {
                     <TableHeader className="bg-slate-950/50">
                         <TableRow className="border-white/5 h-10">
                             <TableHead className="text-[9px] uppercase font-black px-4">Jogo / Torneio</TableHead>
-                            <TableHead className="text-[9px] uppercase font-black">Horário</TableHead>
-                            <TableHead className="text-[9px] uppercase font-black">Origem / Vídeo</TableHead>
-                            <TableHead className="text-[9px] uppercase font-black text-center">Visível</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black">Score / Rank</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black">Saúde / Origem</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black text-center">Ativo</TableHead>
                             <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -180,49 +150,41 @@ export default function AdminSinucaCanaisPage() {
                         ) : (
                             filteredChannels.map(channel => {
                                 const isVideoValid = isValidYoutubeVideoId(channel.embedId);
+                                const isPrimary = channel.id === snookerPrimaryChannelId;
+                                const isForced = channel.id === snookerAutomationSettings.manualPrimaryChannelId;
                                 return (
-                                    <TableRow key={channel.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                                    <TableRow key={channel.id} className={cn("border-white/5 hover:bg-white/5 transition-colors", isPrimary && "bg-primary/5")}>
                                         <TableCell className="px-4 py-3">
                                             <div className="flex flex-col min-w-0">
-                                                <span className="text-[11px] font-black text-white uppercase italic truncate">{channel.playerA.name} vs {channel.playerB.name}</span>
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-[11px] font-black text-white uppercase italic truncate">{channel.playerA.name} vs {channel.playerB.name}</span>
+                                                  {isPrimary && <Star size={10} className="text-primary fill-primary" />}
+                                                </div>
                                                 <span className="text-[9px] text-muted-foreground truncate max-w-[180px] font-bold uppercase">{channel.tournamentName || channel.title}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-mono text-slate-300">{new Date(channel.scheduledAt).toLocaleDateString('pt-BR')}</span>
-                                                <span className="text-[9px] font-mono text-primary font-bold">{new Date(channel.scheduledAt).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</span>
+                                            <div className="flex items-center gap-2">
+                                              <Badge variant="outline" className="text-[10px] font-black tabular-nums border-white/10">{channel.priorityScore || 0}</Badge>
+                                              <span className="text-[8px] text-slate-500 uppercase font-bold">{channel.contentType || 'match'}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <Badge variant="outline" className="text-[8px] h-4 uppercase opacity-60">{channel.source || 'Manual'}</Badge>
-                                                    <Badge className={cn(
-                                                        "text-[7px] font-black h-4 gap-1 uppercase",
-                                                        isVideoValid ? "bg-green-600/20 text-green-500 border-green-500/30" : "bg-red-600/20 text-red-500 border-red-500/30"
-                                                    )}>
-                                                        {isVideoValid ? <Check size={8}/> : <X size={8}/>}
-                                                        Video {isVideoValid ? 'Válido' : 'Inválido'}
+                                                    <Badge variant="outline" className="text-[8px] h-4 uppercase opacity-60">{channel.sourceName || 'Manual'}</Badge>
+                                                    <Badge className={cn("text-[7px] font-black h-4 uppercase", isVideoValid ? "bg-green-600/20 text-green-500" : "bg-red-600/20 text-red-500")}>
+                                                        {isVideoValid ? 'VÁLIDO' : 'ERRO VÍDEO'}
                                                     </Badge>
                                                 </div>
-                                                {channel.embedId && <span className="text-[8px] font-mono text-slate-500 uppercase">ID: {channel.embedId}</span>}
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-center">
-                                            <Switch 
-                                                checked={channel.enabled} 
-                                                onCheckedChange={(v) => updateSnookerChannel({...channel, enabled: v})} 
-                                                className="scale-75"
-                                            />
+                                            <Switch checked={channel.enabled} onCheckedChange={(v) => updateSnookerChannel({...channel, enabled: v})} className="scale-75" />
                                         </TableCell>
                                         <TableCell className="text-right px-4 space-x-1">
+                                            <Button variant="ghost" size="icon" className={cn("h-8 w-8", isForced ? "text-primary" : "text-white/20")} onClick={() => handleTogglePrimary(channel.id)} title="Fixar como Principal"><Star size={14} className={isForced ? "fill-primary" : ""} /></Button>
                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400" onClick={() => handleEdit(channel)}><Edit size={14} /></Button>
-                                            {channel.youtubeUrl && (
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => window.open(channel.youtubeUrl, '_blank')}>
-                                                    <ExternalLink size={14} />
-                                                </Button>
-                                            )}
                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteClick(channel.id)}><Trash2 size={14} /></Button>
                                         </TableCell>
                                     </TableRow>
@@ -250,24 +212,7 @@ export default function AdminSinucaCanaisPage() {
                         <div className="grid md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label className="text-[10px] uppercase font-bold text-slate-400">URL do YouTube</Label>
-                                <Input 
-                                    value={currentChannel.youtubeUrl} 
-                                    onChange={(e) => setCurrentChannel({ ...currentChannel, youtubeUrl: e.target.value })} 
-                                    placeholder="https://www.youtube.com/watch?v=..."
-                                    className={cn(
-                                        "h-11 bg-black/20 border-white/10",
-                                        currentChannel.youtubeUrl && !isValidYoutubeUrl(currentChannel.youtubeUrl) && "border-red-500/50"
-                                    )}
-                                />
-                                {currentChannel.youtubeUrl && (
-                                    <div className="flex items-center gap-2 mt-1">
-                                        {isValidYoutubeUrl(currentChannel.youtubeUrl) ? (
-                                            <Badge className="bg-green-600/20 text-green-500 border-green-500/30 text-[8px] h-4">URL VÁLIDA</Badge>
-                                        ) : (
-                                            <Badge className="bg-red-600/20 text-red-500 border-red-500/30 text-[8px] h-4">URL INVÁLIDA</Badge>
-                                        )}
-                                    </div>
-                                )}
+                                <Input value={currentChannel.youtubeUrl} onChange={(e) => setCurrentChannel({ ...currentChannel, youtubeUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." className="h-11 bg-black/20 border-white/10" />
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-[10px] uppercase font-bold text-slate-400">Início Agendado</Label>
@@ -278,7 +223,7 @@ export default function AdminSinucaCanaisPage() {
                         <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
                             <div className="space-y-0.5">
                                 <Label className="text-sm font-bold text-amber-500 uppercase italic">Override Manual</Label>
-                                <p className="text-[10px] text-muted-foreground uppercase font-bold">Impede que a automação altere os nomes deste jogo.</p>
+                                <p className="text-[10px] text-muted-foreground uppercase font-bold">Impede que a automação altere os dados deste canal.</p>
                             </div>
                             <Switch checked={currentChannel.isManualOverride} onCheckedChange={(v) => setCurrentChannel({...currentChannel, isManualOverride: v})}/>
                         </div>
@@ -295,7 +240,7 @@ export default function AdminSinucaCanaisPage() {
                 <AlertDialogContent className="bg-[#0f172a] border-white/10 text-white">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="text-xl font-black uppercase italic">Excluir Canal?</AlertDialogTitle>
-                        <AlertDialogDescription className="text-slate-400">Esta ação não pode ser desfeita. Todos os dados associados serão removidos.</AlertDialogDescription>
+                        <AlertDialogDescription className="text-slate-400">Esta ação não pode ser desfeita.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel className="bg-transparent border-white/10 text-white">Voltar</AlertDialogCancel>
@@ -313,11 +258,7 @@ function FilterBtn({ active, onClick, label, color }: { active: boolean, onClick
             variant={active ? 'default' : 'ghost'} 
             size="sm" 
             onClick={onClick}
-            className={cn(
-                "h-8 rounded-lg text-[9px] font-black uppercase tracking-widest px-3",
-                active && "bg-primary text-black",
-                !active && color
-            )}
+            className={cn("h-8 rounded-lg text-[9px] font-black uppercase tracking-widest px-3", active && "bg-primary text-black", !active && color)}
         >
             {label}
         </Button>
