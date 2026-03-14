@@ -1,8 +1,7 @@
-import QRCode from 'qrcode';
 
 /**
  * @fileOverview Gerador de bilhetes em imagem (PNG) usando Canvas API.
- * Versão V2: Layout vertical otimizado.
+ * Versão V3: Layout 100% textual, sem QR Code, otimizado para clareza total.
  */
 
 export interface TicketImageData {
@@ -21,92 +20,92 @@ export async function generateTicketImage(ticket: TicketImageData): Promise<stri
   
   if (!ctx) throw new Error('Não foi possível obter o contexto do canvas');
 
-  const width = 400;
-  const height = 750; // Aumentado para comportar mais detalhes
+  // Largura fixa para mobile/compartilhamento, altura reduzida sem QR Code
+  const width = 450;
+  const height = 650;
   canvas.width = width;
   canvas.height = height;
 
-  // Fundo branco
-  ctx.fillStyle = '#FFFFFF';
+  // Fundo Premium
+  ctx.fillStyle = '#0F172A';
   ctx.fillRect(0, 0, width, height);
 
-  // Bordas
-  ctx.strokeStyle = '#E2E8F0';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(10, 10, width - 20, height - 20);
+  // Bordas Decorativas
+  ctx.strokeStyle = '#FBBF24';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(15, 15, width - 30, height - 30);
 
-  // Cabeçalho
-  ctx.fillStyle = '#1E293B';
-  ctx.font = 'bold 24px Arial';
+  // Cabeçalho - Marca
+  ctx.fillStyle = '#FBBF24';
+  ctx.font = 'black 32px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('LOTOHUB PREMIUM', width / 2, 50);
+  ctx.fillText('LOTOHUB PREMIUM', width / 2, 70);
 
-  ctx.strokeStyle = '#CBD5E1';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 14px Arial';
+  ctx.fillText('COMPROVANTE DE APOSTA', width / 2, 100);
+
+  // Linha divisória
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(30, 70);
-  ctx.lineTo(width - 30, 70);
+  ctx.moveTo(40, 120);
+  ctx.lineTo(width - 40, 120);
   ctx.stroke();
 
-  // Dados do Bilhete
+  // Dados do Bilhete - Corpo
   ctx.textAlign = 'left';
   
-  const drawField = (label: string, value: string, y: number) => {
-    ctx.fillStyle = '#64748B';
-    ctx.font = 'bold 12px Arial';
-    ctx.fillText(label, 40, y);
-    ctx.fillStyle = '#1E293B';
-    ctx.font = 'bold 14px Courier New';
+  const drawField = (label: string, value: string, y: number, isHighlight = false) => {
+    ctx.fillStyle = isHighlight ? '#FBBF24' : '#94A3B8';
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(label, 50, y);
     
-    // Tratar quebra de linha se o valor for muito longo
-    if (value.length > 40) {
-      ctx.fillText(value.substring(0, 40), 40, y + 20);
-      ctx.fillText(value.substring(40, 80), 40, y + 35);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = isHighlight ? 'black 22px Courier New' : 'bold 16px Courier New';
+    
+    // Suporte a multiline para detalhes longos
+    if (value.length > 35) {
+      const words = value.split(' ');
+      let line = '';
+      let lineY = y + 25;
+      for (const word of words) {
+        if ((line + word).length > 35) {
+          ctx.fillText(line, 50, lineY);
+          line = word + ' ';
+          lineY += 20;
+        } else {
+          line += word + ' ';
+        }
+      }
+      ctx.fillText(line, 50, lineY);
+      return lineY + 10;
     } else {
-      ctx.fillText(value, 40, y + 20);
+      ctx.fillText(value, 50, y + 25);
+      return y + 45;
     }
   };
 
-  drawField('POULE:', ticket.poule, 110);
-  drawField('TERMINAL:', ticket.terminal, 160);
-  drawField('JOGO:', ticket.jogo, 210);
-  drawField('DETALHES:', ticket.aposta, 260);
-  drawField('VALOR TOTAL:', `R$ ${ticket.valor.toFixed(2).replace('.', ',')}`, 340);
-  drawField('DATA:', ticket.data, 390);
+  let currentY = 160;
+  currentY = drawField('POULE / IDENTIFICADOR', ticket.poule, currentY);
+  currentY = drawField('ESTADO / BANCA / HORÁRIO', ticket.jogo, currentY + 15, true);
+  currentY = drawField('DETALHES DA APOSTA', ticket.aposta, currentY + 15);
+  currentY = drawField('VALOR APOSTADO', `R$ ${ticket.valor.toFixed(2).replace('.', ',')}`, currentY + 15);
+  currentY = drawField('DATA E HORA DO REGISTRO', ticket.data, currentY + 15);
+  currentY = drawField('TERMINAL DE ORIGEM', ticket.terminal, currentY + 15);
 
-  // Status Badge
-  ctx.fillStyle = '#F1F5F9';
-  if (ctx.roundRect) {
-    ctx.beginPath();
-    ctx.roundRect(width - 150, 100, 110, 30, 5);
-    ctx.fill();
-  } else {
-    ctx.fillRect(width - 150, 100, 110, 30);
-  }
+  // Rodapé de Segurança
+  ctx.fillStyle = 'rgba(255,215,0,0.1)';
+  ctx.fillRect(40, height - 100, width - 80, 60);
   
-  ctx.fillStyle = '#0F172A';
   ctx.textAlign = 'center';
+  ctx.fillStyle = '#FBBF24';
   ctx.font = 'bold 12px Arial';
-  ctx.fillText(ticket.status, width - 95, 120);
-
-  // Gerar QR Code
-  const validationUrl = `${window.location.origin}/poule/${ticket.poule}`;
-  const qrCodeDataUrl = await QRCode.toDataURL(validationUrl, {
-    margin: 1,
-    width: 140,
-    color: { dark: '#1E293B', light: '#FFFFFF' }
-  });
-
-  const qrImage = new Image();
-  qrImage.src = qrCodeDataUrl;
-  await new Promise((resolve) => { qrImage.onload = resolve; });
-  ctx.drawImage(qrImage, (width / 2) - 70, 480, 140, 140);
-
-  // Rodapé
-  ctx.fillStyle = '#94A3B8';
+  ctx.fillText(ticket.status === 'PENDENTE' ? 'AGUARDANDO SORTEIO' : ticket.status, width / 2, height - 75);
+  
+  ctx.fillStyle = '#64748B';
   ctx.font = 'italic 10px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('Bilhete válido somente mediante consulta', width / 2, 680);
-  ctx.fillText('da poule no sistema oficial LotoHub.', width / 2, 695);
+  ctx.fillText('Acesse lotohub.com para consultar a validade desta poule.', width / 2, height - 55);
 
   return canvas.toDataURL('image/png');
 }

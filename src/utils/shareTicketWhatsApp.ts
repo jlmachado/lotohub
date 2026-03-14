@@ -1,6 +1,7 @@
+
 /**
- * @fileOverview Funções para compartilhamento de bilhetes no WhatsApp.
- * Versão V2: Inclui detalhes regionais da aposta.
+ * @fileOverview Funções para compartilhamento de bilhetes no WhatsApp sem dependência de QR Code.
+ * Versão V3: Texto limpo, organizado e focado nos dados regionais.
  */
 
 export interface ShareTicketData {
@@ -12,20 +13,22 @@ export interface ShareTicketData {
 }
 
 export function shareTicketWhatsApp(ticket: ShareTicketData) {
-  const validationUrl = `${window.location.origin}/poule/${ticket.poule}`;
-  
+  // Removido link de QR/Validação para focar em dados textuais puros e seguros
   const message = `🎟️ *LOTOHUB PREMIUM*
-
+----------------------------
 *POULE:* \`${ticket.poule}\`
 *TERMINAL:* ${ticket.terminal || 'N/A'}
-*JOGO:* ${ticket.jogo}
-*DETALHES:* ${ticket.aposta}
+----------------------------
+*DADOS DA EXTRAÇÃO*
+*LOCAL/HORÁRIO:* ${ticket.jogo}
+----------------------------
+*PALPITES:*
+${ticket.aposta}
+----------------------------
 *VALOR TOTAL:* R$ ${ticket.valor.toFixed(2).replace('.', ',')}
 
-✅ *Consultar status oficial:*
-${validationUrl}
-
-_Bilhete gerado pelo sistema LotoHub._`;
+✅ _Consulte este bilhete informando a poule no painel oficial LotoHub._
+_Boa sorte!_`;
 
   const encodedMessage = encodeURIComponent(message);
   const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
