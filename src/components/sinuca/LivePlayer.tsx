@@ -1,6 +1,7 @@
+
 'use client';
 import { Card } from "@/components/ui/card";
-import { Eye, Volume2, VolumeX, Maximize, Timer } from "lucide-react";
+import { Eye, Volume2, VolumeX, Maximize, Timer, AlertCircle } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
 import { useAppContext } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
@@ -25,19 +26,17 @@ const ElapsedTime = ({ startedAt }: { startedAt: string | undefined }) => {
             return;
         }
 
-        const start = new Date(startedAt).getTime();
-        setElapsed(Math.max(0, Math.floor((Date.now() - start) / (1000 * 60))));
-
-        const interval = setInterval(() => {
-            const now = Date.now();
+        const tick = () => {
             const start = new Date(startedAt).getTime();
-            setElapsed(Math.max(0, Math.floor((now - start) / (1000 * 60))));
-        }, 1000);
+            setElapsed(Math.max(0, Math.floor((Date.now() - start) / 60000)));
+        };
 
+        tick();
+        const interval = setInterval(tick, 30000);
         return () => clearInterval(interval);
     }, [startedAt]);
 
-    if (elapsed === null) return null;
+    if (elapsed === null || elapsed === 0) return null;
 
     return (
         <div className="viewer-count border-primary/20">
@@ -59,17 +58,12 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
         snookerPresence[channelId]?.viewers.length || channel?.viewerCount || 0,
     [snookerPresence, channelId, channel?.viewerCount]);
 
-    const embedId = useMemo(() => 
-        channel?.youtubeUrl ? getYoutubeEmbedId(channel.youtubeUrl) : null, 
-    [channel?.youtubeUrl]);
+    const embedId = useMemo(() => {
+        if (channel?.embedId) return channel.embedId;
+        return channel?.youtubeUrl ? getYoutubeEmbedId(channel.youtubeUrl) : null;
+    }, [channel]);
 
-    if (!channel) {
-        return (
-             <Card className="casino-card relative overflow-hidden aspect-video flex items-center justify-center border-dashed">
-                <p className="text-white/40 font-bold uppercase tracking-widest text-xs italic">Selecione um jogo para assistir</p>
-             </Card>
-        )
-    }
+    if (!channel) return null;
 
     const showBadge = snookerLiveConfig?.showLiveBadge && channel.status === 'live';
 
@@ -91,13 +85,13 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
             </div>
 
             <div className="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <button onClick={() => setIsMuted(!isMuted)} className="player-control-btn h-9 w-9 bg-black/60">
+                <button onClick={() => setIsMuted(!isMuted)} className="player-control-btn h-9 w-9 bg-black/60 border border-white/10 rounded-xl hover:bg-black/80">
                     {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                 </button>
                  <button onClick={() => {
                     const iframe = document.getElementById('youtube-player') as HTMLIFrameElement;
                     if (iframe?.requestFullscreen) iframe.requestFullscreen();
-                 }} className="player-control-btn h-9 w-9 bg-black/60">
+                 }} className="player-control-btn h-9 w-9 bg-black/60 border border-white/10 rounded-xl hover:bg-black/80">
                     <Maximize size={18} />
                 </button>
             </div>
@@ -114,12 +108,34 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
                         allowFullScreen>
                     </iframe>
                 ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                        <div className="w-12 h-12 rounded-full border-2 border-white/10 animate-spin border-t-primary" />
-                        <p className="text-white/40 font-bold uppercase text-[10px] tracking-widest">Conectando ao Stream...</p>
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-8 text-center bg-slate-950">
+                        <div className="bg-red-500/10 p-4 rounded-full border border-red-500/20">
+                            <AlertCircle className="h-10 w-10 text-red-500" />
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-white font-black uppercase italic tracking-tighter">Sinal não detectado</p>
+                            <p className="text-white/40 text-[10px] font-bold uppercase max-w-[200px] leading-relaxed">
+                                O player não conseguiu resolver o ID do vídeo. Verifique a URL configurada.
+                            </p>
+                        </div>
                     </div>
                 )}
             </div>
+
+            {/* CHANNEL BRANDING FOOTER */}
+            {channel.source === 'youtube' && (
+                <div className="bg-black/40 border-t border-white/5 py-2 px-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="w-1 h-1 rounded-full bg-red-500" />
+                        <span className="text-[8px] font-black uppercase tracking-[3px] text-white/30 italic">TV Snooker Brasil Network</span>
+                    </div>
+                    {channel.autoUpdatedAt && (
+                        <span className="text-[7px] font-bold text-white/20 uppercase tracking-widest">
+                            Último Sync: {new Date(channel.autoUpdatedAt).toLocaleTimeString('pt-BR')}
+                        </span>
+                    )}
+                </div>
+            )}
         </Card>
     );
 }

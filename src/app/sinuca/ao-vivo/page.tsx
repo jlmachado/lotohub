@@ -1,3 +1,4 @@
+
 'use client';
 import { CasinoLayout } from "@/components/sinuca/CasinoLayout";
 import { LiveChat } from "@/components/sinuca/LiveChat";
@@ -13,44 +14,43 @@ import { BettingPanel } from "@/components/sinuca/BettingPanel";
 import { ActivityTicker } from "@/components/sinuca/ActivityTicker";
 import { MySnookerBets } from "@/components/sinuca/MySnookerBets";
 
-
 export default function SinucaAoVivoPage() {
-    const { snookerLiveConfig, snookerChannels, joinChannel, leaveChannel, celebrationTrigger, clearCelebration } = useAppContext();
+    const { snookerLiveConfig, snookerChannels, joinChannel, leaveChannel, celebrationTrigger, clearCelebration, user } = useAppContext();
     const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
     
-    const userId = useMemo(() => "user-01", []);
+    // Auto-select best channel
+    useEffect(() => {
+        if (activeChannelId || !snookerChannels || snookerChannels.length === 0) return;
+
+        // Priorities: 1. Live, 2. Imminent, 3. Scheduled, 4. Default Config
+        const enabled = snookerChannels.filter(c => c.enabled);
+        const live = enabled.find(c => c.status === 'live');
+        const imminent = enabled.find(c => c.status === 'imminent');
+        const scheduled = enabled.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()).find(c => c.status === 'scheduled');
+
+        if (live) setActiveChannelId(live.id);
+        else if (imminent) setActiveChannelId(imminent.id);
+        else if (scheduled) setActiveChannelId(scheduled.id);
+        else if (snookerLiveConfig?.defaultChannelId) setActiveChannelId(snookerLiveConfig.defaultChannelId);
+        else if (enabled[0]) setActiveChannelId(enabled[0].id);
+    }, [activeChannelId, snookerChannels, snookerLiveConfig]);
 
     useEffect(() => {
-        if (snookerLiveConfig?.defaultChannelId && !activeChannelId) {
-            setActiveChannelId(snookerLiveConfig.defaultChannelId);
-        } else if (!activeChannelId && snookerChannels && snookerChannels.length > 0) {
-            // Fallback to the first enabled channel
-            const firstChannel = snookerChannels.find(c => c.enabled);
-            if (firstChannel) {
-                setActiveChannelId(firstChannel.id);
-            } else if (snookerChannels[0]) {
-                setActiveChannelId(snookerChannels[0].id);
-            }
-        }
-    }, [snookerLiveConfig, activeChannelId, snookerChannels]);
+        if (!activeChannelId || !user) return;
 
-    useEffect(() => {
-        if (!activeChannelId) return;
-
-        joinChannel(activeChannelId, userId);
+        joinChannel(activeChannelId, user.id);
 
         return () => {
-            leaveChannel(activeChannelId, userId);
+            leaveChannel(activeChannelId, user.id);
         };
-    }, [activeChannelId, joinChannel, leaveChannel, userId]);
+    }, [activeChannelId, joinChannel, leaveChannel, user]);
 
-
-    if (!activeChannelId) {
+    if (!activeChannelId && (!snookerChannels || snookerChannels.length === 0)) {
         return (
             <CasinoLayout>
-                <div className="flex flex-col items-center justify-center h-96 gap-4">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                    <p className="text-white/70">Carregando canais de sinuca...</p>
+                <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+                    <div className="w-16 h-16 rounded-full border-2 border-white/5 border-t-primary animate-spin" />
+                    <p className="text-white/40 font-bold uppercase tracking-widest text-xs italic">Aguardando transmissões...</p>
                 </div>
             </CasinoLayout>
         );
@@ -61,25 +61,25 @@ export default function SinucaAoVivoPage() {
              <ConfettiCannon fire={celebrationTrigger} onComplete={clearCelebration} />
             <div className="mb-6">
                 <ChannelSelector
-                    activeChannelId={activeChannelId}
+                    activeChannelId={activeChannelId || ''}
                     onChannelChange={setActiveChannelId}
                 />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
                 {/* Main Content: Player and Widgets */}
                 <div className="lg:col-span-2 space-y-6">
-                    <LivePlayer channelId={activeChannelId} />
-                    <ActivityTicker channelId={activeChannelId} />
-                    <BetTicker channelId={activeChannelId} />
-                    <BettingPanel channelId={activeChannelId} />
-                    <MySnookerBets channelId={activeChannelId} />
+                    {activeChannelId && <LivePlayer channelId={activeChannelId} />}
+                    {activeChannelId && <ActivityTicker channelId={activeChannelId} />}
+                    {activeChannelId && <BetTicker channelId={activeChannelId} />}
+                    {activeChannelId && <BettingPanel channelId={activeChannelId} />}
+                    {activeChannelId && <MySnookerBets channelId={activeChannelId} />}
                 </div>
 
                 {/* Sidebar Content: Chat and Scoreboard */}
                 <div className="lg:col-span-1 space-y-6">
-                    <ScoreboardCard channelId={activeChannelId} />
-                    <LiveChat channelId={activeChannelId}/>
-                    <ReactionsPanel channelId={activeChannelId} />
+                    {activeChannelId && <ScoreboardCard channelId={activeChannelId} />}
+                    {activeChannelId && <LiveChat channelId={activeChannelId}/>}
+                    {activeChannelId && <ReactionsPanel channelId={activeChannelId} />}
                 </div>
             </div>
         </CasinoLayout>
