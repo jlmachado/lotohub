@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, PlusCircle, Edit, Trash2, Zap } from 'lucide-react';
+import { ChevronLeft, PlusCircle, Edit, Trash2, Zap, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -73,7 +73,7 @@ const getYoutubeEmbedId = (url: string): string | null => {
 };
 
 export default function AdminSinucaCanaisPage() {
-    const { snookerChannels, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel } = useAppContext();
+    const { snookerChannels, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, syncSnookerWithYoutube } = useAppContext();
     const { toast } = useToast();
     
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -81,6 +81,7 @@ export default function AdminSinucaCanaisPage() {
     const [currentChannel, setCurrentChannel] = useState<FormState>(initialFormState);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
     
     const sortedChannels = useMemo(() => 
         [...snookerChannels].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()),
@@ -146,6 +147,12 @@ export default function AdminSinucaCanaisPage() {
         setIsDialogOpen(false);
         setEditingId(null);
     };
+
+    const handleSyncYoutube = async () => {
+        setIsSyncing(true);
+        await syncSnookerWithYoutube();
+        setIsSyncing(false);
+    };
     
     const getStatusVariant = (status: SnookerChannel['status']) => {
         switch(status) {
@@ -159,7 +166,7 @@ export default function AdminSinucaCanaisPage() {
 
     return (
         <main className="p-4 md:p-8 space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                     <Link href="/admin/sinuca"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
                     <div>
@@ -167,7 +174,18 @@ export default function AdminSinucaCanaisPage() {
                         <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Configuração de Transmissões e Odds</p>
                     </div>
                 </div>
-                <Button onClick={handleAddNew} className="lux-shine font-black uppercase rounded-xl"><PlusCircle className="mr-2 h-4 w-4" /> Agendar Jogo</Button>
+                <div className="flex gap-2">
+                    <Button 
+                        variant="outline"
+                        disabled={isSyncing}
+                        onClick={handleSyncYoutube}
+                        className="h-11 rounded-xl font-bold border-white/10"
+                    >
+                        {isSyncing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                        Sincronizar YouTube
+                    </Button>
+                    <Button onClick={handleAddNew} className="lux-shine font-black uppercase rounded-xl h-11 px-6"><PlusCircle className="mr-2 h-4 w-4" /> Agendar Jogo</Button>
+                </div>
             </div>
 
             <Card className="border-white/5 bg-card/50 overflow-hidden shadow-2xl">

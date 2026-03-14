@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Versão V6: Liquidação Granular por Item para Bilhetes Mistos.
+ * Versão V7: Adicionado suporte a sincronização automática de Sinuca com YouTube.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -27,6 +27,7 @@ import { FootballLiveEngine } from '@/services/football-live-engine';
 import { checkSingleItemWinner, isJDBItemEligible } from '@/lib/draw-engine';
 import { JDBNormalizedResult, SyncLogEntry } from '@/types/result-types';
 import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
+import { SnookerYoutubeSync } from '@/services/snooker-youtube-sync';
 
 // --- INTERFACES GERAIS ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -362,6 +363,7 @@ interface AppContextType {
   deleteSnookerChannel: (id: string) => void;
   settleSnookerRound: (channelId: string, winner: string) => void;
   clearCelebration: () => void;
+  syncSnookerWithYoutube: () => Promise<void>;
 
   // Admin Methods
   addBanner: (b: Banner) => void;
@@ -844,6 +846,60 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const clearCelebration = useCallback(() => setCelebrationTrigger(false), []);
 
+  const syncSnookerWithYoutube = useCallback(async () => {
+    try {
+      const response = await fetch('/api/snooker/sync');
+      if (!response.ok) throw new Error('Falha ao conectar com o motor de busca.');
+      const result = await response.json();
+      
+      if (result.success && Array.isArray(result.data)) {
+        const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+        let added = 0;
+        let updated = 0;
+
+        const updatedChannels = [...currentChannels];
+
+        result.data.forEach((yt: any) => {
+          const embedId = yt.id.videoId || yt.id;
+          const existingIdx = updatedChannels.findIndex(c => c.embedId === embedId);
+          const mapped = SnookerYoutubeSync.mapToSnookerChannel(yt);
+
+          if (existingIdx >= 0) {
+            // Atualiza status e placar se for uma live ativa
+            updatedChannels[existingIdx] = { 
+              ...updatedChannels[existingIdx], 
+              status: mapped.status!,
+              title: mapped.title || updatedChannels[existingIdx].title
+            };
+            updated++;
+          } else {
+            // Cria novo canal
+            const newChannel: SnookerChannel = {
+              ...mapped,
+              id: `chan-yt-${embedId}`,
+              scoreA: 0,
+              scoreB: 0,
+              bancaId: user?.bancaId || 'default',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            } as SnookerChannel;
+            updatedChannels.unshift(newChannel);
+            added++;
+          }
+        });
+
+        setStorageItem('app:snooker_channels:v1', updatedChannels);
+        notify();
+        toast({ 
+          title: "Sincronização YouTube", 
+          description: `Sucesso: ${added} novos jogos encontrados e ${updated} atualizados.` 
+        });
+      }
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: "Erro na Sincronização", description: e.message });
+    }
+  }, [user, notify, toast]);
+
   const syncFootballAll = useCallback(async (force = false) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
     try {
@@ -923,7 +979,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet,
     sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig,
     updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel,
-    settleSnookerRound, clearCelebration,
+    settleSnookerRound, clearCelebration, syncSnookerWithYoutube,
     refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, 
     updateLeagueConfig, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId || i.id !== b.id), b]),
     removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]),
@@ -936,7 +992,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     snookerScoreboards, celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, 
     sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, 
     updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, 
-    settleSnookerRound, clearCelebration, loadLocalData, logout, handleFinalizarAposta, processarResultados, 
+    settleSnookerRound, clearCelebration, syncSnookerWithYoutube, loadLocalData, logout, handleFinalizarAposta, processarResultados, 
     syncFootballAll, updateLeagueConfig, placeFootballBet, addBanner, updateBanner, deleteBanner, 
     addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall,
     casinoSettings, updateCasinoSettings, publishJDBResult, deleteJDBResult,
