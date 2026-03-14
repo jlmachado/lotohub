@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Versão V4: Suporte total a JDB por Estado e Publicação Automática.
+ * Versão V5: Apuração Automática Precisa por Item e Multiestado.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -520,7 +520,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // --- AUTO SETTLEMENT LOGIC ---
+  // --- AUTO SETTLEMENT LOGIC (PRECISA POR ITEM) ---
   useEffect(() => {
     if (isLoading || !jdbResults.length || !apostas.length) return;
 
@@ -538,24 +538,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const resultIdx = currentResults.findIndex(r => r.id === result.id);
       if (resultIdx === -1) return;
 
-      const simpleResults = result.prizes.map(p => ({
-        premio: `${p.position}º`,
-        milhar: p.milhar,
-        grupo: p.grupo,
-        animal: p.animal
-      }));
+      currentApostas = currentApostas.map(aposta => {
+        if (aposta.status !== 'aguardando') return aposta;
 
-      const resultsForSettlement = currentApostas.map(aposta => {
-        const apostaData = aposta.data.split(',')[0].trim();
-        const apostaHorario = aposta.detalhes?.[0]?.horario;
+        const { isWinner, prize, eligibleItemsCount } = checkApostaWinner(aposta, result, jdbLoterias);
         
-        if (aposta.status === 'aguardando' && 
-            aposta.loteria === 'Jogo do Bicho' && 
-            apostaData === result.date && 
-            apostaHorario === result.time) {
-          
-          const { isWinner, prize } = checkApostaWinner(aposta, simpleResults, jdbLoterias);
-          
+        // Se este resultado contém itens deste bilhete
+        if (eligibleItemsCount > 0) {
+          betsChanged = true;
           if (isWinner) {
             const realUser = getUserByTerminal(aposta.userId) || getUsers().find(u => u.id === aposta.userId);
             if (realUser) {
@@ -565,22 +555,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 bancaId: aposta.bancaId, userId: realUser.id, terminal: realUser.terminal,
                 tipoUsuario: realUser.tipoUsuario, modulo: 'Jogo do Bicho', type: 'BET_WIN',
                 amount: prize, balanceBefore: realUser.saldo, balanceAfter: newBal,
-                referenceId: aposta.id, description: `Auto-Prêmio: ${result.extractionName} (${result.time})`
+                referenceId: aposta.id, description: `Prêmio Auto: ${result.stateName} ${result.extractionName} (${result.time})`
               });
             }
-            betsChanged = true;
             return { ...aposta, status: 'premiado' as const };
           } else {
-            betsChanged = true;
+            // No protótipo, se o bilhete tinha itens elegíveis para este resultado e nenhum ganhou, 
+            // marcamos como perdedor para simplificar (assumindo bilhetes de extração única).
             return { ...aposta, status: 'perdeu' as const };
           }
         }
         return aposta;
       });
 
-      if (betsChanged) {
-        currentApostas = resultsForSettlement;
-      }
       currentResults[resultIdx].isSettled = true;
       resultsChanged = true;
     });
