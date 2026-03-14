@@ -1,6 +1,5 @@
 /**
  * @fileOverview Orquestrador de sincronização entre YouTube e Canais do Sistema.
- * Implementa regras de deduplicação e proteção de dados manuais.
  */
 
 import { SnookerYoutubeService, YoutubeApiResponse } from './snooker-youtube-service';
@@ -15,9 +14,6 @@ export interface SyncSummary {
 }
 
 export class SnookerSyncService {
-  /**
-   * Sincroniza a lista de canais baseada no YouTube.
-   */
   static async sync(currentChannels: SnookerChannel[], bancaId: string): Promise<{ 
     updatedChannels: SnookerChannel[], 
     summary: SyncSummary 
@@ -32,16 +28,14 @@ export class SnookerSyncService {
 
       youtubeData.forEach((yt: YoutubeApiResponse) => {
         const videoId = yt.id.videoId;
-        const parsed = SnookerParserService.parseTitle(yt.snippet.title);
+        const parsed = SnookerParserService.parse(yt.snippet.title, yt.snippet.description);
         
-        // Critério de deduplicação principal: videoId ou URL idêntica
         const existingIdx = newChannelsList.findIndex(c => 
           c.sourceVideoId === videoId || 
           c.embedId === videoId ||
           c.youtubeUrl.includes(videoId)
         );
 
-        // Mapeamento de Status YouTube -> Sistema
         let status: SnookerChannel['status'] = 'scheduled';
         if (yt.snippet.liveBroadcastContent === 'live') {
           status = 'live';
@@ -49,47 +43,41 @@ export class SnookerSyncService {
           status = 'finished';
         }
 
-        // Regra de "Imminent": Se faltar menos de 60 min para o início agendado
         const scheduledTime = yt.snippet.scheduledStartTime ? new Date(yt.snippet.scheduledStartTime).getTime() : 0;
         if (status === 'scheduled' && scheduledTime > 0) {
           const diffMin = (scheduledTime - Date.now()) / 60000;
-          if (diffMin > 0 && diffMin <= 60) {
-            status = 'imminent';
-          }
+          if (diffMin > 0 && diffMin <= 60) status = 'imminent';
         }
 
         if (existingIdx >= 0) {
           const existing = newChannelsList[existingIdx];
           
-          // Respeita o override manual
           if (existing.isManualOverride) {
-            // Apenas atualiza o status se for uma mudança para LIVE ou FINISHED
             if (status !== existing.status) {
-              newChannelsList[existingIdx] = {
-                ...existing,
-                status,
-                updatedAt: new Date().toISOString()
-              };
+              newChannelsList[existingIdx] = { ...existing, status, updatedAt: new Date().toISOString() };
               updated++;
             }
             return;
           }
 
-          // Atualização automática de metadados
           newChannelsList[existingIdx] = {
             ...existing,
             status,
             title: parsed.eventTitle,
             tournamentName: parsed.tournamentName,
             location: parsed.location,
-            sourceType: yt.snippet.liveBroadcastContent === 'none' ? 'video' : 'live',
+            modality: parsed.modality,
+            phase: parsed.phase,
+            prize: parsed.prize,
+            prizeLabel: parsed.prizeLabel,
+            metadataConfidence: parsed.confidence,
+            parserNotes: parsed.notes,
             sourceStatus: 'synced',
             updatedAt: new Date().toISOString(),
             autoUpdatedAt: new Date().toISOString()
           };
           updated++;
         } else {
-          // Criação de novo canal automático
           const newChannel: SnookerChannel = {
             id: `chan-auto-${videoId}`,
             title: parsed.eventTitle,
@@ -117,7 +105,12 @@ export class SnookerSyncService {
             thumbnailUrl: yt.snippet.thumbnails.medium.url,
             tournamentName: parsed.tournamentName,
             location: parsed.location,
+            modality: parsed.modality,
+            phase: parsed.phase,
+            prize: parsed.prize,
+            prizeLabel: parsed.prizeLabel,
             metadataConfidence: parsed.confidence,
+            parserNotes: parsed.notes,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
