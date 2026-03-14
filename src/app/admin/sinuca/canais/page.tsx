@@ -140,7 +140,6 @@ export default function AdminSinucaCanaisPage() {
             updateSnookerChannel({ ...channelData, id: editingId } as SnookerChannel);
             toast({ title: 'Canal atualizado!' });
         } else {
-            // New channels are ALWAYS enabled by default for betting
             addSnookerChannel({ ...channelData, enabled: true });
             toast({ title: 'Canal criado e habilitado para apostas!' });
         }

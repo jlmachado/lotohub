@@ -521,106 +521,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // --- AUTO SETTLEMENT LOGIC (GRANULAR POR ITEM) ---
-  useEffect(() => {
-    if (isLoading || !jdbResults.length || !apostas.length) return;
-
-    const unSettledPublic = jdbResults.filter(r => r.status === 'PUBLICADO' && !r.isSettled);
-    if (unSettledPublic.length === 0) return;
-
-    console.log(`[Auto-Settlement] Processando ${unSettledPublic.length} resultados publicados para bilhetes mistos...`);
-    
-    let resultsChanged = false;
-    let betsChanged = false;
-    const currentResults = [...jdbResults];
-    let currentApostas = [...apostas];
-
-    unSettledPublic.forEach(result => {
-      const resultIdx = currentResults.findIndex(r => r.id === result.id);
-      if (resultIdx === -1) return;
-
-      currentApostas = currentApostas.map(aposta => {
-        // Aposta já resolvida inteiramente? Ignora.
-        if (aposta.status !== 'aguardando' && aposta.status !== 'premiado') return aposta;
-        if (aposta.loteria !== 'Jogo do Bicho' && aposta.loteria !== 'Loteria Uruguai') return aposta;
-
-        let prizeToCreditForThisResult = 0;
-        let anyItemProcessed = false;
-
-        const updatedDetails = (aposta.detalhes || []).map((item: any) => {
-          // Inicializa status para itens legados se necessário
-          if (!item.settlementStatus) item.settlementStatus = 'aguardando';
-
-          // Ignora se já resolvido por outro sorteio
-          if (item.settlementStatus !== 'aguardando') return item;
-
-          // Verifica se este item pertence EXATAMENTE a este sorteio (Estado, Banca, Hora, Data)
-          if (!isJDBItemEligible(item, result, aposta.createdAt)) return item;
-
-          // Processar liquidação do item
-          anyItemProcessed = true;
-          const { isWinner, prize } = checkSingleItemWinner(item, result, jdbLoterias);
-          
-          if (isWinner) {
-            prizeToCreditForThisResult += prize;
-          }
-
-          console.log(`[JDB Settlement] Bilhete ${aposta.id.substring(0,8)} item liquidado: ${isWinner ? 'GANHOU' : 'PERDEU'} - Valor R$ ${prize}`);
-
-          return {
-            ...item,
-            settlementStatus: isWinner ? 'premiado' : 'perdeu',
-            settledAt: new Date().toISOString(),
-            settlementResultId: result.id,
-            settlementAmount: prize,
-            isWinner
-          };
-        });
-
-        if (!anyItemProcessed) return aposta;
-
-        // Houve mudança real no bilhete
-        betsChanged = true;
-
-        // Crédito de Saldo apenas para os itens vencedores DESTE sorteio
-        if (prizeToCreditForThisResult > 0) {
-          const realUser = getUserByTerminal(aposta.userId) || getUsers().find(u => u.id === aposta.userId);
-          if (realUser) {
-            const newBal = realUser.saldo + prizeToCreditForThisResult;
-            upsertUser({ terminal: realUser.terminal, saldo: newBal });
-            LedgerService.addEntry({
-              bancaId: aposta.bancaId, userId: realUser.id, terminal: realUser.terminal,
-              tipoUsuario: realUser.tipoUsuario, modulo: aposta.loteria, type: 'BET_WIN',
-              amount: prizeToCreditForThisResult, balanceBefore: realUser.saldo, balanceAfter: newBal,
-              referenceId: aposta.id, description: `Prêmio Auto: ${result.stateName} ${result.extractionName} (${result.time})`
-            });
-          }
-        }
-
-        // Recalcular status global do bilhete baseado no conjunto de itens
-        const allItemsLiquidated = updatedDetails.every((it: any) => it.settlementStatus && it.settlementStatus !== 'aguardando');
-        const anyItemWinner = updatedDetails.some((it: any) => it.isWinner);
-
-        let finalStatus: Aposta['status'] = aposta.status;
-        if (anyItemWinner) {
-          finalStatus = 'premiado'; // Já garante visualização de vitória
-        } else if (allItemsLiquidated) {
-          finalStatus = 'perdeu'; // Só marca como derrota total se todos acabarem e nada ganhar
-        }
-
-        return { ...aposta, status: finalStatus, detalhes: updatedDetails };
-      });
-
-      // Marca resultado como liquidado no sistema
-      currentResults[resultIdx].isSettled = true;
-      resultsChanged = true;
-    });
-
-    if (resultsChanged) setStorageItem('app:jdb_results:v1', currentResults);
-    if (betsChanged) setStorageItem('app:apostas:v1', currentApostas);
-    if (resultsChanged || betsChanged) notify();
-  }, [jdbResults, apostas, isLoading, jdbLoterias, notify]);
-
   useEffect(() => {
     setMounted(true);
     loadLocalData();
@@ -865,7 +765,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           const mapped = SnookerYoutubeSync.mapToSnookerChannel(yt);
 
           if (existingIdx >= 0) {
-            // Atualiza status e placar se for uma live ativa
+            // Update only specific fields
             updatedChannels[existingIdx] = { 
               ...updatedChannels[existingIdx], 
               status: mapped.status!,
@@ -873,7 +773,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             };
             updated++;
           } else {
-            // Cria novo canal
+            // Create new channel
             const newChannel: SnookerChannel = {
               ...mapped,
               id: `chan-yt-${embedId}`,
@@ -889,6 +789,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         });
 
         setStorageItem('app:snooker_channels:v1', updatedChannels);
+        loadLocalData();
         notify();
         toast({ 
           title: "Sincronização YouTube", 
@@ -898,7 +799,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } catch (e: any) {
       toast({ variant: 'destructive', title: "Erro na Sincronização", description: e.message });
     }
-  }, [user, notify, toast]);
+  }, [user, notify, toast, loadLocalData]);
 
   const syncFootballAll = useCallback(async (force = false) => {
     setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));

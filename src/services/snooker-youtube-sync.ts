@@ -24,6 +24,7 @@ export class SnookerYoutubeSync {
     const cleanTitle = title.replace(/AO VIVO|LIVE|SN0OKER|SINUCA/gi, '').trim();
     
     // Regex para capturar Jogador A vs/x Jogador B
+    // Ex: "BAIANINHO DE MAUÁ X MAYCON DE TEIXEIRA - DESAFIO DE GIGANTES"
     const vsRegex = /(.+?)\s+(?:X|VS|VERSUS)\s+(.+?)(?:\s+[-|]\s+(.*))?$/i;
     const match = cleanTitle.match(vsRegex);
 
@@ -35,6 +36,7 @@ export class SnookerYoutubeSync {
       };
     }
 
+    // Fallback se o título não seguir o padrão X
     return {
       playerA: 'Jogador A',
       playerB: 'Jogador B',
@@ -64,7 +66,7 @@ export class SnookerYoutubeSync {
       playerB: { name: playerB, level: 5 },
       scoreA: 0,
       scoreB: 0,
-      odds: { A: 1.95, B: 1.95, D: 3.20 }, // Odds padrão equilibradas
+      odds: { A: 1.95, B: 1.95, D: 3.20 },
       houseMargin: 8,
       bestOf: 9,
       priority: 10,
