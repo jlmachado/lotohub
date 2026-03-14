@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 
 /**
  * @fileOverview Scraper Multiestado para PortalBrasil.net
- * Versão V4: Suporte a premiações variáveis (1-10) e segmentação inteligente de seções.
+ * Versão V5: Parser Global via Regex para suporte total a São Paulo e premiações variáveis.
  */
 
 export const dynamic = 'force-dynamic';
@@ -89,21 +89,23 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
       let contentText = "";
       let nextElem = $(el).next();
       while (nextElem.length > 0 && !['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(nextElem.get(0).tagName)) {
-        contentText += nextElem.text() + "\n";
+        // Garantir espaços entre parágrafos ou spans para evitar colagem de texto
+        contentText += nextElem.text() + " \n ";
         nextElem = nextElem.next();
       }
 
-      if (!contentText.trim() || contentText.includes("clique aqui para atualizar")) return;
+      const textToParse = contentText.trim();
+      if (!textToParse || textToParse.includes("clique aqui para atualizar")) return;
 
       // Suporte para estados com múltiplas bancas (ex: Bahia)
-      const bankSubHeaders = contentText.match(/Resultado do jogo do bicho ([A-ZÇÃÕÉÊÍÓÚ\s]{3,})/gi);
+      const bankSubHeaders = textToParse.match(/Resultado do jogo do bicho ([A-ZÇÃÕÉÊÍÓÚ\s]{3,})/gi);
       
       if (bankSubHeaders && bankSubHeaders.length > 1) {
         bankSubHeaders.forEach((subHeader, idx) => {
           const bankName = subHeader.replace(/Resultado do jogo do bicho/i, '').trim();
-          const startIdx = contentText.indexOf(subHeader);
-          const endIdx = idx < bankSubHeaders.length - 1 ? contentText.indexOf(bankSubHeaders[idx+1]) : contentText.length;
-          const subBlockText = contentText.substring(startIdx, endIdx);
+          const startIdx = textToParse.indexOf(subHeader);
+          const endIdx = idx < bankSubHeaders.length - 1 ? textToParse.indexOf(bankSubHeaders[idx+1]) : textToParse.length;
+          const subBlockText = textToParse.substring(startIdx, endIdx);
           
           const prizes = parsePrizesFromText(subBlockText);
           if (prizes.length >= 5) {
@@ -111,9 +113,10 @@ async function scrapeState(state: typeof PORTAL_BRASIL_STATES[0]) {
           }
         });
       } else {
-        const prizes = parsePrizesFromText(contentText);
+        const prizes = parsePrizesFromText(textToParse);
         if (prizes.length >= 5) {
           results.push(buildResultObject(state, baseExtractionName, time, pageDate, prizes));
+          console.log(`[JDB Scraper][${state.code}] Capturado: ${baseExtractionName} ${time} (${prizes.length} prêmios)`);
         }
       }
     });
@@ -130,9 +133,7 @@ function parsePrizesFromText(text: string) {
   const sectionSplitRegex = /Resultados\s+do\s+1º\s+ao\s+(\d+)[º°]/gi;
   const sections: { count: number, content: string }[] = [];
   let match;
-  let lastPos = 0;
-
-  // Encontra todas as seções
+  
   const matches = Array.from(text.matchAll(sectionSplitRegex));
   
   if (matches.length > 0) {
@@ -147,10 +148,9 @@ function parsePrizesFromText(text: string) {
       });
     }
 
-    // Processa cada seção e escolhe a mais completa que tenha prêmios válidos
     const parsedSections = sections.map(s => ({
       count: s.count,
-      prizes: parseRawLines(s.content)
+      prizes: parseRawGlobal(s.content)
     })).filter(s => s.prizes.length >= 5);
 
     if (parsedSections.length > 0) {
@@ -160,34 +160,45 @@ function parsePrizesFromText(text: string) {
     }
   }
 
-  // Fallback se não encontrar cabeçalhos de seção
-  return parseRawLines(text);
+  return parseRawGlobal(text);
 }
 
-function parseRawLines(text: string) {
-  const lines = text.split('\n');
+/**
+ * Motor de parsing profissional usando Regex Global (matchAll)
+ * Não depende de quebras de linha (\n), permitindo capturar prêmios colados no HTML.
+ */
+function parseRawGlobal(text: string) {
+  // Limpeza de caracteres especiais e espaços excessivos
+  const cleanText = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Regex universal para prêmios: Posicao - Milhar - Grupo - Animal
+  // Suporta variações de ordinal, setas, hífens e travessões
+  const prizeRegex = /(\d+)[º°]?\s*[►»\-:]?\s*(\d{3,4})-(\d{2})\s*[—–-]?\s*([A-ZÇÃÕÉÊÍÓÚ]+(?:\s+[A-ZÇÃÕÉÊÍÓÚ]+)*)/gi;
+  
   const prizes: any[] = [];
   const seen = new Set();
 
-  lines.forEach(line => {
-    // Regex tolerante para linhas de prêmio (1º ao 10º)
-    const prizeMatch = line.match(/(\d+)[º°]?\s*[►»\-:]?\s*(\d{3,4})-(\d{2})\s*[—–-]?\s*([A-ZÇÃÕÉÊÍÓÚ\s]+)/i);
-    if (prizeMatch) {
-      const position = parseInt(prizeMatch[1], 10);
-      if (seen.has(position)) return;
-      seen.add(position);
+  const matches = Array.from(cleanText.matchAll(prizeRegex));
 
-      const milhar = prizeMatch[2].padStart(4, '0');
-      prizes.push({
-        position,
-        milhar,
-        centena: milhar.slice(-3),
-        dezena: milhar.slice(-2),
-        grupo: prizeMatch[3],
-        animal: (prizeMatch[4] || "").trim().toUpperCase()
-      });
-    }
+  matches.forEach(match => {
+    const position = parseInt(match[1], 10);
+    if (seen.has(position)) return;
+    seen.add(position);
+
+    const milhar = match[2].padStart(4, '0');
+    prizes.push({
+      position,
+      milhar,
+      centena: milhar.slice(-3),
+      dezena: milhar.slice(-2),
+      grupo: match[3],
+      animal: (match[4] || "").trim().toUpperCase()
+    });
   });
+
   return prizes.sort((a, b) => a.position - b.position);
 }
 
@@ -206,18 +217,21 @@ function buildResultObject(state: any, extractionName: string, time: string, dat
 
 export async function GET() {
   try {
+    console.log('[JDB Scraper API] Iniciando captura global...');
     const allResultsArrays = await Promise.all(PORTAL_BRASIL_STATES.map(scrapeState));
     const flattenedResults = allResultsArrays.flat();
 
+    console.log(`[JDB Scraper API] Sucesso: ${flattenedResults.length} resultados capturados.`);
+
     return NextResponse.json({
       success: true,
-      source: 'Portal Brasil Professional V4',
+      source: 'Portal Brasil Professional V5',
       count: flattenedResults.length,
       data: flattenedResults
     });
 
   } catch (error: any) {
-    console.error('[JDB Scraper API] Erro:', error.message);
+    console.error('[JDB Scraper API] Erro crítico:', error.message);
     return NextResponse.json({ error: 'Falha na captura automática', details: error.message }, { status: 500 });
   }
 }
