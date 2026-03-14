@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, PlusCircle, Edit, Trash2, Zap, RefreshCw } from 'lucide-react';
+import { ChevronLeft, PlusCircle, Edit, Trash2, Zap, RefreshCw, History, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAppContext, SnookerChannel } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 
 const calculateOddsPreview = (levelA: number, levelB: number, margin: number) => {
     const diff = levelA - levelB;
@@ -63,6 +64,7 @@ const initialFormState: FormState = {
   bestOf: 9,
   priority: 10,
   enabled: true,
+  isManualOverride: false
 };
 
 const getYoutubeEmbedId = (url: string): string | null => {
@@ -73,7 +75,7 @@ const getYoutubeEmbedId = (url: string): string | null => {
 };
 
 export default function AdminSinucaCanaisPage() {
-    const { snookerChannels, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, syncSnookerWithYoutube } = useAppContext();
+    const { snookerChannels, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, syncSnookerWithYoutube, snookerAutomationSettings } = useAppContext();
     const { toast } = useToast();
     
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -134,7 +136,7 @@ export default function AdminSinucaCanaisPage() {
             return;
         }
         
-        const channelData = { ...currentChannel, embedId };
+        const channelData = { ...currentChannel, embedId, source: editingId ? (currentChannel as any).source : 'manual' };
 
         if (editingId) {
             updateSnookerChannel({ ...channelData, id: editingId } as SnookerChannel);
@@ -187,12 +189,49 @@ export default function AdminSinucaCanaisPage() {
                 </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <Card className="bg-slate-900 border-white/5 p-4 flex items-center gap-4">
+                    <div className="p-2.5 bg-primary/10 rounded-xl">
+                        <Zap size={20} className="text-primary" />
+                    </div>
+                    <div>
+                        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Status Automação</p>
+                        <p className="text-sm font-black text-white italic">
+                            {snookerAutomationSettings?.enabled ? 'ATIVO (TV SNOOKER BR)' : 'DESATIVADO'}
+                        </p>
+                    </div>
+                </Card>
+                <Card className="bg-slate-900 border-white/5 p-4 flex items-center gap-4">
+                    <div className="p-2.5 bg-blue-500/10 rounded-xl">
+                        <History size={20} className="text-blue-400" />
+                    </div>
+                    <div>
+                        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Último Sync</p>
+                        <p className="text-sm font-black text-white italic">
+                            {snookerAutomationSettings?.lastSyncAt ? new Date(snookerAutomationSettings.lastSyncAt).toLocaleTimeString('pt-BR') : 'Nunca'}
+                        </p>
+                    </div>
+                </Card>
+                <Card className="bg-slate-900 border-white/5 p-4 flex items-center gap-4">
+                    <div className="p-2.5 bg-green-500/10 rounded-xl">
+                        <Zap size={20} className="text-green-400" />
+                    </div>
+                    <div>
+                        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Canais Sincronizados</p>
+                        <p className="text-sm font-black text-white italic">
+                            {snookerChannels.filter(c => c.source === 'youtube').length} Ativos
+                        </p>
+                    </div>
+                </Card>
+            </div>
+
             <Card className="border-white/5 bg-card/50 overflow-hidden shadow-2xl">
                 <Table>
                     <TableHeader className="bg-slate-950/50">
                         <TableRow className="border-white/5 h-10">
                             <TableHead className="text-[9px] uppercase font-black px-4">Jogo / Título</TableHead>
                             <TableHead className="text-[9px] uppercase font-black">Horário</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black">Origem</TableHead>
                             <TableHead className="text-[9px] uppercase font-black">Status</TableHead>
                             <TableHead className="text-[9px] uppercase font-black text-center">Visível</TableHead>
                             <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
@@ -200,7 +239,7 @@ export default function AdminSinucaCanaisPage() {
                     </TableHeader>
                     <TableBody>
                         {sortedChannels.length === 0 ? (
-                            <TableRow><TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum canal agendado.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={6} className="text-center py-20 text-muted-foreground italic">Nenhum canal agendado.</TableCell></TableRow>
                         ) : (
                             sortedChannels.map(channel => (
                                 <TableRow key={channel.id} className="border-white/5 hover:bg-white/5 transition-colors group">
@@ -212,6 +251,11 @@ export default function AdminSinucaCanaisPage() {
                                     </TableCell>
                                     <TableCell>
                                         <span className="text-[10px] font-mono text-slate-300">{new Date(channel.scheduledAt).toLocaleString('pt-BR')}</span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className={cn("text-[8px] h-4 uppercase font-black border-white/10", channel.source === 'youtube' ? 'bg-red-600/10 text-red-500' : 'bg-blue-600/10 text-blue-500')}>
+                                            {channel.source === 'youtube' ? 'YouTube' : 'Manual'}
+                                        </Badge>
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant={getStatusVariant(channel.status)} className="text-[8px] h-4 uppercase font-black italic">
@@ -318,11 +362,20 @@ export default function AdminSinucaCanaisPage() {
                             <Input value={currentChannel.youtubeUrl} onChange={(e) => setCurrentChannel({ ...currentChannel, youtubeUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." className="h-11" />
                         </div>
 
-                        <div className="flex items-center gap-2 bg-white/5 p-4 rounded-xl border border-white/10">
-                            <Switch id="enabled" checked={currentChannel.enabled} onCheckedChange={(v) => setCurrentChannel({...currentChannel, enabled: v})}/>
-                            <div className="space-y-0.5">
-                                <Label htmlFor="enabled" className="text-sm font-bold">Habilitar Acesso</Label>
-                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Torna o canal visível e aberto para apostas imediatamente.</p>
+                        <div className="flex flex-col gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+                            <div className="flex items-center gap-2">
+                                <Switch id="enabled" checked={currentChannel.enabled} onCheckedChange={(v) => setCurrentChannel({...currentChannel, enabled: v})}/>
+                                <div className="space-y-0.5">
+                                    <Label htmlFor="enabled" className="text-sm font-bold">Habilitar Acesso</Label>
+                                    <p className="text-[10px] text-muted-foreground uppercase font-medium">Torna o canal visível e aberto para apostas imediatamente.</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Switch id="manual-override" checked={currentChannel.isManualOverride} onCheckedChange={(v) => setCurrentChannel({...currentChannel, isManualOverride: v})}/>
+                                <div className="space-y-0.5">
+                                    <Label htmlFor="manual-override" className="text-sm font-bold text-amber-500">Travar Alterações Manuais</Label>
+                                    <p className="text-[10px] text-muted-foreground uppercase font-medium">Evita que a sincronização automática mude campos editados por você.</p>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Versão V9: Interfaces expandidas para Automação de Sinuca.
+ * Versão V10: Integração robusta de automação de Sinuca.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -208,8 +208,6 @@ export interface SnookerChannel {
   bancaId: string;
   createdAt: string;
   updatedAt: string;
-  
-  // Novos campos para automação
   source?: 'manual' | 'youtube';
   sourceChannelName?: string;
   sourceChannelId?: string;
@@ -339,7 +337,7 @@ interface AppContextType {
   activeBancaId: string;
   userLedger: any[];
   fullLedger: any[];
-  ledger: any[]; // Alias for fullLedger
+  ledger: any[];
   banners: Banner[];
   popups: Popup[];
   news: NewsMessage[];
@@ -350,14 +348,10 @@ interface AppContextType {
   jdbLoterias: JDBLoteria[];
   genericLotteryConfigs: GenericLotteryConfig[];
   casinoSettings: CasinoSettings;
-  
-  // Bingo
   bingoSettings: BingoSettings;
   bingoDraws: BingoDraw[];
   bingoTickets: BingoTicket[];
   bingoPayouts: BingoPayout[];
-  
-  // Sinuca
   snookerChannels: SnookerChannel[];
   snookerPresence: Record<string, { viewers: string[] }>;
   snookerFinancialHistory: SnookerFinancialSummary[];
@@ -372,17 +366,11 @@ interface AppContextType {
   snookerSyncLogs: SnookerSyncLog[];
   snookerAutomationSettings: SnookerAutomationSettings;
   celebrationTrigger: boolean;
-
-  // Futebol
   footballData: FootballData;
   footballBets: FootballBet[];
   betSlip: any[];
-  
-  // UI
   liveMiniPlayerConfig: LiveMiniPlayerConfig;
   isFullscreen: boolean;
-
-  // Métodos
   refreshData: () => void;
   logout: () => void;
   handleFinalizarAposta: (aposta: any, valorTotal: number) => string | null;
@@ -396,12 +384,8 @@ interface AppContextType {
   toggleFullscreen: () => void;
   updateCasinoSettings: (s: CasinoSettings) => void;
   registerCambistaMovement: (data: { tipo: string, valor: number, modulo: string, observacao: string }) => void;
-
-  // JDB Professional Results
   publishJDBResult: (id: string) => void;
   deleteJDBResult: (id: string) => void;
-
-  // Bingo Methods
   updateBingoSettings: (s: BingoSettings) => void;
   createBingoDraw: (d: Partial<BingoDraw>) => void;
   startBingoDraw: (id: string) => void;
@@ -411,8 +395,6 @@ interface AppContextType {
   buyBingoTickets: (drawId: string, count: number) => boolean;
   refundBingoTicket: (id: string) => void;
   payBingoPayout: (id: string) => void;
-
-  // Sinuca Methods
   joinChannel: (channelId: string, userId: string) => void;
   leaveChannel: (channelId: string, userId: string) => void;
   placeSnookerBet: (bet: any) => boolean;
@@ -429,8 +411,6 @@ interface AppContextType {
   clearCelebration: () => void;
   syncSnookerWithYoutube: () => Promise<void>;
   updateSnookerAutomationSettings: (s: SnookerAutomationSettings) => void;
-
-  // Admin Methods
   addBanner: (b: Banner) => void;
   updateBanner: (b: Banner) => void;
   deleteBanner: (id: string) => void;
@@ -854,6 +834,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
     const currentLogs = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
     setStorageItem('app:snooker_sync_logs:v1', [newLog, ...currentLogs].slice(0, 50));
+
+    // Atualizar settings
+    setSnookerAutomationSettings(prev => {
+      const updated = { ...prev, lastSyncAt: new Date().toISOString(), lastSyncStatus: 'success', lastSyncMessage: `Importados: ${summary.added}` };
+      setStorageItem('app:snooker_automation_cfg:v1', updated);
+      return updated;
+    });
 
     loadLocalData();
     notify();
