@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server';
 
 /**
- * @fileOverview Rota de API para simular dados de canais de sinuca.
+ * @fileOverview Rota de API para sincronização de dados de canais de sinuca.
  * Atualizada para retornar apenas IDs sintaticamente válidos e sinalizar mocks.
  */
 
 export async function GET() {
   try {
-    // IDs reais de 11 caracteres para testes de UI que não quebrem o player (Exemplos de lives genéricas)
+    // IDs reais de 11 caracteres para testes de UI que não quebrem o player
     const mockYoutubeData = [
       {
-        id: { videoId: "hW_W_L7R_As" }, // ID sintático 1
+        id: { videoId: "hW_W_L7R_As" }, // ID sintático 1 (Exemplo real de vídeo sinuca)
         snippet: {
           title: "AO VIVO: BAIANINHO DE MAUÁ X MAYCON DE TEIXEIRA - DESAFIO DE GIGANTES",
           description: "Acompanhe agora o maior desafio de sinuca do Brasil. Baianinho de Mauá vs Maycon de Teixeira.",

@@ -1,9 +1,8 @@
-
 'use client';
 
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
- * Reforçado com lógica de Transmissão Principal e Priority Scoring.
+ * Reforçado com validação rigorosa de YouTube e proteção de transmissão principal.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -252,27 +251,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           const { updatedChannels, summary } = await SnookerSyncService.sync(currentChannels, user?.bancaId || 'default', source, settings);
           currentChannels = updatedChannels;
 
+          // Inicializar scoreboards para novos canais VÁLIDOS
           currentChannels.forEach(chan => {
-            if (!currentScores[chan.id] && chan.source === 'youtube') {
+            if (!currentScores[chan.id] && chan.source === 'youtube' && isValidYoutubeVideoId(chan.embedId)) {
               currentScores[chan.id] = { matchTitle: chan.tournamentName || chan.title, playerA: { name: chan.playerA.name, score: 0 }, playerB: { name: chan.playerB.name, score: 0 }, scoreA: 0, scoreB: 0, statusText: chan.status === 'live' ? 'AO VIVO' : 'Aguardando início', frame: 0, round: { number: 1 } };
             }
           });
 
-          const finishLog: SnookerSyncLog = { id: `log-fin-${Date.now()}-${source.id}`, createdAt: new Date().toISOString(), type: 'SYNC_FINISH', status: 'success', message: `Sync OK: ${source.name}. Criados: ${summary.created} | Atualizados: ${summary.updated} | Inválidos: ${summary.invalidVideos}`, sourceId: source.id, sourceName: source.name, payload: summary };
+          const finishLog: SnookerSyncLog = { id: `log-fin-${Date.now()}-${source.id}`, createdAt: new Date().toISOString(), type: 'SYNC_FINISH', status: 'success', message: `Sync OK: ${source.name}. Lidos: ${summary.itemsRead} | Criados: ${summary.created} | Inválidos: ${summary.invalidVideos}`, sourceId: source.id, sourceName: source.name, payload: summary };
           allLogs = [finishLog, ...allLogs].slice(0, 200);
 
           source.lastSyncAt = new Date().toISOString();
           source.lastSyncStatus = 'success';
-          source.lastSyncMessage = `OK: ${summary.created} criados`;
         } catch (e: any) {
           const errorLog: SnookerSyncLog = { id: `log-err-${Date.now()}-${source.id}`, createdAt: new Date().toISOString(), type: 'SYNC_ERROR', status: 'error', message: `Erro no canal ${source.name}: ${e.message}`, sourceId: source.id, sourceName: source.name };
           allLogs = [errorLog, ...allLogs].slice(0, 200);
           source.lastSyncStatus = 'error';
-          source.lastSyncMessage = e.message;
         }
       }
 
-      // Ranking final após sync de todas as fontes
+      // Ranking final - SnookerPriorityService agora exclui vídeos inválidos do score principal
       currentChannels = SnookerPriorityService.rankItems(currentChannels);
 
       setStorageItem('app:snooker_channels:v1', currentChannels);

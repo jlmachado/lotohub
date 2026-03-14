@@ -1,6 +1,6 @@
 'use client';
 import { Card } from "@/components/ui/card";
-import { Eye, Volume2, VolumeX, Maximize, Timer, AlertCircle, ShieldAlert, MonitorOff } from "lucide-react";
+import { Eye, Volume2, VolumeX, Maximize, Timer, ShieldAlert, MonitorOff } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
 import { useAppContext } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
@@ -51,7 +51,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
         snookerPresence[channelId]?.viewers.length || channel?.viewerCount || 0,
     [snookerPresence, channelId, channel?.viewerCount]);
 
-    // Validação de vídeo para o player
+    // VALIDAÇÃO CRÍTICA: Bloqueia a montagem de iframes com IDs inválidos
     const isVideoValid = useMemo(() => 
         isValidYoutubeVideoId(channel?.embedId), 
     [channel?.embedId]);

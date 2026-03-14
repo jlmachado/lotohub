@@ -1,7 +1,7 @@
-
 /**
  * @fileOverview Serviço de Priorização e Ranking de Transmissões de Sinuca.
  * Calcula o Score de Relevância para escolher o canal principal automaticamente.
+ * Reforçado com exclusão crítica de vídeos inválidos.
  */
 
 import { SnookerChannel } from "@/context/AppContext";
@@ -24,23 +24,24 @@ export class SnookerPriorityService {
     let score = 0;
     let isCandidate = true;
 
-    // 1. VALIDAÇÃO OBRIGATÓRIA (Fator de Exclusão)
+    // 1. VALIDAÇÃO OBRIGATÓRIA (Fator de Exclusão Crítico)
+    // Se o vídeo não for válido, ele NUNCA pode ser principal
     if (!isValidYoutubeVideoId(item.embedId)) {
       isCandidate = false;
       exclusions.push("ID de vídeo inválido ou inexistente");
-      score -= 1000;
+      score -= 5000; // Penalidade massiva
     }
 
     if (item.contentType === 'short' || item.contentType === 'promo' || item.contentType === 'interview' || item.contentType === 'teaser') {
       isCandidate = false;
       exclusions.push(`Conteúdo tipo ${item.contentType} não é partida principal`);
-      score -= 500;
+      score -= 1000;
     }
 
     if (item.isArchived) {
       isCandidate = false;
       exclusions.push("Canal arquivado");
-      score -= 1000;
+      score -= 5000;
     }
 
     // 2. STATUS DA TRANSMISSÃO (Pesos de 0 a 100)
@@ -57,10 +58,6 @@ export class SnookerPriorityService {
         score += 50;
         reasons.push("Status: Agendado (+50)");
         break;
-      case 'recent' as any:
-        score += 20;
-        reasons.push("Status: Vídeo recente (+20)");
-        break;
       default:
         score += 0;
     }
@@ -69,12 +66,6 @@ export class SnookerPriorityService {
     if (item.playerA?.name && item.playerB?.name && item.playerA.name !== 'Jogador A') {
       score += 40;
       reasons.push("Confronto entre dois jogadores identificado (+40)");
-    } else if (item.playerA?.name || item.playerB?.name) {
-      score += 10;
-      reasons.push("Apenas um jogador identificado (+10)");
-    } else {
-      score -= 40;
-      reasons.push("Nenhum jogador identificado (-40)");
     }
 
     const confidence = item.metadataConfidence || 0;
@@ -84,15 +75,11 @@ export class SnookerPriorityService {
     } else if (confidence >= 0.7) {
       score += 20;
       reasons.push("Média confiança nos metadados (+20)");
-    } else if (confidence < 0.4) {
-      score -= 30;
-      reasons.push("Baixa confiança nos metadados (-30)");
     }
 
     // 4. PRIORIDADE DA FONTE (Desempate)
     const sourceWeight = context.sourcePriority || item.originPriority || 50;
-    score += (sourceWeight / 2); // Adiciona até 50 pontos baseados na fonte
-    if (sourceWeight > 80) reasons.push(`Fonte de alta prioridade: ${item.sourceName} (+${sourceWeight/2})`);
+    score += (sourceWeight / 2); 
 
     // 5. ATRIBUTOS ESPECIAIS
     if (item.isFeatured) {
@@ -103,19 +90,6 @@ export class SnookerPriorityService {
     if (item.prizeLabel) {
       score += 15;
       reasons.push("Premiação identificada (+15)");
-    }
-
-    if (item.phase?.toLowerCase().includes('final')) {
-      score += 25;
-      reasons.push("Fase decisiva detectada (+25)");
-    }
-
-    // 6. VALIDADE TÉCNICA
-    if (item.enabled) {
-      score += 10;
-    } else {
-      score -= 50;
-      reasons.push("Canal desabilitado (-50)");
     }
 
     return {
@@ -148,12 +122,14 @@ export class SnookerPriorityService {
   static choosePrimary(items: SnookerChannel[], manualId?: string | null): string | null {
     if (manualId) {
       const manual = items.find(i => i.id === manualId);
-      if (manual && manual.enabled && !manual.isArchived) return manualId;
+      // Só aceita manual se o vídeo for válido
+      if (manual && manual.enabled && !manual.isArchived && isValidYoutubeVideoId(manual.embedId)) return manualId;
     }
 
     const ranked = this.rankItems(items.filter(i => i.enabled && !i.isArchived));
     const best = ranked[0];
 
-    return (best && (best.priorityScore || 0) > 0) ? best.id : null;
+    // Só escolhe se o vídeo for válido (Score positivo e sem exclusão)
+    return (best && (best.priorityScore || 0) > 0 && isValidYoutubeVideoId(best.embedId)) ? best.id : null;
   }
 }

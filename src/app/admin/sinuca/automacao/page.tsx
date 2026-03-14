@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -8,7 +7,7 @@ import {
   CheckCircle2, AlertTriangle, Info, Trash2, Eye, 
   ExternalLink, MousePointer2, Save, RotateCcw, 
   Play, ShieldCheck, Database, LayoutList, Check, X,
-  PlusCircle, Edit, Power, PowerOff, Video, Star, BarChart
+  PlusCircle, Edit, Power, PowerOff, Video, Star, BarChart, MonitorOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -47,10 +46,10 @@ export default function AdminSnookerAutomationPage() {
   const [isSourceDialogOpen, setIsSourceDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<SnookerAutomationSource | null>(null);
 
-  // Candidates for primary transmission
+  // Candidatos para transmissão principal (Score > 0 e Vídeo Válido)
   const candidates = useMemo(() => 
     [...snookerChannels]
-      .filter(c => !c.isArchived)
+      .filter(c => !c.isArchived && isValidYoutubeVideoId(c.embedId))
       .sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0)),
   [snookerChannels]);
 
@@ -61,7 +60,7 @@ export default function AdminSnookerAutomationPage() {
 
   const stats = useMemo(() => ({
     total: autoChannels.length,
-    live: autoChannels.filter(c => c.status === 'live').length,
+    live: autoChannels.filter(c => c.status === 'live' && isValidYoutubeVideoId(c.embedId)).length,
     pending: autoChannels.filter(c => c.sourceStatus === 'detected').length,
     invalid: autoChannels.filter(c => !isValidYoutubeVideoId(c.embedId)).length,
     activeSources: snookerAutomationSettings.sources.filter(s => s.enabled).length,
@@ -111,8 +110,8 @@ export default function AdminSnookerAutomationPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <StatCard title="Fontes Ativas" value={stats.activeSources} icon={Database} color="text-primary" />
-        <StatCard title="Ao Vivo" value={stats.live} icon={Play} color="text-red-500" />
-        <StatCard title="Pendentes" value={stats.pending} icon={MousePointer2} color="text-amber-500" />
+        <StatCard title="Ao Vivo Válidos" value={stats.live} icon={Play} color="text-red-500" />
+        <StatCard title="Vídeos Inválidos" value={stats.invalid} icon={MonitorOff} color="text-amber-500" />
         <StatCard title="Score Master" value={candidates[0]?.priorityScore || 0} icon={BarChart} color="text-green-400" />
         
         <Card className={cn(
@@ -134,7 +133,7 @@ export default function AdminSnookerAutomationPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4 md:w-[600px] bg-slate-900 border border-white/10 p-1 rounded-xl h-12">
           <TabsTrigger value="sources" className="rounded-lg font-black uppercase italic text-[10px]">Fontes</TabsTrigger>
-          <TabsTrigger value="ranking" className="rounded-lg font-black uppercase italic text-[10px]">Ranking Relevância</TabsTrigger>
+          <TabsTrigger value="ranking" className="rounded-lg font-black uppercase italic text-[10px]">Ranking Principal</TabsTrigger>
           <TabsTrigger value="preview" className="rounded-lg font-black uppercase italic text-[10px]">Detecções</TabsTrigger>
           <TabsTrigger value="logs" className="rounded-lg font-black uppercase italic text-[10px]">Logs Sync</TabsTrigger>
         </TabsList>
@@ -179,17 +178,17 @@ export default function AdminSnookerAutomationPage() {
           <Card className="border-white/5 bg-card/50 overflow-hidden shadow-2xl">
             <CardHeader className="bg-slate-950/50 border-b border-white/5 p-4">
               <CardTitle className="text-xs font-black uppercase italic tracking-widest text-white flex items-center gap-2">
-                <Star size={14} className="text-primary fill-primary" />Ranking de Eleição da Transmissão Principal
+                <Star size={14} className="text-primary fill-primary" />Eleição da Transmissão Principal
               </CardTitle>
               <CardDescription className="text-[10px] font-bold uppercase">
-                O sistema utiliza score de relevância para decidir quem aparece primeiro.
+                Apenas vídeos saudáveis e validados entram no ranking de eleição automática.
               </CardDescription>
             </CardHeader>
             <Table>
               <TableHeader className="bg-slate-950/20">
                 <TableRow className="border-white/5 h-10">
                   <TableHead className="text-[9px] uppercase font-black px-4 w-[60px]">Rank</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Confronto / Torneio</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Jogo / Vídeo ID</TableHead>
                   <TableHead className="text-[9px] uppercase font-black">Score</TableHead>
                   <TableHead className="text-[9px] uppercase font-black">Justificativa</TableHead>
                   <TableHead className="text-[9px] uppercase font-black text-right px-4">Ação</TableHead>
@@ -207,9 +206,8 @@ export default function AdminSnookerAutomationPage() {
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] font-black text-white uppercase italic">{chan.playerA.name} x {chan.playerB.name}</span>
                             {isPrimary && <Badge className="bg-primary text-black text-[7px] font-black h-3.5 italic uppercase">PRINCIPAL</Badge>}
-                            {isManual && <Badge className="bg-blue-600 text-white text-[7px] font-black h-3.5 italic uppercase">MANUAL</Badge>}
                           </div>
-                          <span className="text-[9px] text-muted-foreground uppercase font-bold">{chan.tournamentName || 'Sem Torneio'} • {chan.status}</span>
+                          <span className="text-[9px] text-muted-foreground font-mono uppercase">{chan.embedId} • {chan.status}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -218,7 +216,7 @@ export default function AdminSnookerAutomationPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <p className="text-[9px] text-slate-400 italic max-w-md leading-relaxed">{chan.primaryReason || 'Sem justificativa calculada'}</p>
+                        <p className="text-[9px] text-slate-400 italic max-w-md leading-relaxed">{chan.primaryReason || 'Sem justificativa'}</p>
                       </TableCell>
                       <TableCell className="text-right px-4">
                         <Button 
@@ -233,6 +231,9 @@ export default function AdminSnookerAutomationPage() {
                     </TableRow>
                   );
                 })}
+                {candidates.length === 0 && (
+                  <TableRow><TableCell colSpan={5} className="text-center py-12 text-muted-foreground italic">Nenhum candidato válido para transmissão principal.</TableCell></TableRow>
+                )}
               </TableBody>
             </Table>
           </Card>
@@ -244,41 +245,45 @@ export default function AdminSnookerAutomationPage() {
               <TableHeader className="bg-slate-950/50">
                 <TableRow className="border-white/5 h-10">
                   <TableHead className="text-[9px] uppercase font-black px-4">Thumb / Jogo</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Tipo / Saúde</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Saúde do Vídeo</TableHead>
                   <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {autoChannels.map(channel => (
-                  <TableRow key={channel.id} className="border-white/5 hover:bg-white/5 transition-colors group">
-                    <TableCell className="px-4 py-4">
-                      <div className="flex items-center gap-4">
-                        <div className="w-20 h-12 rounded-lg overflow-hidden border border-white/10 shrink-0">
-                          <img src={channel.thumbnailUrl} className="object-cover w-full h-full" alt="" />
+                {autoChannels.map(channel => {
+                  const isVideoValid = isValidYoutubeVideoId(channel.embedId);
+                  return (
+                    <TableRow key={channel.id} className="border-white/5 hover:bg-white/5 transition-colors group">
+                      <TableCell className="px-4 py-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-20 h-12 rounded-lg overflow-hidden border border-white/10 shrink-0 relative bg-black">
+                            <img src={channel.thumbnailUrl} className="object-cover w-full h-full opacity-60" alt="" />
+                            {!isVideoValid && <div className="absolute inset-0 flex items-center justify-center bg-red-600/40"><MonitorOff size={14} className="text-white" /></div>}
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-black text-white uppercase italic">{channel.playerA.name} vs {channel.playerB.name}</p>
+                            <p className="text-[9px] text-muted-foreground font-mono uppercase">{channel.embedId}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-[11px] font-black text-white uppercase italic">{channel.playerA.name} vs {channel.playerB.name}</p>
-                          <p className="text-[9px] text-muted-foreground uppercase font-bold">{channel.tournamentName}</p>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Badge className={cn("text-[8px] h-4 uppercase font-black", isVideoValid ? 'bg-green-600/20 text-green-500' : 'bg-red-600/20 text-red-500')}>
+                            {isVideoValid ? 'VÍDEO VÁLIDO' : 'ERRO: ID INVÁLIDO'}
+                          </Badge>
+                          <Badge variant="outline" className="text-[8px] h-4 uppercase font-black border-white/10">{channel.status}</Badge>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge variant="outline" className="text-[8px] h-4 uppercase font-black border-white/10">{channel.contentType || 'unknown'}</Badge>
-                        <Badge className={cn("text-[8px] h-4 uppercase font-black", channel.transmissionHealth === 'valid' ? 'bg-green-600/20 text-green-500' : 'bg-red-600/20 text-red-500')}>
-                          {channel.transmissionHealth}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right px-4 space-x-1">
-                      {channel.sourceStatus === 'detected' && (
-                        <button className="h-8 w-8 text-green-500 hover:bg-green-500/10 flex items-center justify-center rounded-lg" onClick={() => approveAutoSnookerChannel(channel.id)}><Check size={14} /></button>
-                      )}
-                      <button className="h-8 w-8 text-white/30 hover:text-white flex items-center justify-center" onClick={() => window.open(channel.youtubeUrl, '_blank')}><ExternalLink size={14} /></button>
-                      <button className="h-8 w-8 text-destructive hover:bg-destructive/10 flex items-center justify-center rounded-lg" onClick={() => archiveAutoSnookerChannel(channel.id)}><Trash2 size={14} /></button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="text-right px-4 space-x-1">
+                        {channel.sourceStatus === 'detected' && isVideoValid && (
+                          <button className="h-8 w-8 text-green-500 hover:bg-green-500/10 flex items-center justify-center rounded-lg" onClick={() => approveAutoSnookerChannel(channel.id)}><Check size={14} /></button>
+                        )}
+                        <button className="h-8 w-8 text-white/30 hover:text-white flex items-center justify-center" onClick={() => window.open(channel.youtubeUrl, '_blank')}><ExternalLink size={14} /></button>
+                        <button className="h-8 w-8 text-destructive hover:bg-destructive/10 flex items-center justify-center rounded-lg" onClick={() => archiveAutoSnookerChannel(channel.id)}><Trash2 size={14} /></button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </Card>

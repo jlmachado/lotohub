@@ -3,7 +3,7 @@
  * Reforçado com validações rigorosas de Video ID para evitar players quebrados.
  */
 
-import { isValidYoutubeVideoId, buildYoutubeWatchUrl, extractYoutubeVideoId } from '@/utils/youtube';
+import { isValidYoutubeVideoId } from '@/utils/youtube';
 
 export interface YoutubeApiResponse {
   id: { videoId: string };

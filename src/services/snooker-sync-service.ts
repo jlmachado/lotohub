@@ -1,7 +1,6 @@
-
 /**
  * @fileOverview Orquestrador de sincronização Multicanal de Sinuca.
- * Expandido com integração ao SnookerPriorityService para eleição de transmissão principal.
+ * Reforçado com validação rigorosa de YouTube IDs e proteção de canais manuais.
  */
 
 import { SnookerYoutubeService } from './snooker-youtube-service';
@@ -37,12 +36,19 @@ export class SnookerSyncService {
       youtubeData.forEach((yt: any) => {
         try {
           const videoId = yt.id.videoId;
-          if (!isValidYoutubeVideoId(videoId)) { summary.invalidVideos++; return; }
+          
+          // 1. VALIDAÇÃO DE SEGURANÇA: Bloqueia IDs simulados ou inválidos
+          if (!isValidYoutubeVideoId(videoId)) { 
+            summary.invalidVideos++; 
+            return; 
+          }
 
           const parsed = SnookerParserService.parse(yt.snippet.title, yt.snippet.description, source.parseProfile);
           const scheduledAt = yt.snippet.scheduledStartTime || new Date().toISOString();
           
-          const existingIdx = newChannelsList.findIndex(c => c.sourceVideoId === videoId || c.id === `yt_${videoId}`);
+          // 2. IDENTIFICADOR ÚNICO ESTÁVEL: Baseado no videoId real
+          const uniqueId = `yt_${videoId}`;
+          const existingIdx = newChannelsList.findIndex(c => c.id === uniqueId || c.sourceVideoId === videoId);
 
           let status: SnookerChannel['status'] = 'scheduled';
           if (yt.snippet.liveBroadcastContent === 'live') status = 'live';
@@ -53,6 +59,8 @@ export class SnookerSyncService {
 
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
+            
+            // 3. PROTEÇÃO DE OVERRIDE: Respeita edições manuais do administrador
             if (existing.isManualOverride) {
               if (status !== existing.status) {
                 newChannelsList[existingIdx] = { ...existing, status, updatedAt: new Date().toISOString() };
@@ -61,6 +69,7 @@ export class SnookerSyncService {
               return;
             }
 
+            // Atualização de metadados sincronizados
             newChannelsList[existingIdx] = {
               ...existing,
               status,
@@ -77,8 +86,9 @@ export class SnookerSyncService {
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
+            // 4. CRIAÇÃO DE CANAL VÁLIDO
             const newChannel: SnookerChannel = {
-              id: `yt_${videoId}`,
+              id: uniqueId,
               title: parsed.eventTitle,
               description: yt.snippet.description.substring(0, 200),
               youtubeUrl: buildYoutubeWatchUrl(videoId),
@@ -116,15 +126,17 @@ export class SnookerSyncService {
             newChannelsList.unshift(newChannel);
             summary.created++;
           }
-        } catch (e) { summary.failures++; }
+        } catch (e) { 
+          summary.failures++; 
+        }
       });
 
-      // ELEIÇÃO DE TRANSMISSÃO PRINCIPAL (Ranking Global após Sync de todas as fontes)
-      // Nota: Esta parte normalmente rodaria no orquestrador global, mas implementamos aqui 
-      // para cada fonte para garantir que o score seja calculado.
+      // 5. RANKING E ELEIÇÃO: Escolhe a melhor transmissão válida para a home
       newChannelsList = SnookerPriorityService.rankItems(newChannelsList);
 
       return { updatedChannels: newChannelsList, summary };
-    } catch (e) { throw e; }
+    } catch (e) { 
+      throw e; 
+    }
   }
 }

@@ -7,7 +7,7 @@
  */
 export function isValidYoutubeVideoId(videoId: string | null | undefined): boolean {
   if (!videoId || typeof videoId !== 'string') return false;
-  // O YouTube usa IDs de 11 caracteres que podem incluir letras, números, guion (-) e underscore (_)
+  // O YouTube usa IDs de 11 caracteres que podem incluir letras, números, hífen (-) e underscore (_)
   const regex = /^[a-zA-Z0-9_-]{11}$/;
   return regex.test(videoId);
 }
