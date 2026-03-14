@@ -54,6 +54,7 @@ export interface SnookerChannel {
   description: string; 
   youtubeUrl: string; 
   embedId: string; 
+  syncHash?: string;
   scheduledAt: string; 
   startedAt?: string; 
   finishedAt?: string; 
@@ -191,75 +192,86 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => { window.removeEventListener('app:data-changed', handleDataChange); window.removeEventListener('auth-change', handleDataChange); };
   }, [loadLocalData]);
 
-  // --- AUTO SETTLEMENT LOGIC JDB ---
-  useEffect(() => {
-    const unSettled = jdbResults.filter(r => r.status === 'PUBLICADO' && !r.isSettled);
-    if (unSettled.length > 0) {
-      const currentApostas = [...apostas];
-      let changes = false;
-      unSettled.forEach(result => {
-        currentApostas.forEach(aposta => {
-          if (aposta.status === 'aguardando' && aposta.loteria === 'Jogo do Bicho') {
-            const items = aposta.detalhes || [];
-            let totalPrize = 0; let itemsProcessed = 0;
-            items.forEach(item => {
-              if (item.settlementStatus !== 'aguardando') return;
-              if (isJDBItemEligible(item, result, aposta.createdAt)) {
-                itemsProcessed++;
-                const { isWinner, prize } = checkSingleItemWinner(item, result, jdbLoterias);
-                item.settlementStatus = isWinner ? 'premiado' : 'perdeu';
-                item.settledAt = new Date().toISOString();
-                item.settlementResultId = result.id;
-                if (isWinner) { item.isWinner = true; item.settlementAmount = prize; totalPrize += prize; }
-                changes = true;
-              }
-            });
-            if (itemsProcessed > 0) {
-              const allDone = items.every(i => i.settlementStatus !== 'aguardando');
-              const anyWon = items.some(i => i.settlementStatus === 'premiado');
-              if (anyWon) aposta.status = 'premiado'; else if (allDone) aposta.status = 'perdeu';
-              if (totalPrize > 0) {
-                const u = getUserByTerminal(aposta.userId) || getUsers().find(x => x.id === aposta.userId);
-                if (u) {
-                  const newBal = u.saldo + totalPrize; upsertUser({ terminal: u.terminal, saldo: newBal });
-                  LedgerService.addEntry({ bancaId: aposta.bancaId, userId: u.id, terminal: u.terminal, tipoUsuario: u.tipoUsuario, modulo: 'Jogo do Bicho', type: 'BET_WIN', amount: totalPrize, balanceBefore: u.saldo + u.bonus, balanceAfter: newBal + u.bonus, referenceId: aposta.id, description: `Prêmio Auto: ${result.stateName} ${result.extractionName} (${result.time})` });
-                }
-              }
-            }
-          }
-        });
-        result.isSettled = true;
-      });
-      if (changes) { setStorageItem('app:apostas:v1', currentApostas); setStorageItem('app:jdb_results:v1', jdbResults); notify(); }
-    }
-  }, [jdbResults, apostas, jdbLoterias, notify]);
-
-  // --- SNOOKER METHODS ---
+  // --- SNOOKER SYNC LOGIC ---
   const syncSnookerFromYoutube = useCallback(async (force = false) => {
     if (snookerSyncState === 'syncing' && !force) return;
     setSnookerSyncState('syncing');
+    
+    // Log início
+    const startLog: SnookerSyncLog = { 
+      id: `log-start-${Date.now()}`, 
+      createdAt: new Date().toISOString(), 
+      type: 'YOUTUBE_SYNC_START', 
+      status: 'info', 
+      message: 'Iniciando ciclo de sincronização YouTube TV Snooker Brasil...' 
+    };
+    const currentLogs = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
+    setStorageItem('app:snooker_sync_logs:v1', [startLog, ...currentLogs].slice(0, 100));
+
     try {
       const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
       const { updatedChannels, summary } = await SnookerSyncService.sync(current, user?.bancaId || 'default');
+      
       const currentScores = getStorageItem<Record<string, SnookerScoreboard>>('app:snooker_scores:v1', {});
       let scoresChanged = false;
+      
       updatedChannels.forEach(chan => {
         if (!currentScores[chan.id] && chan.source === 'youtube') {
-          currentScores[chan.id] = { matchTitle: chan.tournamentName || chan.title, playerA: { name: chan.playerA.name, score: 0 }, playerB: { name: chan.playerB.name, score: 0 }, scoreA: 0, scoreB: 0, statusText: chan.status === 'live' ? 'AO VIVO' : 'Aguardando início', frame: 0, round: { number: 1 } };
+          currentScores[chan.id] = { 
+            matchTitle: chan.tournamentName || chan.title, 
+            playerA: { name: chan.playerA.name, score: 0 }, 
+            playerB: { name: chan.playerB.name, score: 0 }, 
+            scoreA: 0, 
+            scoreB: 0, 
+            statusText: chan.status === 'live' ? 'AO VIVO' : 'Aguardando início', 
+            frame: 0, 
+            round: { number: 1 } 
+          };
           scoresChanged = true;
         }
       });
+
       setStorageItem('app:snooker_channels:v1', updatedChannels);
       if (scoresChanged) setStorageItem('app:snooker_scores:v1', currentScores);
-      const newLog: SnookerSyncLog = { id: `log-${Date.now()}`, createdAt: new Date().toISOString(), type: 'YOUTUBE_SYNC', status: 'success', message: `Sync automático: ${summary.added} novos canais, ${summary.updated} atualizados.` };
-      const currentLogs = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
-      setStorageItem('app:snooker_sync_logs:v1', [newLog, ...currentLogs].slice(0, 100));
+
+      // Log Fim com Sumário
+      const finishLog: SnookerSyncLog = { 
+        id: `log-fin-${Date.now()}`, 
+        createdAt: new Date().toISOString(), 
+        type: 'YOUTUBE_SYNC_FINISH', 
+        status: 'success', 
+        message: `Sync Finalizado: Lidos: ${summary.itemsRead} | Criados: ${summary.created} | Atualizados: ${summary.updated} | Falhas: ${summary.failures}`,
+        payload: summary
+      };
+      const updatedLogs = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
+      setStorageItem('app:snooker_sync_logs:v1', [finishLog, ...updatedLogs].slice(0, 100));
+
       setSnookerSyncState('success');
       notify();
-      if (force) toast({ title: "Sincronização Concluída", description: `${summary.added} novos jogos encontrados.` });
-    } catch (e) { setSnookerSyncState('error'); toast({ variant: 'destructive', title: "Erro na sincronização" }); }
+      
+      if (force) {
+        toast({ 
+          title: "Sincronização Concluída", 
+          description: `${summary.created} novos jogos, ${summary.updated} atualizados.` 
+        });
+      }
+    } catch (e: any) {
+      const errorLog: SnookerSyncLog = { 
+        id: `log-err-${Date.now()}`, 
+        createdAt: new Date().toISOString(), 
+        type: 'YOUTUBE_SYNC_ERROR', 
+        status: 'error', 
+        message: `Falha na sincronização: ${e.message}` 
+      };
+      const currentLogsErr = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
+      setStorageItem('app:snooker_sync_logs:v1', [errorLog, ...currentLogsErr].slice(0, 100));
+      
+      setSnookerSyncState('error');
+      if (force) toast({ variant: 'destructive', title: "Erro na sincronização", description: e.message });
+    }
   }, [user, notify, toast, snookerSyncState]);
 
+  // --- RESTO DOS MÉTODOS ---
   const approveAutoSnookerChannel = useCallback((id: string) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', current.map(c => c.id === id ? { ...c, enabled: true, sourceStatus: 'synced' as const } : c)); notify(); }, [notify]);
   const rejectAutoSnookerChannel = useCallback((id: string) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', current.map(c => c.id === id ? { ...c, enabled: false, sourceStatus: 'error' as const } : c)); notify(); }, [notify]);
   const archiveAutoSnookerChannel = useCallback((id: string) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', current.map(c => c.id === id ? { ...c, isArchived: true, enabled: false } : c)); notify(); }, [notify]);

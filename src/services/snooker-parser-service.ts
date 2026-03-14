@@ -1,6 +1,6 @@
 /**
- * @fileOverview Serviço de parsing robusto e tolerante para títulos do YouTube.
- * Especializado nos padrões do canal TV Snooker Brasil.
+ * @fileOverview Serviço de parsing robuso para metadados da Sinuca.
+ * Inclui normalização para geração de hash de sincronização estável.
  */
 
 export interface ParsedSnookerMatch {
@@ -21,14 +21,27 @@ export interface ParsedSnookerMatch {
 
 export class SnookerParserService {
   /**
+   * Normaliza uma string para comparação e geração de hash.
+   */
+  static normalizeForHash(text: string): string {
+    if (!text) return "";
+    return text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+      .replace(/[^a-z0-9]/g, "") // Mantém apenas alfanuméricos
+      .trim();
+  }
+
+  /**
    * Ponto de entrada principal para extração de dados.
    */
   static parse(title: string, description: string = ''): ParsedSnookerMatch {
     const notes: string[] = [];
     let confidence = 0.1;
 
-    // 1. Limpeza inicial
-    const cleanTitle = title.replace(/AO VIVO|LIVE|ASSISTA|AGORA|COMPLETO|SN0OKER|SINUCA/gi, '').trim();
+    // 1. Limpeza inicial de ruídos comuns em títulos de live
+    const cleanTitle = title.replace(/AO VIVO|LIVE|ASSISTA|AGORA|COMPLETO|SN0OKER|SINUCA|TV SNOOKER BRASIL/gi, '').trim();
     const fullText = `${cleanTitle} ${description}`;
 
     // 2. Detecção de Best Of (MD, BO, Melhor de)
@@ -73,7 +86,7 @@ export class SnookerParserService {
     }
 
     // Fallback caso não encontre o padrão X
-    notes.push('Não foi possível identificar o padrão de nomes (Jogador A x Jogador B).');
+    notes.push('Diagnóstico: Padrão [Jogador A x Jogador B] não identificado.');
     return {
       playerA: 'Jogador A',
       playerB: 'Jogador B',
@@ -91,7 +104,6 @@ export class SnookerParserService {
   }
 
   private static extractPlayers(title: string, notes: string[]) {
-    // Padrões de separação comuns em ordem de prioridade
     const patterns = [
       /(.+?)\s+(?:X|VS|VERSUS)\s+(.+?)(?:\s+[-|]\s+(.*))?$/i,
       /(.+?)\s+v\s+(.+?)(?:\s+[-|]\s+(.*))?$/i,
@@ -104,7 +116,7 @@ export class SnookerParserService {
         const a = this.cleanPlayerName(match[1]);
         const b = this.cleanPlayerName(match[2]);
         if (a && b) {
-          notes.push(`Jogadores detectados via padrão: ${a} e ${b}`);
+          notes.push(`Detectado: ${a} vs ${b}`);
           return { a, b, event: match[3]?.trim() };
         }
       }
@@ -116,8 +128,8 @@ export class SnookerParserService {
     if (!name) return '';
     return name
       .replace(/^[-\s|]+|[-|\s]+$/g, '')
-      .split('(')[0] // Remove (SP), (MG)
-      .replace(/\b(SP|RJ|MG|RS|PR|BA|CE|GO|DF|PE|SC|AM|PA|ES)\b/gi, '') // Remove siglas de estados soltas
+      .split('(')[0] 
+      .replace(/\b(SP|RJ|MG|RS|PR|BA|CE|GO|DF|PE|SC|AM|PA|ES)\b/gi, '') 
       .trim();
   }
 
@@ -125,10 +137,10 @@ export class SnookerParserService {
     const match = text.match(/MD\s*(\d+)|BO\s*(\d+)|MELHOR\s*DE\s*(\d+)|BEST\s*OF\s*(\d+)/i);
     if (match) {
       const val = parseInt(match[1] || match[2] || match[3] || match[4]);
-      notes.push(`Formato detectado: Melhor de ${val}`);
+      notes.push(`Regra de Jogo: Melhor de ${val}`);
       return val;
     }
-    return 9; // Padrão
+    return 9; 
   }
 
   private static extractModality(text: string, notes: string[]) {
@@ -143,7 +155,7 @@ export class SnookerParserService {
 
     for (const m of modalities) {
       if (m.regex.test(text)) {
-        notes.push(`Modalidade detectada: ${m.key}`);
+        notes.push(`Tipo: ${m.key}`);
         return m.key;
       }
     }
@@ -163,7 +175,7 @@ export class SnookerParserService {
     for (const p of phases) {
       const match = text.match(p.regex);
       if (match) {
-        notes.push(`Fase detectada: ${p.key}`);
+        notes.push(`Fase: ${p.key}`);
         return p.key;
       }
     }
@@ -176,7 +188,7 @@ export class SnookerParserService {
     if (match) {
       let val = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
       if (match[2] && match[2].toLowerCase() === 'mil') val *= 1000;
-      notes.push(`Premiação detectada: R$ ${val}`);
+      notes.push(`Valor: R$ ${val}`);
       return { prize: val, prizeLabel: match[0] };
     }
     return { prize: null };
@@ -187,7 +199,7 @@ export class SnookerParserService {
     if (match) {
       const loc = (match[1] || match[2]).trim();
       if (loc.length > 2) {
-        notes.push(`Local detectado: ${loc}`);
+        notes.push(`Local: ${loc}`);
         return loc;
       }
     }
