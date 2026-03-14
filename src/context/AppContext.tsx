@@ -48,7 +48,48 @@ export interface BingoDraw { id: string; drawNumber: number; status: 'scheduled'
 export interface BingoTicket { id: string; drawId: string; userId: string; userName: string; terminalId: string; amountPaid: number; status: 'active' | 'won' | 'lost' | 'refunded'; ticketNumbers: number[]; createdAt: string; isBot?: boolean; bancaId: string; }
 export interface BingoPayout { id: string; drawId: string; userId: string; userName: string; terminalId: string; amount: number; status: 'pending' | 'paid' | 'failed' | 'cancelled'; type: 'quadra' | 'kina' | 'keno'; createdAt: string; }
 
-export interface SnookerChannel { id: string; title: string; description: string; youtubeUrl: string; embedId: string; scheduledAt: string; startedAt?: string; finishedAt?: string; status: 'scheduled' | 'imminent' | 'live' | 'finished' | 'cancelled'; playerA: { name: string; level: number; avatarUrl?: string }; playerB: { name: string; level: number; avatarUrl?: string }; scoreA: number; scoreB: number; odds: { A: number; B: number; D: number }; houseMargin: number; bestOf: number; priority: number; enabled: boolean; viewerCount?: number; bancaId: string; createdAt: string; updatedAt: string; source?: 'manual' | 'youtube'; sourceVideoId?: string; sourceType?: 'live' | 'upcoming' | 'video'; sourceStatus?: 'detected' | 'parsed' | 'synced' | 'error'; autoCreated?: boolean; autoUpdatedAt?: string; tournamentName?: string; modality?: string; phase?: string; prize?: number | null; prizeLabel?: string; location?: string; metadataConfidence?: number; parserNotes?: string[]; thumbnailUrl?: string; isFeatured?: boolean; isManualOverride?: boolean; isArchived?: boolean; }
+export interface SnookerChannel { 
+  id: string; 
+  title: string; 
+  description: string; 
+  youtubeUrl: string; 
+  embedId: string; 
+  scheduledAt: string; 
+  startedAt?: string; 
+  finishedAt?: string; 
+  status: 'scheduled' | 'imminent' | 'live' | 'finished' | 'cancelled'; 
+  playerA: { name: string; level: number; avatarUrl?: string }; 
+  playerB: { name: string; level: number; avatarUrl?: string }; 
+  scoreA: number; 
+  scoreB: number; 
+  odds: { A: number; B: number; D: number }; 
+  houseMargin: number; 
+  bestOf: number; 
+  priority: number; 
+  enabled: boolean; 
+  viewerCount?: number; 
+  bancaId: string; 
+  createdAt: string; 
+  updatedAt: string; 
+  source?: 'manual' | 'youtube'; 
+  sourceVideoId?: string; 
+  sourceType?: 'live' | 'upcoming' | 'video'; 
+  sourceStatus?: 'detected' | 'parsed' | 'synced' | 'error'; 
+  autoCreated?: boolean; 
+  autoUpdatedAt?: string; 
+  tournamentName?: string; 
+  modality?: string; 
+  phase?: string; 
+  prize?: number | null; 
+  prizeLabel?: string; 
+  location?: string; 
+  metadataConfidence?: number; 
+  parserNotes?: string[]; 
+  thumbnailUrl?: string; 
+  isFeatured?: boolean; 
+  isManualOverride?: boolean; 
+  isArchived?: boolean; 
+}
 export interface SnookerSyncLog { id: string; createdAt: string; type: string; status: 'success' | 'warning' | 'error' | 'info'; message: string; relatedChannelId?: string; payload?: any; }
 export interface SnookerAutomationSettings { enabled: boolean; sourceMode: 'manual' | 'youtube' | 'hybrid'; youtubeChannelUrl: string; autoCreateChannels: boolean; autoUpdateChannels: boolean; autoMarkLive: boolean; autoMarkFinished: boolean; autoFillPlayers: boolean; autoFillTournament: boolean; autoFillSchedule: boolean; autoFillPrize: boolean; syncIntervalSeconds: number; dedupeWindowHours: number; requireAdminApproval: boolean; overwriteManualFields: boolean; createScoreboardIfMissing: boolean; createDefaultOddsIfMissing: boolean; keepManualOdds: boolean; enabledOnHome: boolean; enabledOnPublicPage: boolean; lastSyncAt?: string; lastSyncStatus?: string; lastSyncMessage?: string; }
 export interface SnookerBet { id: string; userId: string; userName: string; channelId: string; pick: 'A' | 'B' | 'EMPATE'; amount: number; oddsA: number; oddsB: number; oddsD: number; status: 'open' | 'won' | 'lost' | 'refunded' | 'cash_out'; createdAt: string; }

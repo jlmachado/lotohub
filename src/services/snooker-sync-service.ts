@@ -4,7 +4,8 @@
 
 import { SnookerYoutubeService, YoutubeApiResponse } from './snooker-youtube-service';
 import { SnookerParserService } from './snooker-parser-service';
-import { SnookerChannel } from '@/context/AppContext';
+import { SnookerChannel, SnookerScoreboard } from '@/context/AppContext';
+import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
 
 export interface SyncSummary {
   added: number;
@@ -21,6 +22,8 @@ export class SnookerSyncService {
     let added = 0;
     let updated = 0;
     let errors = 0;
+
+    const automationSettings = getStorageItem('app:snooker_automation:v1', { keepManualOdds: true });
 
     try {
       const youtubeData = await SnookerYoutubeService.fetchChannelData();
@@ -60,8 +63,7 @@ export class SnookerSyncService {
             return;
           }
 
-          newChannelsList[existingIdx] = {
-            ...existing,
+          const updates: Partial<SnookerChannel> = {
             status,
             title: parsed.eventTitle,
             tournamentName: parsed.tournamentName,
@@ -76,6 +78,13 @@ export class SnookerSyncService {
             updatedAt: new Date().toISOString(),
             autoUpdatedAt: new Date().toISOString()
           };
+
+          // Logic for Manual Odds protection
+          if (!automationSettings.keepManualOdds) {
+             updates.odds = { A: 1.95, B: 1.95, D: 3.20 };
+          }
+
+          newChannelsList[existingIdx] = { ...existing, ...updates };
           updated++;
         } else {
           const newChannel: SnookerChannel = {

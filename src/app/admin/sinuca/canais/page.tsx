@@ -48,7 +48,7 @@ const getYoutubeEmbedId = (url: string): string | null => {
 export default function AdminSinucaCanaisPage() {
     const { 
         snookerChannels, addSnookerChannel, updateSnookerChannel, 
-        deleteSnookerChannel, syncSnookerWithYoutube, snookerSyncState,
+        deleteSnookerChannel, syncSnookerFromYoutube, snookerSyncState,
         snookerAutomationSettings, approveAutoSnookerChannel
     } = useAppContext();
     
@@ -132,7 +132,7 @@ export default function AdminSinucaCanaisPage() {
 
     const handleSyncManual = async () => {
         setIsSyncing(true);
-        await syncSnookerWithYoutube(true);
+        await syncSnookerFromYoutube(true);
         setIsSyncing(false);
     };
 

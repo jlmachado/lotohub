@@ -1,4 +1,3 @@
-
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
@@ -77,8 +76,8 @@ export default function AdminSinucaPlacarPage() {
                 <div className="flex items-center gap-4">
                     <Link href="/admin/sinuca"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
                     <div>
-                        <h1 className="text-3xl font-black uppercase italic tracking-tighter">Controle de Placar</h1>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Modo Assistido Híbrido Ativo</p>
+                        <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Controle de Placar</h1>
+                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Modo Assistido Híbrido Ativo</p>
                     </div>
                 </div>
                 {activeChannel?.source === 'youtube' && scoreboard && (
