@@ -3,7 +3,11 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
-import { Cog, Gamepad2, ChevronLeft, Ticket, BarChart as BarChartIcon, Tv, MessageSquare, DollarSign, Users, TrendingUp, TrendingDown, Play, HandCoins } from 'lucide-react';
+import { 
+  Cog, Gamepad2, ChevronLeft, Ticket, BarChart as BarChartIcon, 
+  Tv, MessageSquare, DollarSign, Users, TrendingUp, 
+  TrendingDown, Play, HandCoins, Zap 
+} from 'lucide-react';
 import Link from 'next/link';
 import { useAppContext } from '@/context/AppContext';
 import { useMemo, useState, useEffect } from 'react';
@@ -97,6 +101,7 @@ export default function AdminSinucaDashboardPage() {
   const quickActions = [
     { title: "Gerenciar Transmissão", icon: Tv, href: "/admin/sinuca/ao-vivo" },
     { title: "Gerenciar Jogos", icon: Gamepad2, href: "/admin/sinuca/canais" },
+    { title: "Automação YouTube", icon: Zap, href: "/admin/sinuca/automacao" },
     { title: "Controle de Placar", icon: BarChartIcon, href: "/admin/sinuca/placar" },
     { title: "Monitorar Apostas", icon: Ticket, href: "/admin/sinuca/apostas" },
     { title: "Moderar Chat", icon: MessageSquare, href: "/admin/sinuca/chat" },

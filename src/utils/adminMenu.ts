@@ -16,7 +16,8 @@ import {
   Layers,
   ShieldCheck,
   TrendingUp,
-  CheckCircle2
+  CheckCircle2,
+  Zap
 } from 'lucide-react';
 
 export function getAdminMenuItems(user: any, context: any, modules: any) {
@@ -27,7 +28,6 @@ export function getAdminMenuItems(user: any, context: any, modules: any) {
 
   if (modules && (modules.jogoDoBicho || modules.seninha || modules.quininha || modules.lotinha || modules.loteriaUruguai)) {
     items.push({ href: "/admin/loterias", label: "Loterias", icon: Ticket });
-    // Novo item de Resultados
     items.push({ href: "/admin/resultados-bicho", label: "Resultados Bicho", icon: CheckCircle2 });
   }
 
@@ -43,7 +43,10 @@ export function getAdminMenuItems(user: any, context: any, modules: any) {
     items.push({ href: "/admin/futebol/apostas", label: "Futebol: Auditoria", icon: FileBarChart });
   }
   
-  if (modules?.sinucaAoVivo) items.push({ href: "/admin/sinuca", label: "Sinuca ao Vivo", icon: Video });
+  if (modules?.sinucaAoVivo) {
+    items.push({ href: "/admin/sinuca", label: "Sinuca ao Vivo", icon: Video });
+    items.push({ href: "/admin/sinuca/automacao", label: "Sinuca: Automação", icon: Zap });
+  }
 
   if (context?.mode === 'GLOBAL') {
     items.push({ href: "/admin/bancas", label: "Gerenciar Bancas", icon: Building2 });
