@@ -1,6 +1,7 @@
+
 /**
- * @fileOverview Serviço de comunicação e diagnóstico para a fonte de dados do YouTube.
- * Responsável por validar e extrair identificadores de vídeo com segurança.
+ * @fileOverview Serviço de comunicação com a fonte de dados do YouTube.
+ * Responsável por buscar e validar metadados de transmissões.
  */
 
 export interface YoutubeApiResponse {
@@ -36,8 +37,7 @@ export class SnookerYoutubeService {
   }
 
   /**
-   * Busca dados de transmissões do canal via proxy interno.
-   * Em produção, isso bateria na YouTube Data API v3.
+   * Busca dados de transmissões via proxy interno.
    */
   static async fetchChannelData(): Promise<YoutubeApiResponse[]> {
     try {

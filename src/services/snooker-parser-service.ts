@@ -1,6 +1,7 @@
+
 /**
- * @fileOverview Serviço de parsing robuso para metadados da Sinuca.
- * Inclui normalização para geração de hash de sincronização estável.
+ * @fileOverview Motor de parsing para metadados de Sinuca.
+ * Extrai jogadores, torneios e fases a partir de títulos do YouTube.
  */
 
 export interface ParsedSnookerMatch {
@@ -9,7 +10,6 @@ export interface ParsedSnookerMatch {
   eventTitle: string;
   bestOf: number;
   location?: string;
-  category?: string;
   tournamentName?: string;
   modality?: string;
   phase?: string;
@@ -21,83 +21,75 @@ export interface ParsedSnookerMatch {
 
 export class SnookerParserService {
   /**
-   * Normaliza uma string para comparação e geração de hash.
+   * Normaliza uma string para geração de hash de sincronização.
    */
   static normalizeForHash(text: string): string {
     if (!text) return "";
     return text
       .toLowerCase()
       .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "") // Remove acentos
-      .replace(/[^a-z0-9]/g, "") // Mantém apenas alfanuméricos
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "")
       .trim();
   }
 
   /**
-   * Ponto de entrada principal para extração de dados.
+   * Processa título e descrição para extrair dados do jogo.
    */
   static parse(title: string, description: string = ''): ParsedSnookerMatch {
     const notes: string[] = [];
     let confidence = 0.1;
 
-    // 1. Limpeza inicial de ruídos comuns em títulos de live
-    const cleanTitle = title.replace(/AO VIVO|LIVE|ASSISTA|AGORA|COMPLETO|SN0OKER|SINUCA|TV SNOOKER BRASIL/gi, '').trim();
+    // Limpeza de ruídos comuns
+    const cleanTitle = title.replace(/AO VIVO|LIVE|ASSISTA|AGORA|SN0OKER|SINUCA|TV SNOOKER BRASIL/gi, '').trim();
     const fullText = `${cleanTitle} ${description}`;
 
-    // 2. Detecção de Best Of (MD, BO, Melhor de)
+    // 1. Extração de Best Of
     const bestOf = this.extractBestOf(cleanTitle, notes);
     if (bestOf !== 9) confidence += 0.1;
 
-    // 3. Detecção de Modalidade
+    // 2. Extração de Modalidade e Fase
     const modality = this.extractModality(fullText, notes);
-    if (modality) confidence += 0.1;
-
-    // 4. Detecção de Fase
     const phase = this.extractPhase(cleanTitle, notes);
+    if (modality) confidence += 0.1;
     if (phase) confidence += 0.1;
 
-    // 5. Detecção de Premiação
+    // 3. Extração de Premiação
     const { prize, prizeLabel } = this.extractPrize(fullText, notes);
     if (prize) confidence += 0.1;
 
-    // 6. Detecção de Localização
-    const location = this.extractLocation(cleanTitle, notes);
-    if (location) confidence += 0.1;
-
-    // 7. Extração de Jogadores (Prioridade Máxima)
+    // 4. Extração de Jogadores (Core)
     const players = this.extractPlayers(cleanTitle, notes);
     
     if (players) {
-      confidence += 0.4;
+      confidence += 0.5;
       return {
         playerA: players.a,
         playerB: players.b,
         eventTitle: players.event || cleanTitle,
-        tournamentName: players.event || 'Snooker Brasil',
+        tournamentName: players.event || 'Torneio Snooker Brasil',
         bestOf,
         modality,
         phase,
         prize,
         prizeLabel,
-        location,
         confidence: Math.min(confidence, 1.0),
         notes
       };
     }
 
-    // Fallback caso não encontre o padrão X
-    notes.push('Diagnóstico: Padrão [Jogador A x Jogador B] não identificado.');
+    // Fallback
+    notes.push('Padrão de confronto não identificado.');
     return {
       playerA: 'Jogador A',
       playerB: 'Jogador B',
-      eventTitle: cleanTitle || 'Desafio Snooker Brasil',
+      eventTitle: cleanTitle || 'Desafio de Sinuca',
       tournamentName: 'Snooker Brasil',
       bestOf,
       modality,
       phase,
       prize,
       prizeLabel,
-      location,
       confidence: Math.min(confidence, 0.3),
       notes
     };
@@ -106,17 +98,16 @@ export class SnookerParserService {
   private static extractPlayers(title: string, notes: string[]) {
     const patterns = [
       /(.+?)\s+(?:X|VS|VERSUS)\s+(.+?)(?:\s+[-|]\s+(.*))?$/i,
-      /(.+?)\s+v\s+(.+?)(?:\s+[-|]\s+(.*))?$/i,
-      /(.+?)\s*\/\s*(.+?)(?:\s+[-|]\s+(.*))?$/i
+      /(.+?)\s+v\s+(.+?)(?:\s+[-|]\s+(.*))?$/i
     ];
 
     for (const pattern of patterns) {
       const match = title.match(pattern);
       if (match) {
-        const a = this.cleanPlayerName(match[1]);
-        const b = this.cleanPlayerName(match[2]);
+        const a = this.cleanName(match[1]);
+        const b = this.cleanName(match[2]);
         if (a && b) {
-          notes.push(`Detectado: ${a} vs ${b}`);
+          notes.push(`Jogadores: ${a} vs ${b}`);
           return { a, b, event: match[3]?.trim() };
         }
       }
@@ -124,85 +115,41 @@ export class SnookerParserService {
     return null;
   }
 
-  private static cleanPlayerName(name: string): string {
-    if (!name) return '';
-    return name
-      .replace(/^[-\s|]+|[-|\s]+$/g, '')
-      .split('(')[0] 
-      .replace(/\b(SP|RJ|MG|RS|PR|BA|CE|GO|DF|PE|SC|AM|PA|ES)\b/gi, '') 
-      .trim();
+  private static cleanName(name: string): string {
+    return name.replace(/\([^)]*\)/g, '').replace(/\b(SP|RJ|MG|RS|PR|BA|CE|GO|DF)\b/gi, '').trim();
   }
 
   private static extractBestOf(text: string, notes: string[]): number {
-    const match = text.match(/MD\s*(\d+)|BO\s*(\d+)|MELHOR\s*DE\s*(\d+)|BEST\s*OF\s*(\d+)/i);
+    const match = text.match(/MD\s*(\d+)|BO\s*(\d+)|MELHOR\s*DE\s*(\d+)/i);
     if (match) {
-      const val = parseInt(match[1] || match[2] || match[3] || match[4]);
-      notes.push(`Regra de Jogo: Melhor de ${val}`);
+      const val = parseInt(match[1] || match[2] || match[3]);
+      notes.push(`MD${val} detectado`);
       return val;
     }
-    return 9; 
+    return 9;
   }
 
   private static extractModality(text: string, notes: string[]) {
-    const modalities = [
-      { key: 'Six Red', regex: /SIX\s*RED/i },
-      { key: 'Snooker', regex: /SNOOKER/i },
-      { key: 'Bola 8', regex: /BOLA\s*8/i },
-      { key: 'Bola 9', regex: /BOLA\s*9/i },
-      { key: 'Mesão', regex: /MESÃO/i },
-      { key: 'Sinuquinha', regex: /SINUQUINHA|SINUCA/i }
-    ];
-
-    for (const m of modalities) {
-      if (m.regex.test(text)) {
-        notes.push(`Tipo: ${m.key}`);
-        return m.key;
-      }
-    }
+    if (/SIX\s*RED/i.test(text)) return 'Six Red';
+    if (/SINUQUINHA/i.test(text)) return 'Sinuquinha';
+    if (/MESÃO/i.test(text)) return 'Mesão';
     return undefined;
   }
 
   private static extractPhase(text: string, notes: string[]) {
-    const phases = [
-      { key: 'Final', regex: /FINAL/i },
-      { key: 'Semifinal', regex: /SEMIFINAL|SEMI-FINAL/i },
-      { key: 'Quartas', regex: /QUARTAS/i },
-      { key: 'Oitavas', regex: /OITAVAS/i },
-      { key: 'Rodada', regex: /RODADA\s*(\d+)/i },
-      { key: 'Eliminatórias', regex: /ELIMINATÓRIAS/i }
-    ];
-
-    for (const p of phases) {
-      const match = text.match(p.regex);
-      if (match) {
-        notes.push(`Fase: ${p.key}`);
-        return p.key;
-      }
-    }
+    if (/FINAL/i.test(text)) return 'Grande Final';
+    if (/SEMIFINAL/i.test(text)) return 'Semifinal';
+    if (/QUARTAS/i.test(text)) return 'Quartas de Final';
     return undefined;
   }
 
-  private static extractPrize(text: string, notes: string[]): { prize: number | null, prizeLabel?: string } {
-    const regex = /(?:R\$|PRIZE|BOLSA)\s*([\d.]+)\s*(MIL)?/i;
-    const match = text.match(regex);
+  private static extractPrize(text: string, notes: string[]) {
+    const match = text.match(/(?:R\$|PRIZE)\s*([\d.]+)\s*(MIL)?/i);
     if (match) {
       let val = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
-      if (match[2] && match[2].toLowerCase() === 'mil') val *= 1000;
-      notes.push(`Valor: R$ ${val}`);
+      if (match[2]) val *= 1000;
       return { prize: val, prizeLabel: match[0] };
     }
     return { prize: null };
-  }
-
-  private static extractLocation(text: string, notes: string[]) {
-    const match = text.match(/(?:EM|NO|NA)\s+([A-ZÇÃÕÉÊÍÓÚ\s]+)|[-\s]([A-Z]{2})$/i);
-    if (match) {
-      const loc = (match[1] || match[2]).trim();
-      if (loc.length > 2) {
-        notes.push(`Local: ${loc}`);
-        return loc;
-      }
-    }
-    return undefined;
   }
 }
