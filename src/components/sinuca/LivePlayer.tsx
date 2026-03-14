@@ -1,4 +1,3 @@
-
 'use client';
 import { Card } from "@/components/ui/card";
 import { Eye, Volume2, VolumeX, Maximize, Timer, AlertCircle } from "lucide-react";

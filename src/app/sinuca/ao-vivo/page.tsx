@@ -1,4 +1,3 @@
-
 'use client';
 import { CasinoLayout } from "@/components/sinuca/CasinoLayout";
 import { LiveChat } from "@/components/sinuca/LiveChat";
@@ -17,23 +16,28 @@ import { MySnookerBets } from "@/components/sinuca/MySnookerBets";
 export default function SinucaAoVivoPage() {
     const { snookerLiveConfig, snookerChannels, joinChannel, leaveChannel, celebrationTrigger, clearCelebration, user } = useAppContext();
     const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+    const [isClient, setIsClient] = useState(false);
+
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
     
     // Auto-select best channel
     useEffect(() => {
-        if (activeChannelId || !snookerChannels || snookerChannels.length === 0) return;
+        if (!isClient || activeChannelId || !snookerChannels || snookerChannels.length === 0) return;
 
         // Priorities: 1. Live, 2. Imminent, 3. Scheduled, 4. Default Config
         const enabled = snookerChannels.filter(c => c.enabled);
         const live = enabled.find(c => c.status === 'live');
         const imminent = enabled.find(c => c.status === 'imminent');
-        const scheduled = enabled.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()).find(c => c.status === 'scheduled');
+        const scheduled = [...enabled].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()).find(c => c.status === 'scheduled');
 
         if (live) setActiveChannelId(live.id);
         else if (imminent) setActiveChannelId(imminent.id);
         else if (scheduled) setActiveChannelId(scheduled.id);
         else if (snookerLiveConfig?.defaultChannelId) setActiveChannelId(snookerLiveConfig.defaultChannelId);
         else if (enabled[0]) setActiveChannelId(enabled[0].id);
-    }, [activeChannelId, snookerChannels, snookerLiveConfig]);
+    }, [isClient, activeChannelId, snookerChannels, snookerLiveConfig]);
 
     useEffect(() => {
         if (!activeChannelId || !user) return;
@@ -44,6 +48,8 @@ export default function SinucaAoVivoPage() {
             leaveChannel(activeChannelId, user.id);
         };
     }, [activeChannelId, joinChannel, leaveChannel, user]);
+
+    if (!isClient) return null;
 
     if (!activeChannelId && (!snookerChannels || snookerChannels.length === 0)) {
         return (

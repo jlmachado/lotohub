@@ -222,7 +222,7 @@ export default function AdminSnookerAutomationPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1.5">
-                          <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase bg-black/20">Confiança: {(channel.metadataConfidence || 0) * 100}%</Badge>
+                          <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase bg-black/20">Confiança: {((channel.metadataConfidence || 0) * 100).toFixed(0)}%</Badge>
                           {channel.modality && <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase bg-black/20">{channel.modality}</Badge>}
                           {channel.location && <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase bg-black/20">{channel.location}</Badge>}
                           {channel.prizeLabel && <Badge variant="outline" className="text-[8px] h-4 border-green-500/20 text-green-500 uppercase bg-green-500/5">{channel.prizeLabel}</Badge>}
