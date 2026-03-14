@@ -1,5 +1,7 @@
+
 /**
  * @fileOverview AppContext - Orquestrador Central Síncrono (Master).
+ * Expandido com suporte à automação profissional de Sinuca (YouTube Sync).
  */
 
 'use client';
@@ -27,6 +29,7 @@ import { checkSingleItemWinner, isJDBItemEligible } from '@/lib/draw-engine';
 import { JDBNormalizedResult, SyncLogEntry } from '@/types/result-types';
 import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
 import { SnookerSyncService } from '@/services/snooker-sync-service';
+import { SnookerParserService } from '@/services/snooker-parser-service';
 
 // --- INTERFACES ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -46,6 +49,12 @@ export interface FootballBet { id: string; userId: string; bancaId: string; term
 export interface FootballData { leagues: any[]; matches: any[]; unifiedMatches: any[]; syncStatus: 'idle' | 'syncing' | 'success' | 'error'; lastSyncAt: string | null; }
 
 export interface LiveMiniPlayerConfig { enabled: boolean; youtubeUrl: string; youtubeEmbedId: string; title: string; autoShow: boolean; defaultState: 'open' | 'minimized'; showOnHome: boolean; showOnSinuca: boolean; topHeight: number; bubbleSize: number; }
+
+export interface BingoSettings { enabled: boolean; rtpEnabled: boolean; rtpPercent: number; ticketPriceDefault: number; maxTicketsPerUserDefault: number; housePercentDefault: number; preDrawHoldSeconds: number; prizeDefaults: { quadra: number; kina: number; keno: number; }; scheduleMode: 'manual' | 'auto'; autoSchedule: { everyMinutes: number; startHour: number; endHour: number; }; }
+export interface BingoWinner { category: string; userId: string; userName: string; terminalId: string; winAmount: number; winningNumbers: number[]; wonAt: string; type: 'USER_WIN' | 'BOT_WIN'; }
+export interface BingoDraw { id: string; drawNumber: number; status: 'scheduled' | 'waiting' | 'live' | 'finished' | 'cancelled'; drawnNumbers: number[]; winnersFound: { quadra?: BingoWinner; kina?: BingoWinner; keno?: BingoWinner; }; totalTickets: number; totalRevenue: number; payoutTotal: number; bancaId: string; scheduledAt: string; startedAt?: string; finishedAt?: string; ticketPrice: number; prizeRules: { quadra: number; kina: number; keno: number; }; housePercent: number; }
+export interface BingoTicket { id: string; drawId: string; userId: string; userName: string; terminalId: string; amountPaid: number; status: 'active' | 'won' | 'lost' | 'refunded'; ticketNumbers: number[]; createdAt: string; isBot?: boolean; bancaId: string; }
+export interface BingoPayout { id: string; drawId: string; userId: string; userName: string; terminalId: string; amount: number; status: 'pending' | 'paid' | 'failed' | 'cancelled'; type: 'quadra' | 'kina' | 'keno'; createdAt: string; }
 
 // --- SINUCA EXPANDIDO ---
 export interface SnookerChannel {
@@ -71,7 +80,7 @@ export interface SnookerChannel {
   bancaId: string;
   createdAt: string;
   updatedAt: string;
-  // Novos campos para automação
+  // Campos de automação
   source?: 'manual' | 'youtube';
   sourceVideoId?: string;
   sourceType?: 'live' | 'upcoming' | 'video';
@@ -89,9 +98,18 @@ export interface SnookerChannel {
   thumbnailUrl?: string;
   isFeatured?: boolean;
   isManualOverride?: boolean;
+  isArchived?: boolean;
 }
 
-export interface SnookerSyncLog { id: string; createdAt: string; type: string; status: 'success' | 'warning' | 'error' | 'info'; message: string; relatedChannelId?: string; payload?: any; }
+export interface SnookerSyncLog { 
+  id: string; 
+  createdAt: string; 
+  type: string; 
+  status: 'success' | 'warning' | 'error' | 'info'; 
+  message: string; 
+  relatedChannelId?: string; 
+  payload?: any; 
+}
 
 export interface SnookerAutomationSettings {
   enabled: boolean;
@@ -125,15 +143,17 @@ export interface SnookerLiveConfig { defaultChannelId: string; showLiveBadge: bo
 export interface SnookerChatMessage { id: string; channelId: string; userId: string; userName: string; text: string; createdAt: string; role: 'user' | 'admin'; deleted?: boolean; }
 export interface SnookerScoreboard { matchTitle: string; playerA: { name: string; score: number }; playerB: { name: string; score: number }; scoreA: number; scoreB: number; statusText: string; frame: number; round: { number: number; endsAt?: string }; }
 
-// --- CONTEXT ---
+// --- CONTEXT TYPE ---
 interface AppContextType {
   user: any; allUsers: any[]; isLoading: boolean; balance: number; bonus: number; terminal: string; activeBancaId: string; ledger: any[]; banners: Banner[]; popups: Popup[]; news: NewsMessage[]; apostas: Aposta[]; postedResults: any[]; jdbResults: JDBNormalizedResult[]; jdbSyncLogs: SyncLogEntry[]; jdbLoterias: JDBLoteria[]; genericLotteryConfigs: GenericLotteryConfig[]; casinoSettings: CasinoSettings; 
   bingoSettings: BingoSettings; bingoDraws: BingoDraw[]; bingoTickets: BingoTicket[]; bingoPayouts: BingoPayout[];
   snookerChannels: SnookerChannel[]; snookerPresence: Record<string, { viewers: string[] }>; snookerFinancialHistory: SnookerFinancialSummary[]; snookerBets: SnookerBet[]; snookerCashOutLog: any[]; snookerLiveConfig: SnookerLiveConfig; snookerActivityFeed: any[]; snookerBetsFeed: any[]; snookerChatMessages: SnookerChatMessage[]; snookerScoreboards: Record<string, SnookerScoreboard>; snookerSyncLogs: SnookerSyncLog[]; snookerAutomationSettings: SnookerAutomationSettings; celebrationTrigger: boolean;
+  snookerSyncState: 'idle' | 'syncing' | 'success' | 'error'; snookerLastAutoCreatedIds: string[]; snookerLastAutoUpdatedIds: string[];
   footballData: FootballData; footballBets: FootballBet[]; betSlip: any[]; liveMiniPlayerConfig: LiveMiniPlayerConfig; isFullscreen: boolean;
   refreshData: () => void; logout: () => void; handleFinalizarAposta: (aposta: any, valorTotal: number) => string | null; processarResultados: (dados: any) => void; syncFootballAll: (force?: boolean) => Promise<void>; updateLeagueConfig: (id: string, config: any) => void; addBetToSlip: (bet: any) => void; removeBetFromSlip: (id: string) => void; clearBetSlip: () => void; placeFootballBet: (stake: number) => Promise<string | null>; toggleFullscreen: () => void; updateCasinoSettings: (s: CasinoSettings) => void; registerCambistaMovement: (data: { tipo: string, valor: number, modulo: string, observacao: string }) => void; publishJDBResult: (id: string) => void; deleteJDBResult: (id: string) => void;
   updateBingoSettings: (s: BingoSettings) => void; createBingoDraw: (d: Partial<BingoDraw>) => void; startBingoDraw: (id: string) => void; drawBingoBall: (id: string) => void; finishBingoDraw: (id: string) => void; cancelBingoDraw: (id: string, reason: string) => void; buyBingoTickets: (drawId: string, count: number) => boolean; refundBingoTicket: (id: string) => void; payBingoPayout: (id: string) => void;
-  joinChannel: (channelId: string, userId: string) => void; leaveChannel: (channelId: string, userId: string) => void; placeSnookerBet: (bet: any) => boolean; cashOutSnookerBet: (betId: string) => void; sendSnookerChatMessage: (channelId: string, text: string) => void; deleteSnookerChatMessage: (id: string) => void; sendSnookerReaction: (channelId: string, reaction: string) => void; updateSnookerLiveConfig: (c: any) => void; updateSnookerScoreboard: (id: string, s: any) => void; addSnookerChannel: (c: any) => void; updateSnookerChannel: (c: any) => void; deleteSnookerChannel: (id: string) => void; settleSnookerRound: (channelId: string, winner: string) => void; clearCelebration: () => void; syncSnookerWithYoutube: () => Promise<void>; updateSnookerAutomationSettings: (s: SnookerAutomationSettings) => void;
+  joinChannel: (channelId: string, userId: string) => void; leaveChannel: (channelId: string, userId: string) => void; placeSnookerBet: (bet: any) => boolean; cashOutSnookerBet: (betId: string) => void; sendSnookerChatMessage: (channelId: string, text: string) => void; deleteSnookerChatMessage: (id: string) => void; sendSnookerReaction: (channelId: string, reaction: string) => void; updateSnookerLiveConfig: (c: any) => void; updateSnookerScoreboard: (id: string, s: any) => void; addSnookerChannel: (c: any) => void; updateSnookerChannel: (c: any) => void; deleteSnookerChannel: (id: string) => void; settleSnookerRound: (channelId: string, winner: string) => void; clearCelebration: () => void; 
+  syncSnookerFromYoutube: (force?: boolean) => Promise<void>; parseSnookerYoutubeItem: (item: any) => any; upsertAutoSnookerChannel: (channel: SnookerChannel) => void; approveAutoSnookerChannel: (id: string) => void; rejectAutoSnookerChannel: (id: string) => void; archiveAutoSnookerChannel: (id: string) => void; clearSnookerSyncLogs: () => void; updateSnookerAutomationSettings: (s: SnookerAutomationSettings) => void;
   addBanner: (b: Banner) => void; updateBanner: (b: Banner) => void; deleteBanner: (id: string) => void; addPopup: (p: Popup) => void; updatePopup: (p: Popup) => void; deletePopup: (id: string) => void; addNews: (m: NewsMessage) => void; updateNews: (m: NewsMessage) => void; deleteNews: (id: string) => void;
 }
 
@@ -146,6 +166,7 @@ const DEFAULT_SNOOKER_CFG: SnookerLiveConfig = { defaultChannelId: '', showLiveB
 const DEFAULT_CASINO_SETTINGS: CasinoSettings = { casinoName: 'LotoHub Casino', casinoStatus: true, bannerMessage: 'Sua sorte está a um clique de distância!' };
 const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = { enabled: true, sourceMode: 'hybrid', youtubeChannelUrl: 'https://www.youtube.com/@TVSnookerBrasil', autoCreateChannels: true, autoUpdateChannels: true, autoMarkLive: true, autoMarkFinished: true, autoFillPlayers: true, autoFillTournament: true, autoFillSchedule: true, autoFillPrize: true, syncIntervalSeconds: 300, dedupeWindowHours: 24, requireAdminApproval: false, overwriteManualFields: false, createScoreboardIfMissing: true, createDefaultOddsIfMissing: true, keepManualOdds: true, enabledOnHome: true, enabledOnPublicPage: true };
 
+// --- PROVIDER ---
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const router = useRouter();
@@ -186,6 +207,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [snookerActivityFeed, setSnookerActivityFeed] = useState<any[]>([]);
   const [snookerBetsFeed, setSnookerBetsFeed] = useState<any[]>([]);
   const [celebrationTrigger, setCelebrationTrigger] = useState(false);
+  const [snookerSyncState, setSnookerSyncState] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [snookerLastAutoCreatedIds, setSnookerLastAutoCreatedIds] = useState<string[]>([]);
+  const [snookerLastAutoUpdatedIds, setSnookerLastAutoUpdatedIds] = useState<string[]>([]);
 
   const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
   const [footballData, setFootballData] = useState<FootballData>({ leagues: [], matches: [], unifiedMatches: [], syncStatus: 'idle', lastSyncAt: null });
@@ -198,7 +222,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (typeof window === 'undefined') return;
     const session = getSession();
     if (session) { const u = getUserByTerminal(session.terminal); setUser(u); } else { setUser(null); }
-    setAllUsers(getUsers()); setLedger(LedgerService.getEntries()); setBanners(getStorageItem('app:banners:v1', [])); setPopups(getStorageItem('app:popups:v1', [])); setNews(getStorageItem('news_messages', [])); setApostas(getStorageItem('app:apostas:v1', [])); setPostedResults(getStorageItem('app:posted_results:v1', [])); setJdbResults(getStorageItem('app:jdb_results:v1', [])); setJdbSyncLogs(getStorageItem('app:jdb_sync_logs:v1', [])); setFootballBets(getStorageItem('app:football_bets:v1', [])); setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS)); setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES)); setCasinoSettings(getStorageItem('app:casino_settings:v1', DEFAULT_CASINO_SETTINGS)); setBingoSettings(getStorageItem('app:bingo_settings:v1', DEFAULT_BINGO_SETTINGS)); setBingoDraws(getStorageItem('app:bingo_draws:v1', [])); setBingoTickets(getStorageItem('app:bingo_tickets:v1', [])); setBingoPayouts(getStorageItem('app:bingo_payouts:v1', [])); setSnookerChannels(getStorageItem('app:snooker_channels:v1', [])); setSnookerFinancialHistory(getStorageItem('app:snooker_history:v1', [])); setSnookerBets(getStorageItem('app:snooker_bets:v1', [])); setSnookerCashOutLog(getStorageItem('app:snooker_cashout:v1', [])); setSnookerLiveConfig(getStorageItem('app:snooker_cfg:v1', DEFAULT_SNOOKER_CFG)); setSnookerChatMessages(getStorageItem('app:snooker_chat:v1', [])); setSnookerScoreboards(getStorageItem('app:snooker_scores:v1', {})); setSnookerBetsFeed(getStorageItem('app:snooker_bets_feed:v1', [])); setSnookerActivityFeed(getStorageItem('app:snooker_activity_feed:v1', [])); setSnookerSyncLogs(getStorageItem('app:snooker_sync_logs:v1', [])); setSnookerAutomationSettings(getStorageItem('app:snooker_automation_cfg:v1', DEFAULT_SNOOKER_AUTOMATION)); setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', DEFAULT_PLAYER_CONFIG));
+    setAllUsers(getUsers()); setLedger(LedgerService.getEntries()); setBanners(getStorageItem('app:banners:v1', [])); setPopups(getStorageItem('app:popups:v1', [])); setNews(getStorageItem('news_messages', [])); setApostas(getStorageItem('app:apostas:v1', [])); setPostedResults(getStorageItem('app:posted_results:v1', [])); setJdbResults(getStorageItem('app:jdb_results:v1', [])); setJdbSyncLogs(getStorageItem('app:jdb_sync_logs:v1', [])); setFootballBets(getStorageItem('app:football_bets:v1', [])); setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS)); setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES)); setCasinoSettings(getStorageItem('app:casino_settings:v1', DEFAULT_CASINO_SETTINGS)); setBingoSettings(getStorageItem('app:bingo_settings:v1', DEFAULT_BINGO_SETTINGS)); setBingoDraws(getStorageItem('app:bingo_draws:v1', [])); setBingoTickets(getStorageItem('app:bingo_tickets:v1', [])); setBingoPayouts(getStorageItem('app:bingo_payouts:v1', [])); setSnookerChannels(getStorageItem('app:snooker_channels:v1', [])); setSnookerFinancialHistory(getStorageItem('app:snooker_history:v1', [])); setSnookerBets(getStorageItem('app:snooker_bets:v1', [])); setSnookerCashOutLog(getStorageItem('app:snooker_cashout:v1', [])); setSnookerLiveConfig(getStorageItem('app:snooker_cfg:v1', DEFAULT_SNOOKER_CFG)); setSnookerChatMessages(getStorageItem('app:snooker_chat:v1', [])); setSnookerScoreboards(getStorageItem('app:snooker_scores:v1', {})); setSnookerBetsFeed(getStorageItem('app:snooker_bets_feed:v1', [])); setSnookerActivityFeed(getStorageItem('app:snooker_activity_feed:v1', [])); setSnookerSyncLogs(getStorageItem('app:snooker_sync_logs:v1', [])); setSnookerAutomationSettings(getStorageItem('app:snooker_automation:v1', DEFAULT_SNOOKER_AUTOMATION)); setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', DEFAULT_PLAYER_CONFIG));
     const savedFootball = getStorageItem('app:football:unified:v1', null); if (savedFootball) setFootballData(prev => ({ ...prev, ...savedFootball })); else setFootballData(prev => ({ ...prev, leagues: ESPN_LEAGUE_CATALOG }));
   }, []);
 
@@ -216,10 +240,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const unSettled = jdbResults.filter(r => r.status === 'PUBLICADO' && !r.isSettled);
     if (unSettled.length > 0) {
-      const resultsToSettle = [...unSettled];
       const currentApostas = [...apostas];
       let changes = false;
-      resultsToSettle.forEach(result => {
+      unSettled.forEach(result => {
         currentApostas.forEach(aposta => {
           if (aposta.status === 'aguardando' && aposta.loteria === 'Jogo do Bicho') {
             const items = aposta.detalhes || [];
@@ -256,6 +279,77 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [jdbResults, apostas, jdbLoterias, notify]);
 
+  // --- SNOOKER METHODS ---
+  const syncSnookerFromYoutube = useCallback(async (force = false) => {
+    if (snookerSyncState === 'syncing' && !force) return;
+    setSnookerSyncState('syncing');
+    try {
+      const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+      const { updatedChannels, summary } = await SnookerSyncService.sync(current, user?.bancaId || 'default');
+      setStorageItem('app:snooker_channels:v1', updatedChannels);
+      
+      const newLog: SnookerSyncLog = {
+        id: `log-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        type: 'YOUTUBE_SYNC',
+        status: 'success',
+        message: `Sync automático: ${summary.added} novos canais, ${summary.updated} atualizados.`
+      };
+      const currentLogs = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
+      setStorageItem('app:snooker_sync_logs:v1', [newLog, ...currentLogs].slice(0, 100));
+      
+      setSnookerSyncState('success');
+      notify();
+      if (force) toast({ title: "Sincronização Concluída", description: `${summary.added} novos jogos encontrados.` });
+    } catch (e) {
+      setSnookerSyncState('error');
+      toast({ variant: 'destructive', title: "Erro na sincronização" });
+    }
+  }, [user, notify, toast, snookerSyncState]);
+
+  const approveAutoSnookerChannel = useCallback((id: string) => {
+    const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+    setStorageItem('app:snooker_channels:v1', current.map(c => c.id === id ? { ...c, enabled: true, sourceStatus: 'synced' as const } : c));
+    notify();
+  }, [notify]);
+
+  const rejectAutoSnookerChannel = useCallback((id: string) => {
+    const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+    setStorageItem('app:snooker_channels:v1', current.map(c => c.id === id ? { ...c, enabled: false, sourceStatus: 'error' as const } : c));
+    notify();
+  }, [notify]);
+
+  const archiveAutoSnookerChannel = useCallback((id: string) => {
+    const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+    setStorageItem('app:snooker_channels:v1', current.map(c => c.id === id ? { ...c, isArchived: true, enabled: false } : c));
+    notify();
+  }, [notify]);
+
+  const clearSnookerSyncLogs = useCallback(() => {
+    setStorageItem('app:snooker_sync_logs:v1', []);
+    notify();
+  }, [notify]);
+
+  const parseSnookerYoutubeItem = useCallback((item: any) => {
+    return SnookerParserService.parse(item.snippet.title, item.snippet.description);
+  }, []);
+
+  const upsertAutoSnookerChannel = useCallback((channel: SnookerChannel) => {
+    const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+    const exists = current.find(c => c.id === channel.id || c.sourceVideoId === channel.sourceVideoId);
+    if (exists) {
+      setStorageItem('app:snooker_channels:v1', current.map(c => c.id === (exists.id) ? { ...c, ...channel } : c));
+    } else {
+      setStorageItem('app:snooker_channels:v1', [channel, ...current]);
+    }
+    notify();
+  }, [notify]);
+
+  const updateSnookerAutomationSettings = useCallback((s: SnookerAutomationSettings) => {
+    setStorageItem('app:snooker_automation:v1', s);
+    notify();
+  }, [notify]);
+
   const logout = useCallback(() => { authLogout(); setUser(null); notify(); router.push('/login'); }, [notify, router]);
   const toggleFullscreen = useCallback(() => { if (typeof document === 'undefined') return; if (!document.fullscreenElement) document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {}); else document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {}); }, []);
   const updateCasinoSettings = useCallback((s: CasinoSettings) => { setStorageItem('app:casino_settings:v1', s); notify(); }, [notify]);
@@ -286,8 +380,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const deleteSnookerChannel = useCallback((id: string) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', current.filter(i => i.id !== id)); notify(); }, [notify]);
   const settleSnookerRound = useCallback((channelId: string, winner: string) => { const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); const channel = currentChannels.find(c => c.id === channelId); const currentBets = getStorageItem<SnookerBet[]>('app:snooker_bets:v1', []); const betsToSettle = currentBets.filter(b => b.channelId === channelId && b.status === 'open'); let totalPot = 0, totalPayout = 0; betsToSettle.forEach(bet => { totalPot += bet.amount; if (bet.pick === winner) { const oddsMap = { A: bet.oddsA, B: bet.oddsB, EMPATE: bet.oddsD }; const prize = bet.amount * (oddsMap[bet.pick as keyof typeof oddsMap]); totalPayout += prize; const realUser = getUserByTerminal(bet.userName) || getUsers().find(u => u.id === bet.userId); if (realUser) { upsertUser({ terminal: realUser.terminal, saldo: realUser.saldo + prize }); LedgerService.addEntry({ bancaId: realUser.bancaId || 'default', userId: realUser.id, terminal: realUser.terminal, tipoUsuario: realUser.tipoUsuario, modulo: 'Sinuca', type: 'BET_WIN', amount: prize, balanceBefore: realUser.saldo, balanceAfter: realUser.saldo + prize, referenceId: bet.id, description: `Prêmio Sinuca` }); } } }); const historyEntry = { id: `fin-${Date.now()}`, channelId, channelTitle: channel?.title || 'Canal', totalPot, totalPayout, houseProfit: totalPot - totalPayout, settledAt: new Date().toISOString() }; const currentHistory = getStorageItem<any[]>('app:snooker_history:v1', []); setStorageItem('app:snooker_history:v1', [historyEntry, ...currentHistory]); setStorageItem('app:snooker_bets:v1', currentBets.map(b => b.channelId === channelId && b.status === 'open' ? { ...b, status: b.pick === winner ? 'won' as const : 'lost' as const } : b)); if (winner !== 'EMPATE') setCelebrationTrigger(true); notify(); }, [notify]);
   const clearCelebration = useCallback(() => setCelebrationTrigger(false), []);
-  const syncSnookerWithYoutube = useCallback(async () => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); const { updatedChannels, summary } = await SnookerSyncService.sync(current, user?.bancaId || 'default'); setStorageItem('app:snooker_channels:v1', updatedChannels); const newLog: SnookerSyncLog = { id: `log-${Date.now()}`, createdAt: new Date().toISOString(), type: 'YOUTUBE_SYNC', status: 'success', message: `Sync concluído: ${summary.added} novos, ${summary.updated} atualizados.` }; const currentLogs = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []); setStorageItem('app:snooker_sync_logs:v1', [newLog, ...currentLogs].slice(0, 50)); setSnookerAutomationSettings(prev => { const updated = { ...prev, lastSyncAt: new Date().toISOString(), lastSyncStatus: 'success', lastSyncMessage: `Importados: ${summary.added}` }; setStorageItem('app:snooker_automation_cfg:v1', updated); return updated; }); loadLocalData(); notify(); toast({ title: "Sync YouTube", description: `Sucesso: ${summary.added} novos jogos e ${summary.updated} atualizados.` }); }, [user, notify, toast, loadLocalData]);
-  const updateSnookerAutomationSettings = useCallback((s: SnookerAutomationSettings) => { setStorageItem('app:snooker_automation_cfg:v1', s); notify(); }, [notify]);
 
   const syncFootballAll = useCallback(async (force = false) => { setFootballData(prev => ({ ...prev, syncStatus: 'syncing' })); try { const activeLeagues = getStorageItem('app:football:unified:v1', { leagues: ESPN_LEAGUE_CATALOG }).leagues.filter((l: any) => l.active); let allMatches: any[] = []; const leagueStandings: Record<string, any[]> = {}; for (const league of activeLeagues) { const [standingsData, scoreboardData] = await Promise.all([espnService.getStandings(league.slug), espnService.getScoreboard(league.slug)]); if (standingsData) leagueStandings[league.slug] = normalizeESPNStandings(standingsData); if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)]; } const unified = allMatches.map(match => { const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || [], match.id); const baseModel = MatchMapperService.transformEspnToBettable(match); const markets = FootballMarketsEngine.generateAllMarkets(probs); const processed = FootballLiveEngine.processLiveState(baseModel, match); return { ...processed, markets, hasOdds: true, odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } }; }); const currentBets = getStorageItem<FootballBet[]>('app:football_bets:v1', []); setStorageItem('app:football_bets:v1', FootballSettlementService.settleBets(currentBets, unified)); const data = { leagues: ESPN_LEAGUE_CATALOG, matches: allMatches, unifiedMatches: unified, lastSyncAt: new Date().toISOString() }; setStorageItem('app:football:unified:v1', data); setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' })); if (force) toast({ title: 'Sync Concluído' }); } catch (e) { setFootballData(prev => ({ ...prev, syncStatus: 'error' })); } }, [toast]);
   const updateLeagueConfig = useCallback((id: string, config: any) => { setFootballData(prev => { const leagues = prev.leagues.map(l => l.id === id ? { ...l, ...config } : l); const updated = { ...prev, leagues }; setStorageItem('app:football:unified:v1', updated); return updated; }); notify(); }, [notify]);
@@ -307,10 +399,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const contextValue = useMemo(() => ({
     user, allUsers, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '', activeBancaId: user?.bancaId || 'default', ledger, banners, popups, news, apostas, postedResults, jdbResults, jdbSyncLogs, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, toggleFullscreen, casinoSettings, updateCasinoSettings, registerCambistaMovement, publishJDBResult, deleteJDBResult,
     bingoSettings, bingoDraws, bingoTickets, bingoPayouts, updateBingoSettings, createBingoDraw, startBingoDraw, drawBingoBall, finishBingoDraw, cancelBingoDraw, buyBingoTickets, refundBingoTicket, payBingoPayout,
-    snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog, snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerScoreboards, snookerSyncLogs, snookerAutomationSettings, celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, settleSnookerRound, clearCelebration, syncSnookerWithYoutube, updateSnookerAutomationSettings,
+    snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog, snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerScoreboards, snookerSyncLogs, snookerAutomationSettings, celebrationTrigger, snookerSyncState, snookerLastAutoCreatedIds, snookerLastAutoUpdatedIds,
+    joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, settleSnookerRound, clearCelebration, syncSnookerFromYoutube, parseSnookerYoutubeItem, upsertAutoSnookerChannel, approveAutoSnookerChannel, rejectAutoSnookerChannel, archiveAutoSnookerChannel, clearSnookerSyncLogs, updateSnookerAutomationSettings,
     refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, updateLeagueConfig, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId || i.id !== b.id), b]), removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]), placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews
   }), [
-    user, allUsers, isLoading, ledger, banners, popups, news, apostas, postedResults, jdbResults, jdbSyncLogs, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, bingoSettings, bingoDraws, bingoTickets, bingoPayouts, snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog, snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerScoreboards, snookerSyncLogs, snookerAutomationSettings, celebrationTrigger, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, settleSnookerRound, clearCelebration, syncSnookerWithYoutube, updateSnookerAutomationSettings, loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, updateLeagueConfig, placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall, casinoSettings, updateCasinoSettings, publishJDBResult, deleteJDBResult, updateBingoSettings, createBingoDraw, startBingoDraw, finishBingoDraw, cancelBingoDraw, buyBingoTickets, refundBingoTicket, payBingoPayout, registerCambistaMovement
+    user, allUsers, isLoading, ledger, banners, popups, news, apostas, postedResults, jdbResults, jdbSyncLogs, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, bingoSettings, bingoDraws, bingoTickets, bingoPayouts, snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog, snookerLiveConfig, snookerActivityFeed, snookerBetsFeed, snookerChatMessages, snookerScoreboards, snookerSyncLogs, snookerAutomationSettings, celebrationTrigger, snookerSyncState, snookerLastAutoCreatedIds, snookerLastAutoUpdatedIds, loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, updateLeagueConfig, placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall, casinoSettings, updateCasinoSettings, publishJDBResult, deleteJDBResult, updateBingoSettings, createBingoDraw, startBingoDraw, finishBingoDraw, cancelBingoDraw, buyBingoTickets, refundBingoTicket, payBingoPayout, registerCambistaMovement, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, settleSnookerRound, clearCelebration, syncSnookerFromYoutube, parseSnookerYoutubeItem, upsertAutoSnookerChannel, approveAutoSnookerChannel, rejectAutoSnookerChannel, archiveAutoSnookerChannel, clearSnookerSyncLogs, updateSnookerAutomationSettings
   ]);
 
   return <AppContext.Provider value={contextValue}>{mounted && children}</AppContext.Provider>;
