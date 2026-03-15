@@ -1,10 +1,11 @@
 /**
  * @fileOverview Player de Vídeo para Sinuca ao Vivo blindado.
+ * Corrigido para validar o embedId antes de renderizar o iframe.
  */
 
 'use client';
 import { Card } from "@/components/ui/card";
-import { Eye, Volume2, VolumeX, Maximize, MonitorOff, AlertTriangle } from "lucide-react";
+import { Eye, Volume2, VolumeX, Maximize, MonitorOff } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useAppContext } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
@@ -26,9 +27,9 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
         snookerPresence[channelId]?.viewers.length || channel?.viewerCount || 0,
     [snookerPresence, channelId, channel?.viewerCount]);
 
-    // Validação do embedId antes da renderização
-    const isVideoReady = useMemo(() => 
-        isValidYoutubeVideoId(channel?.embedId), 
+    // Validação definitiva do ID do vídeo (11 caracteres)
+    const isVideoValid = useMemo(() => 
+        channel?.embedId && isValidYoutubeVideoId(channel.embedId), 
     [channel?.embedId]);
 
     if (!channel) return null;
@@ -39,7 +40,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
         <Card className="casino-card-glow relative overflow-hidden bg-black rounded-2xl group shadow-2xl">
             {/* Overlays */}
             <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
-                {showBadge && isVideoReady && (
+                {showBadge && isVideoValid && (
                     <div className="live-badge live-badge-pulsing shadow-xl shadow-red-600/20">
                         <span className="live-pulse"></span>
                         {channel.status === 'live' ? 'AO VIVO' : 'IMINENTE'}
@@ -52,7 +53,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
             </div>
 
             <div className="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                {isVideoReady && (
+                {isVideoValid && (
                     <>
                         <button onClick={() => setIsMuted(!isMuted)} className="player-control-btn h-9 w-9 bg-black/60 border border-white/10 rounded-xl">
                             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
@@ -68,7 +69,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
             </div>
             
             <div className="aspect-video bg-[#020617] relative">
-                {isVideoReady ? (
+                {isVideoValid ? (
                     <iframe
                         id="youtube-player"
                         className="w-full h-full"
@@ -86,7 +87,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
                         <div className="space-y-1">
                             <p className="text-white font-black uppercase italic text-lg">Transmissão Indisponível</p>
                             <p className="text-white/40 text-[10px] font-bold uppercase max-w-[300px]">
-                                ID do vídeo inválido ou transmissão não localizada no YouTube.
+                                O ID da transmissão não pôde ser validado ou o vídeo foi removido.
                             </p>
                         </div>
                     </div>
@@ -95,7 +96,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
 
             <div className="bg-black/40 border-t border-white/5 py-2 px-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <div className={cn("w-1 h-1 rounded-full", isVideoReady ? "bg-red-500" : "bg-slate-600")} />
+                    <div className={cn("w-1 h-1 rounded-full", isVideoValid ? "bg-red-500" : "bg-slate-600")} />
                     <span className="text-[8px] font-black uppercase tracking-[3px] text-white/30 italic">
                         {channel.sourceName || 'Fonte Manual'}
                     </span>

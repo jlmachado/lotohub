@@ -1,5 +1,6 @@
 /**
  * @fileOverview Serviço de normalização de dados do Feed Público do YouTube.
+ * Corrigido para validar a integridade dos campos obrigatórios.
  */
 
 import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
@@ -58,22 +59,18 @@ export class SnookerYoutubeService {
    * Normaliza o item do feed para o formato interno resiliente.
    */
   static normalizeItem(ytItem: any): SnookerYoutubeItem | null {
-    const videoId = ytItem.videoId;
+    const videoId = ytItem.videoId || ytItem.sourceVideoId;
     
+    // Validação de segurança: Não aceita itens sem Video ID válido
     if (!isValidYoutubeVideoId(videoId)) {
-      return {
-        sourceVideoId: videoId || 'invalid',
-        youtubeUrl: '',
-        embedId: '',
-        title: ytItem.title || 'Item Inválido',
-        description: '',
-        thumbnailUrl: '',
-        publishedAt: new Date().toISOString(),
-        status: 'video',
-        isEmbeddable: false,
-        rawPayload: ytItem,
-        validation: { valid: false, reason: 'ID de vídeo inválido.' }
-      };
+      console.warn(`[SnookerYoutubeService] Item descartado: Video ID inválido (${videoId})`);
+      return null;
+    }
+
+    // Garante que campos críticos existam
+    if (!ytItem.title || !ytItem.publishedAt) {
+      console.warn(`[SnookerYoutubeService] Item descartado: Metadados incompletos para ${videoId}`);
+      return null;
     }
 
     return {
@@ -82,7 +79,7 @@ export class SnookerYoutubeService {
       embedId: videoId,
       title: ytItem.title,
       description: ytItem.description || '',
-      thumbnailUrl: ytItem.thumbnailUrl,
+      thumbnailUrl: ytItem.thumbnailUrl || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       publishedAt: ytItem.publishedAt,
       status: ytItem.sourceType || 'video',
       isEmbeddable: true,

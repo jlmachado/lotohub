@@ -4,7 +4,7 @@ import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
 
 /**
  * @fileOverview Rota de API para sincronização via FEED PÚBLICO (XML/RSS).
- * Corrigida para garantir extração precisa de IDs de vídeo reais.
+ * Corrigida para lidar corretamente com namespaces XML (yt:, media:).
  */
 
 export const runtime = 'nodejs';
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ 
       success: false, 
       error: 'INVALID_CHANNEL_ID',
-      message: `ID do canal inválido: ${channelId}` 
+      message: `ID do canal inválido ou truncado: ${channelId}` 
     }, { status: 400 });
   }
 
@@ -50,6 +50,7 @@ export async function GET(request: Request) {
     }
 
     const xml = await response.text();
+    // Forçamos o xmlMode para que seletores com namespace funcionem melhor
     const $ = cheerio.load(xml, { xmlMode: true });
     
     const entries = $('entry');
@@ -57,21 +58,52 @@ export async function GET(request: Request) {
 
     entries.each((_, el) => {
       const entry = $(el);
-      // Extração robusta do ID do vídeo (com ou sem namespace)
-      const videoId = entry.find('yt\\:videoId').text() || entry.find('videoId').text();
-      const title = entry.find('title').text();
-      const published = entry.find('published').text();
-      const description = entry.find('media\\:group media\\:description').text() || '';
       
-      // Validação rigorosa do ID do YouTube (11 caracteres)
-      if (!isValidYoutubeVideoId(videoId)) return;
+      // 1. EXTRAÇÃO DO VIDEO ID (CAMINHO CRÍTICO)
+      // Tentamos yt:videoId com escape, depois videoId puro, depois extração do link
+      let videoId = entry.find('yt\\:videoId').first().text().trim() || 
+                    entry.find('videoId').first().text().trim();
+      
+      if (!videoId) {
+        const link = entry.find('link[rel="alternate"]').attr('href') || "";
+        if (link.includes('v=')) {
+          videoId = link.split('v=')[1]?.substring(0, 11);
+        }
+      }
 
+      // Validação rigorosa do ID
+      if (!isValidYoutubeVideoId(videoId)) {
+        console.warn(`[Sync API] Entry ignorada: Video ID inválido (${videoId})`);
+        return;
+      }
+
+      // 2. EXTRAÇÃO DE TÍTULO E DATAS
+      const title = entry.find('title').first().text().trim();
+      const published = entry.find('published').first().text().trim() || 
+                        entry.find('updated').first().text().trim();
+      
+      // 3. EXTRAÇÃO DE DESCRIÇÃO (Namespace media:)
+      const description = entry.find('media\\:description').first().text().trim() || 
+                          entry.find('description').first().text().trim() ||
+                          entry.find('media\\:group media\\:description').first().text().trim() || "";
+
+      // 4. EXTRAÇÃO DE THUMBNAIL
+      let thumbnailUrl = entry.find('media\\:thumbnail').attr('url') || 
+                         entry.find('media\\:group media\\:thumbnail').attr('url');
+      
+      if (!thumbnailUrl) {
+        thumbnailUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+      }
+
+      // 5. DETECÇÃO DE STATUS HINT
       const titleUpper = title.toUpperCase();
-      const isLiveHint = titleUpper.includes('AO VIVO') || titleUpper.includes('LIVE') || titleUpper.includes('TRANSMISSÃO');
+      const isLiveHint = titleUpper.includes('AO VIVO') || 
+                         titleUpper.includes('LIVE') || 
+                         titleUpper.includes('TRANSMISSÃO');
       
       const pubDate = new Date(published).getTime();
       const now = Date.now();
-      const isVeryRecent = (now - pubDate) < (6 * 60 * 60 * 1000); // 6 horas
+      const isVeryRecent = (now - pubDate) < (12 * 60 * 60 * 1000); // 12 horas
 
       results.push({
         sourceVideoId: videoId,
@@ -79,15 +111,17 @@ export async function GET(request: Request) {
         youtubeUrl: buildYoutubeWatchUrl(videoId),
         embedId: videoId,
         title,
-        description,
+        description: description.substring(0, 500),
         publishedAt: published,
-        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        thumbnailUrl,
         isMock: false,
         sourceType: (isLiveHint && isVeryRecent) ? 'live' : 'video',
         isEmbeddableCandidate: true,
         videoValidation: { valid: true }
       });
     });
+
+    console.log(`[Sync API] Canal ${channelId}: ${results.length} itens capturados com sucesso.`);
 
     return NextResponse.json({
       success: true,
@@ -97,6 +131,7 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
+    console.error('[Sync API] Erro crítico:', error.message);
     return NextResponse.json({ 
       success: false, 
       error: 'SERVER_ERROR',

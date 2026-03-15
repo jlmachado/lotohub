@@ -1,5 +1,6 @@
 /**
  * @fileOverview Orquestrador de Sincronização Multicanal Robusto.
+ * Corrigido para ativar canais automaticamente e evitar duplicidade.
  */
 
 import { SnookerYoutubeService } from './snooker-youtube-service';
@@ -42,14 +43,14 @@ export class SnookerSyncService {
         try {
           const normalized = SnookerYoutubeService.normalizeItem(ytItem);
           
-          if (!normalized || !normalized.validation?.valid) {
+          if (!normalized) {
             summary.invalidVideos++;
             return;
           }
 
           const parsed = SnookerParserService.parse(normalized.title, normalized.description, source.parseProfile);
           
-          // ID estável baseado no videoId para evitar duplicidade
+          // ID ESTÁVEL: Única forma de evitar duplicidade profissionalmente
           const uniqueId = `yt_${normalized.embedId}`;
           const existingIdx = newChannelsList.findIndex(c => c.id === uniqueId);
 
@@ -61,6 +62,7 @@ export class SnookerSyncService {
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
             
+            // Se o admin editou manualmente, protegemos campos críticos
             if (existing.isManualOverride) {
               if (internalStatus !== existing.status) {
                 newChannelsList[existingIdx] = { 
@@ -73,6 +75,7 @@ export class SnookerSyncService {
               return;
             }
 
+            // Atualização de metadados sincronizados
             newChannelsList[existingIdx] = {
               ...existing,
               status: internalStatus,
@@ -81,10 +84,13 @@ export class SnookerSyncService {
               thumbnailUrl: normalized.thumbnailUrl,
               metadataConfidence: parsed.confidence,
               updatedAt: new Date().toISOString(),
-              sourceStatus: 'synced'
+              sourceStatus: 'synced',
+              // Ativamos se estava desativado mas agora é live/imminent
+              enabled: existing.enabled || internalStatus === 'live' || internalStatus === 'imminent'
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
+            // CRIAÇÃO DE NOVO CANAL
             const newChannel: SnookerChannel = {
               id: uniqueId,
               title: parsed.eventTitle,
@@ -108,6 +114,7 @@ export class SnookerSyncService {
               houseMargin: 8,
               bestOf: parsed.bestOf,
               priority: 10,
+              // REGRA DE OURO: Habilitado se não exigir aprovação
               enabled: !source.requireAdminApproval,
               bancaId,
               thumbnailUrl: normalized.thumbnailUrl,
@@ -124,7 +131,7 @@ export class SnookerSyncService {
         }
       });
 
-      // Recalcula prioridade e ranking
+      // Recalcula prioridade e ranking para garantir que o melhor live seja o topo
       newChannelsList = SnookerPriorityService.rankItems(newChannelsList);
 
       return { updatedChannels: newChannelsList, summary };
