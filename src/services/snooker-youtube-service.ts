@@ -1,6 +1,5 @@
 /**
- * @fileOverview Serviço de normalização de dados reais da YouTube API para o sistema de Sinuca.
- * Reforçado com validações rigorosas de Video ID para garantir integridade do player.
+ * @fileOverview Serviço de normalização de dados do Feed Público do YouTube.
  */
 
 import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
@@ -24,12 +23,12 @@ export interface SnookerYoutubeItem {
 
 export class SnookerYoutubeService {
   /**
-   * Busca dados de canais via API interna (que faz a ponte segura com YouTube Data API).
+   * Busca dados de canais via API interna (ponte com Feed RSS).
    */
-  static async fetchChannelData(channelHandle: string): Promise<any[]> {
+  static async fetchChannelData(channelId: string): Promise<any[]> {
     try {
       const url = new URL('/api/snooker/sync', window.location.origin);
-      url.searchParams.append('channelHandle', channelHandle);
+      url.searchParams.append('channelId', channelId);
 
       const response = await fetch(url.toString(), { 
         cache: 'no-store',
@@ -41,35 +40,32 @@ export class SnookerYoutubeService {
       const result = await response.json();
       
       if (!response.ok) {
-        // Captura erros estruturados do nosso backend (ex: CONFIG_ERROR)
-        const errorMsg = result.message || `Erro HTTP ${response.status}`;
-        throw new Error(errorMsg);
+        throw new Error(result.message || `Erro HTTP ${response.status}`);
       }
       
       if (result.success === false) {
-        throw new Error(result.message || 'Falha desconhecida na sincronização.');
+        throw new Error(result.message || 'Falha na sincronização via feed.');
       }
       
       return result.data || [];
     } catch (error: any) {
       console.error('[SnookerYoutubeService] Falha na comunicação:', error.message);
-      // Propaga a mensagem original para que o usuário veja no painel admin
-      throw new Error(error.message || 'Erro ao conectar com o serviço de sincronização.');
+      throw new Error(error.message || 'Erro ao conectar com o serviço de feed.');
     }
   }
 
   /**
-   * Normaliza o item da API do YouTube para o formato interno resiliente.
+   * Normaliza o item do feed para o formato interno resiliente.
    */
   static normalizeItem(ytItem: any): SnookerYoutubeItem | null {
-    const videoId = ytItem.sourceVideoId || ytItem.id?.videoId || ytItem.videoId;
+    const videoId = ytItem.videoId;
     
     if (!isValidYoutubeVideoId(videoId)) {
       return {
         sourceVideoId: videoId || 'invalid',
         youtubeUrl: '',
         embedId: '',
-        title: ytItem.snippet?.title || 'Item Inválido',
+        title: ytItem.title || 'Item Inválido',
         description: '',
         thumbnailUrl: '',
         publishedAt: new Date().toISOString(),
@@ -80,21 +76,15 @@ export class SnookerYoutubeService {
       };
     }
 
-    const statusMap: Record<string, 'live' | 'upcoming' | 'video'> = {
-      'live': 'live',
-      'upcoming': 'upcoming',
-      'none': 'video'
-    };
-
     return {
       sourceVideoId: videoId,
       youtubeUrl: buildYoutubeWatchUrl(videoId),
       embedId: videoId,
-      title: ytItem.snippet.title,
-      description: ytItem.snippet.description,
-      thumbnailUrl: ytItem.snippet.thumbnails?.medium?.url || ytItem.snippet.thumbnails?.default?.url,
-      publishedAt: ytItem.snippet.publishedAt,
-      status: statusMap[ytItem.snippet.liveBroadcastContent] || 'video',
+      title: ytItem.title,
+      description: ytItem.description || '',
+      thumbnailUrl: ytItem.thumbnailUrl,
+      publishedAt: ytItem.publishedAt,
+      status: ytItem.sourceType || 'video',
       isEmbeddable: true,
       rawPayload: ytItem,
       validation: { valid: true }
