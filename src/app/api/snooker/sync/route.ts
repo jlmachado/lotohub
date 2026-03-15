@@ -22,6 +22,16 @@ export async function GET(request: Request) {
     }, { status: 400 });
   }
 
+  // Validação rigorosa do formato do Channel ID para evitar 404 óbvios
+  // IDs do YouTube geralmente começam com UC e têm 24 caracteres
+  if (!channelId.startsWith('UC') || channelId.length < 20) {
+    return NextResponse.json({ 
+      success: false, 
+      error: 'INVALID_CHANNEL_ID',
+      message: `O ID do canal informado (${channelId}) parece estar incorreto ou truncado.` 
+    }, { status: 400 });
+  }
+
   try {
     // URL do Feed Público do YouTube
     const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
@@ -37,6 +47,13 @@ export async function GET(request: Request) {
     });
     
     if (!response.ok) {
+      if (response.status === 404) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'CHANNEL_NOT_FOUND',
+          message: `O canal com ID ${channelId} não foi encontrado pelo YouTube.` 
+        }, { status: 404 });
+      }
       throw new Error(`Falha ao acessar feed do YouTube: HTTP ${response.status}`);
     }
 

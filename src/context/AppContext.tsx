@@ -72,7 +72,7 @@ const DEFAULT_CASINO_SETTINGS: CasinoSettings = { casinoName: 'LotoHub Casino', 
 
 const DEFAULT_SOURCES: SnookerAutomationSource[] = [
   { id: 'src-tv-snooker', name: 'TV Snooker Brasil', channelUrl: 'https://www.youtube.com/@TVSnookerBrasil', channelHandle: '@TVSnookerBrasil', channelId: 'UCkb_vWhEvID_v_vXOnZ_sqQ', enabled: true, priority: 100, parseProfile: 'tv_snooker_brasil', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: false },
-  { id: 'src-junior-snooker', name: 'Junior Snooker', channelUrl: 'https://www.youtube.com/@juniorsnooker', channelHandle: '@juniorsnooker', channelId: 'UC_vX...', enabled: true, priority: 90, parseProfile: 'junior_snooker', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: true }
+  { id: 'src-junior-snooker', name: 'Junior Snooker', channelUrl: 'https://www.youtube.com/@juniorsnooker', channelHandle: '@juniorsnooker', channelId: 'UC_vXOnZ_sqQ', enabled: true, priority: 90, parseProfile: 'junior_snooker', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: true }
 ];
 
 const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = { enabled: true, sources: DEFAULT_SOURCES, syncIntervalSeconds: 300, manualPrimaryChannelId: null };
