@@ -1,6 +1,5 @@
 /**
  * @fileOverview Orquestrador de Sincronização Multicanal Robusto.
- * Agora utiliza dados REAIS do YouTube e aplica barreiras de integridade rigorosas.
  */
 
 import { SnookerYoutubeService } from './snooker-youtube-service';
@@ -34,8 +33,7 @@ export class SnookerSyncService {
     };
     
     try {
-      // 1. Busca dados REAIS da YouTube API via proxy interno seguro
-      const rawData = await SnookerYoutubeService.fetchChannelData(source.channelHandle);
+      const rawData = await SnookerYoutubeService.fetchChannelData(source.channelId);
       summary.itemsRead = rawData.length;
 
       let newChannelsList = [...currentChannels];
@@ -44,7 +42,6 @@ export class SnookerSyncService {
         try {
           const normalized = SnookerYoutubeService.normalizeItem(ytItem);
           
-          // 2. Barreira de Qualidade: Ignora ou marca erro se o vídeo for inválido
           if (!normalized || !normalized.validation?.valid) {
             summary.invalidVideos++;
             return;
@@ -52,12 +49,10 @@ export class SnookerSyncService {
 
           const parsed = SnookerParserService.parse(normalized.title, normalized.description, source.parseProfile);
           
-          // 3. Identificação Única Estável baseada no ID REAL do YouTube
-          // Isso evita duplicatas e IDs simulados no banco local
+          // ID estável baseado no videoId para evitar duplicidade
           const uniqueId = `yt_${normalized.embedId}`;
           const existingIdx = newChannelsList.findIndex(c => c.id === uniqueId);
 
-          // Determinar status lógico do sistema baseado no status real da transmissão
           let internalStatus: SnookerChannel['status'] = 'scheduled';
           if (normalized.status === 'live') internalStatus = 'live';
           else if (normalized.status === 'upcoming') internalStatus = 'imminent';
@@ -66,7 +61,6 @@ export class SnookerSyncService {
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
             
-            // Proteção de Override Manual: Admin sempre manda mais que o robô
             if (existing.isManualOverride) {
               if (internalStatus !== existing.status) {
                 newChannelsList[existingIdx] = { 
@@ -79,7 +73,6 @@ export class SnookerSyncService {
               return;
             }
 
-            // Atualização de dados sincronizados reais
             newChannelsList[existingIdx] = {
               ...existing,
               status: internalStatus,
@@ -92,7 +85,6 @@ export class SnookerSyncService {
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
-            // 4. Criação de Novo Canal baseado em vídeo REAL e VÁLIDO
             const newChannel: SnookerChannel = {
               id: uniqueId,
               title: parsed.eventTitle,
@@ -132,7 +124,7 @@ export class SnookerSyncService {
         }
       });
 
-      // 5. Re-ranking de prioridade para garantir que a transmissão mais importante seja a principal
+      // Recalcula prioridade e ranking
       newChannelsList = SnookerPriorityService.rankItems(newChannelsList);
 
       return { updatedChannels: newChannelsList, summary };

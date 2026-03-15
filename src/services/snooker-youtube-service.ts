@@ -15,7 +15,7 @@ export interface SnookerYoutubeItem {
   status: 'live' | 'upcoming' | 'video';
   isEmbeddable: boolean;
   rawPayload: any;
-  validation?: {
+  validation: {
     valid: boolean;
     reason?: string;
   };
@@ -44,13 +44,13 @@ export class SnookerYoutubeService {
       }
       
       if (result.success === false) {
-        throw new Error(result.message || 'Falha na sincronização via feed.');
+        throw new Error(result.message || 'Falha na sincronização.');
       }
       
       return result.data || [];
     } catch (error: any) {
       console.error('[SnookerYoutubeService] Falha na comunicação:', error.message);
-      throw new Error(error.message || 'Erro ao conectar com o serviço de feed.');
+      throw error;
     }
   }
 
@@ -72,7 +72,7 @@ export class SnookerYoutubeService {
         status: 'video',
         isEmbeddable: false,
         rawPayload: ytItem,
-        validation: { valid: false, reason: 'ID de vídeo do YouTube inválido.' }
+        validation: { valid: false, reason: 'ID de vídeo inválido.' }
       };
     }
 

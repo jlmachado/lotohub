@@ -180,7 +180,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             createdAt: new Date().toISOString(), 
             type: 'SYNC_FINISH', 
             status: 'success', 
-            message: `Sync OK: ${source.name}. Itens lidos: ${summary.itemsRead}. Criados: ${summary.created}.`,
+            message: `Sincronismo OK: ${source.name}. Itens lidos: ${summary.itemsRead}. Criados: ${summary.created}.`,
             sourceName: source.name 
           };
           allLogs = [finishLog, ...allLogs].slice(0, 200);

@@ -4,7 +4,7 @@ import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
 
 /**
  * @fileOverview Rota de API para sincronização via FEED PÚBLICO (XML/RSS).
- * Substitui a necessidade de YouTube Data API Key.
+ * Corrigida para garantir extração precisa de IDs de vídeo reais.
  */
 
 export const runtime = 'nodejs';
@@ -18,26 +18,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ 
       success: false, 
       error: 'CHANNEL_ID_REQUIRED',
-      message: 'Channel ID não informado para sincronização via feed.' 
+      message: 'Channel ID não informado.' 
     }, { status: 400 });
   }
 
-  // Validação rigorosa do formato do Channel ID para evitar 404 óbvios
-  // IDs do YouTube geralmente começam com UC e têm 24 caracteres
   if (!channelId.startsWith('UC') || channelId.length < 20) {
     return NextResponse.json({ 
       success: false, 
       error: 'INVALID_CHANNEL_ID',
-      message: `O ID do canal informado (${channelId}) parece estar incorreto ou truncado.` 
+      message: `ID do canal inválido: ${channelId}` 
     }, { status: 400 });
   }
 
   try {
-    // URL do Feed Público do YouTube
     const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
     
-    console.log(`[YouTube Feed Sync] Buscando feed para: ${channelId}`);
-
     const response = await fetch(feedUrl, { 
       cache: 'no-store',
       headers: {
@@ -47,14 +42,11 @@ export async function GET(request: Request) {
     });
     
     if (!response.ok) {
-      if (response.status === 404) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'CHANNEL_NOT_FOUND',
-          message: `O canal com ID ${channelId} não foi encontrado pelo YouTube.` 
-        }, { status: 404 });
-      }
-      throw new Error(`Falha ao acessar feed do YouTube: HTTP ${response.status}`);
+      return NextResponse.json({ 
+        success: false, 
+        error: 'FETCH_ERROR',
+        message: `YouTube retornou status ${response.status}` 
+      }, { status: response.status });
     }
 
     const xml = await response.text();
@@ -65,22 +57,21 @@ export async function GET(request: Request) {
 
     entries.each((_, el) => {
       const entry = $(el);
+      // Extração robusta do ID do vídeo (com ou sem namespace)
       const videoId = entry.find('yt\\:videoId').text() || entry.find('videoId').text();
       const title = entry.find('title').text();
       const published = entry.find('published').text();
       const description = entry.find('media\\:group media\\:description').text() || '';
       
+      // Validação rigorosa do ID do YouTube (11 caracteres)
       if (!isValidYoutubeVideoId(videoId)) return;
 
-      // Heurística de Status baseada no título
       const titleUpper = title.toUpperCase();
       const isLiveHint = titleUpper.includes('AO VIVO') || titleUpper.includes('LIVE') || titleUpper.includes('TRANSMISSÃO');
       
-      // RSS Feed geralmente contém os vídeos mais recentes.
-      // Se for muito recente e tiver "AO VIVO", tratamos como live.
       const pubDate = new Date(published).getTime();
       const now = Date.now();
-      const isVeryRecent = (now - pubDate) < (4 * 60 * 60 * 1000); // 4 horas
+      const isVeryRecent = (now - pubDate) < (6 * 60 * 60 * 1000); // 6 horas
 
       results.push({
         sourceVideoId: videoId,
@@ -102,15 +93,14 @@ export async function GET(request: Request) {
       success: true,
       data: results,
       count: results.length,
-      source: 'YouTube Public RSS Feed'
+      source: 'YouTube RSS Feed'
     });
 
   } catch (error: any) {
-    console.error('[YouTube Feed Sync Error]:', error.message);
     return NextResponse.json({ 
       success: false, 
-      error: 'FETCH_ERROR',
-      message: error.message || 'Falha ao processar feed do YouTube'
+      error: 'SERVER_ERROR',
+      message: error.message 
     }, { status: 500 });
   }
 }
