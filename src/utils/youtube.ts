@@ -13,6 +13,17 @@ export function isValidYoutubeVideoId(videoId: string | null | undefined): boole
 }
 
 /**
+ * Valida se um ID de canal do YouTube é válido.
+ * IDs de canal sempre começam com "UC" e possuem 24 caracteres no total.
+ */
+export function isValidYoutubeChannelId(channelId: string | null | undefined): boolean {
+  if (!channelId || typeof channelId !== 'string') return false;
+  // Padrão: UC + 22 caracteres alfanuméricos/especiais
+  const regex = /^UC[a-zA-Z0-9_-]{22}$/;
+  return regex.test(channelId);
+}
+
+/**
  * Extrai o Video ID de diversos formatos de URL do YouTube.
  * Suporta: watch?v=, youtu.be/, /live/, /embed/, /shorts/
  */

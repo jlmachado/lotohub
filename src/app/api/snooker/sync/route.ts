@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
-import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
+import { isValidYoutubeVideoId, buildYoutubeWatchUrl, isValidYoutubeChannelId } from '@/utils/youtube';
 
 /**
  * @fileOverview Rota de API para sincronização via FEED PÚBLICO (XML/RSS).
- * Corrigida para lidar corretamente com namespaces XML (yt:, media:).
+ * Corrigida para validar Channel ID e evitar erros 404 por IDs truncados.
  */
 
 export const runtime = 'nodejs';
@@ -22,11 +22,12 @@ export async function GET(request: Request) {
     }, { status: 400 });
   }
 
-  if (!channelId.startsWith('UC') || channelId.length < 20) {
+  // Validação rigorosa do Channel ID (Deve ter 24 chars e começar com UC)
+  if (!isValidYoutubeChannelId(channelId)) {
     return NextResponse.json({ 
       success: false, 
       error: 'INVALID_CHANNEL_ID',
-      message: `ID do canal inválido ou truncado: ${channelId}` 
+      message: `ID do canal inválido ou truncado: ${channelId}. Certifique-se de usar o ID completo de 24 caracteres.` 
     }, { status: 400 });
   }
 
@@ -42,6 +43,13 @@ export async function GET(request: Request) {
     });
     
     if (!response.ok) {
+      if (response.status === 404) {
+        return NextResponse.json({
+          success: false,
+          error: 'CHANNEL_NOT_FOUND',
+          message: 'Canal não encontrado no YouTube. Verifique se o Channel ID está correto.'
+        }, { status: 404 });
+      }
       return NextResponse.json({ 
         success: false, 
         error: 'FETCH_ERROR',
@@ -59,8 +67,7 @@ export async function GET(request: Request) {
     entries.each((_, el) => {
       const entry = $(el);
       
-      // 1. EXTRAÇÃO DO VIDEO ID (CAMINHO CRÍTICO)
-      // Tentamos yt:videoId com escape, depois videoId puro, depois extração do link
+      // EXTRAÇÃO DO VIDEO ID COM ESCAPE DE NAMESPACE
       let videoId = entry.find('yt\\:videoId').first().text().trim() || 
                     entry.find('videoId').first().text().trim();
       
@@ -71,23 +78,17 @@ export async function GET(request: Request) {
         }
       }
 
-      // Validação rigorosa do ID
-      if (!isValidYoutubeVideoId(videoId)) {
-        console.warn(`[Sync API] Entry ignorada: Video ID inválido (${videoId})`);
-        return;
-      }
+      // Validação do Video ID
+      if (!isValidYoutubeVideoId(videoId)) return;
 
-      // 2. EXTRAÇÃO DE TÍTULO E DATAS
       const title = entry.find('title').first().text().trim();
       const published = entry.find('published').first().text().trim() || 
                         entry.find('updated').first().text().trim();
       
-      // 3. EXTRAÇÃO DE DESCRIÇÃO (Namespace media:)
       const description = entry.find('media\\:description').first().text().trim() || 
                           entry.find('description').first().text().trim() ||
                           entry.find('media\\:group media\\:description').first().text().trim() || "";
 
-      // 4. EXTRAÇÃO DE THUMBNAIL
       let thumbnailUrl = entry.find('media\\:thumbnail').attr('url') || 
                          entry.find('media\\:group media\\:thumbnail').attr('url');
       
@@ -95,7 +96,6 @@ export async function GET(request: Request) {
         thumbnailUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
       }
 
-      // 5. DETECÇÃO DE STATUS HINT
       const titleUpper = title.toUpperCase();
       const isLiveHint = titleUpper.includes('AO VIVO') || 
                          titleUpper.includes('LIVE') || 
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
       
       const pubDate = new Date(published).getTime();
       const now = Date.now();
-      const isVeryRecent = (now - pubDate) < (12 * 60 * 60 * 1000); // 12 horas
+      const isVeryRecent = (now - pubDate) < (12 * 60 * 60 * 1000);
 
       results.push({
         sourceVideoId: videoId,
@@ -120,8 +120,6 @@ export async function GET(request: Request) {
         videoValidation: { valid: true }
       });
     });
-
-    console.log(`[Sync API] Canal ${channelId}: ${results.length} itens capturados com sucesso.`);
 
     return NextResponse.json({
       success: true,

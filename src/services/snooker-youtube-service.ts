@@ -1,9 +1,9 @@
 /**
  * @fileOverview Serviço de normalização de dados do Feed Público do YouTube.
- * Corrigido para validar a integridade dos campos obrigatórios.
+ * Corrigido para validar a integridade dos campos obrigatórios e IDs de canal.
  */
 
-import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
+import { isValidYoutubeVideoId, buildYoutubeWatchUrl, isValidYoutubeChannelId } from '@/utils/youtube';
 
 export interface SnookerYoutubeItem {
   sourceVideoId: string;
@@ -27,6 +27,10 @@ export class SnookerYoutubeService {
    * Busca dados de canais via API interna (ponte com Feed RSS).
    */
   static async fetchChannelData(channelId: string): Promise<any[]> {
+    if (!isValidYoutubeChannelId(channelId)) {
+      throw new Error(`ID do canal inválido: ${channelId}. Certifique-se de que o ID está completo (24 caracteres começando com UC).`);
+    }
+
     try {
       const url = new URL('/api/snooker/sync', window.location.origin);
       url.searchParams.append('channelId', channelId);
@@ -41,7 +45,7 @@ export class SnookerYoutubeService {
       const result = await response.json();
       
       if (!response.ok) {
-        throw new Error(result.message || `Erro HTTP ${response.status}`);
+        throw new Error(result.message || `Falha ao acessar feed do YouTube: HTTP ${response.status}`);
       }
       
       if (result.success === false) {
@@ -61,13 +65,11 @@ export class SnookerYoutubeService {
   static normalizeItem(ytItem: any): SnookerYoutubeItem | null {
     const videoId = ytItem.videoId || ytItem.sourceVideoId;
     
-    // Validação de segurança: Não aceita itens sem Video ID válido
     if (!isValidYoutubeVideoId(videoId)) {
       console.warn(`[SnookerYoutubeService] Item descartado: Video ID inválido (${videoId})`);
       return null;
     }
 
-    // Garante que campos críticos existam
     if (!ytItem.title || !ytItem.publishedAt) {
       console.warn(`[SnookerYoutubeService] Item descartado: Metadados incompletos para ${videoId}`);
       return null;

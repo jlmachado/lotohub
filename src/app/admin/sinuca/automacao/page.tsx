@@ -12,7 +12,8 @@ import {
   CheckCircle2, AlertTriangle, Info, Trash2, Eye, 
   ExternalLink, Save, RotateCcw, 
   Play, ShieldCheck, Database, LayoutList, Check, X,
-  PlusCircle, Edit, Power, PowerOff, Video, Star, BarChart, MonitorOff, Key
+  PlusCircle, Edit, Power, PowerOff, Video, Star, BarChart, MonitorOff, Key,
+  ShieldAlert
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -27,7 +28,7 @@ import { useAppContext, SnookerChannel, SnookerSyncLog, SnookerAutomationSetting
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { isValidYoutubeVideoId } from '@/utils/youtube';
+import { isValidYoutubeVideoId, isValidYoutubeChannelId } from '@/utils/youtube';
 
 export default function AdminSnookerAutomationPage() {
   const { 
@@ -50,12 +51,6 @@ export default function AdminSnookerAutomationPage() {
   const [activeTab, setActiveTab] = useState('sources');
   const [isSourceDialogOpen, setIsSourceDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<SnookerAutomationSource | null>(null);
-
-  // Filtra logs para detectar erros de configuração de chave
-  const configError = useMemo(() => {
-    return snookerSyncLogs.find(l => l.status === 'error' && l.message.includes('Key')) || 
-           (snookerSyncState === 'error' && snookerSyncLogs[0]?.message.includes('Key'));
-  }, [snookerSyncLogs, snookerSyncState]);
 
   const candidates = useMemo(() => 
     [...snookerChannels]
@@ -88,6 +83,10 @@ export default function AdminSnookerAutomationPage() {
 
   const handleSaveSource = () => {
     if (editingSource) {
+      if (!isValidYoutubeChannelId(editingSource.channelId)) {
+        toast({ variant: 'destructive', title: 'Channel ID Inválido', description: 'O ID do canal deve ter 24 caracteres e começar com UC.' });
+        return;
+      }
       updateSnookerAutomationSource(editingSource.id, editingSource);
       setIsSourceDialogOpen(false);
       setEditingSource(null);
@@ -105,7 +104,7 @@ export default function AdminSnookerAutomationPage() {
           <div>
             <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Central de Automação</h1>
             <div className="flex items-center gap-2 mt-1">
-              <Badge className="bg-red-600 text-white font-black italic uppercase text-[10px]">Operação Real • API V3</Badge>
+              <Badge className="bg-red-600 text-white font-black italic uppercase text-[10px]">Operação Real • Feed RSS</Badge>
               <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Gestão Global de Sincronismo</span>
             </div>
           </div>
@@ -145,84 +144,76 @@ export default function AdminSnookerAutomationPage() {
           </CardContent>
         </Card>
 
-        {/* Status Real da Integração */}
-        <Card className={cn(
-          "border-white/5 shadow-inner overflow-hidden",
-          configError ? "bg-red-600/10" : "bg-green-600/10"
-        )}>
+        <Card className="bg-slate-900 border-white/5 shadow-inner overflow-hidden">
           <CardHeader className="p-3 pb-0">
-            <p className="text-[9px] font-black uppercase text-muted-foreground">Status API</p>
+            <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Logs de Erro</p>
           </CardHeader>
           <CardContent className="p-3 pt-1">
-            <Badge className={cn(
-              "font-black italic uppercase text-[10px]",
-              configError ? "bg-red-600 text-white" : "bg-green-600 text-white"
-            )}>
-              {configError ? "CHAVE NÃO CONFIGURADA" : "INTEGRAÇÃO ATIVA"}
-            </Badge>
+            <p className={cn("text-xl font-black italic tabular-nums", stats.errors > 0 ? "text-red-500" : "text-green-500")}>
+              {stats.errors}
+            </p>
           </CardContent>
         </Card>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4 md:w-[600px] bg-slate-900 border border-white/10 p-1 rounded-xl h-12">
-          <TabsTrigger value="sources" className="rounded-lg font-black uppercase italic text-[10px]">Fontes API</TabsTrigger>
+          <TabsTrigger value="sources" className="rounded-lg font-black uppercase italic text-[10px]">Fontes XML</TabsTrigger>
           <TabsTrigger value="ranking" className="rounded-lg font-black uppercase italic text-[10px]">Ranking Principal</TabsTrigger>
           <TabsTrigger value="preview" className="rounded-lg font-black uppercase italic text-[10px]">Inspeção de Itens</TabsTrigger>
           <TabsTrigger value="logs" className="rounded-lg font-black uppercase italic text-[10px]">Logs Técnicos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sources" className="mt-6 space-y-6">
-          <div className={cn(
-            "p-4 border rounded-2xl flex items-center gap-4",
-            configError ? "bg-red-600/5 border-red-600/20" : "bg-primary/5 border-primary/20"
-          )}>
-            <div className={cn("p-3 rounded-xl", configError ? "bg-red-600/10" : "bg-primary/10")}>
-              <Key size={24} className={configError ? "text-red-500" : "text-primary"} />
-            </div>
-            <div>
-              <h4 className="text-sm font-black uppercase italic text-white">Chave YouTube Data API</h4>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase">
-                {configError ? "A variável YOUTUBE_API_KEY não foi encontrada no servidor." : "Variável de ambiente configurada e protegida no backend."}
-              </p>
-            </div>
-            <Badge className={cn("ml-auto font-black italic", configError ? "bg-red-600 text-white" : "bg-green-600 text-white")}>
-              {configError ? "ERRO" : "OK"}
-            </Badge>
-          </div>
-
           <div className="grid gap-4">
-            {snookerAutomationSettings.sources.map(source => (
-              <Card key={source.id} className={cn(
-                "border-white/5 transition-all overflow-hidden",
-                source.enabled ? "bg-slate-900/50" : "bg-black opacity-60 grayscale"
-              )}>
-                <div className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/5 shadow-inner">
-                      <Zap size={20} className={source.enabled ? "text-primary" : "text-slate-600"} />
+            {snookerAutomationSettings.sources.map(source => {
+              const isIdValid = isValidYoutubeChannelId(source.channelId);
+              return (
+                <Card key={source.id} className={cn(
+                  "border-white/5 transition-all overflow-hidden",
+                  source.enabled ? "bg-slate-900/50" : "bg-black opacity-60 grayscale"
+                )}>
+                  <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/5 shadow-inner">
+                        <Video size={20} className={source.enabled ? "text-primary" : "text-slate-600"} />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-sm text-white uppercase italic">{source.name}</h3>
+                        <div className="flex items-center gap-2">
+                          <p className="text-[10px] text-muted-foreground font-mono truncate max-w-[150px]">{source.channelId}</p>
+                          <Badge variant="outline" className={cn("text-[7px] h-3.5 px-1 uppercase font-black", isIdValid ? "border-green-500/30 text-green-500" : "border-red-500/30 text-red-500")}>
+                            {isIdValid ? "ID OK" : "ID INVÁLIDO"}
+                          </Badge>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-black text-sm text-white uppercase italic">{source.name}</h3>
-                      <p className="text-[10px] text-muted-foreground font-mono">{source.channelHandle}</p>
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline" className="text-[8px] h-5 border-white/10 uppercase bg-black/20">Prioridade: {source.priority}</Badge>
+                      <div className="flex items-center gap-1">
+                        <button className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-white" onClick={() => handleEditSource(source)} title="Editar Fonte"><Edit size={16}/></button>
+                        <button 
+                          className={cn("h-9 w-9 flex items-center justify-center", source.enabled ? "text-green-500" : "text-red-500")}
+                          onClick={() => toggleSnookerSource(source.id, !source.enabled)}
+                          title={source.enabled ? "Desativar" : "Ativar"}
+                        >
+                          {source.enabled ? <Power size={16}/> : <PowerOff size={16}/>}
+                        </button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={!isIdValid || snookerSyncState === 'syncing'}
+                          onClick={() => syncSnookerFromYoutube(true, source.id)} 
+                          className="h-9 font-bold text-[10px] px-3 border-white/10 bg-white/5 ml-2"
+                        >
+                          SYNC
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-[8px] h-5 border-white/10 uppercase bg-black/20">Prioridade: {source.priority}</Badge>
-                    <div className="flex items-center gap-1">
-                      <button className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-white" onClick={() => handleEditSource(source)}><Edit size={16}/></button>
-                      <button 
-                        className={cn("h-9 w-9 flex items-center justify-center", source.enabled ? "text-green-500" : "text-red-500")}
-                        onClick={() => toggleSnookerSource(source.id, !source.enabled)}
-                      >
-                        {source.enabled ? <Power size={16}/> : <PowerOff size={16}/>}
-                      </button>
-                      <Button variant="outline" size="sm" onClick={() => syncSnookerFromYoutube(true, source.id)} className="h-9 font-bold text-[10px] px-3 border-white/10 bg-white/5 ml-2">SYNC</Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         </TabsContent>
 
@@ -230,19 +221,16 @@ export default function AdminSnookerAutomationPage() {
           <Card className="border-white/5 bg-card/50 overflow-hidden shadow-2xl">
             <CardHeader className="bg-slate-950/50 border-b border-white/5 p-4">
               <CardTitle className="text-xs font-black uppercase italic tracking-widest text-white flex items-center gap-2">
-                <Star size={14} className="text-primary fill-primary" />Ranking de Relevância Profissional
+                <Star size={14} className="text-primary fill-primary" />Ranking de Escolha Profissional
               </CardTitle>
-              <CardDescription className="text-[10px] font-bold uppercase">
-                O motor de decisão escolhe automaticamente a transmissão principal baseada em status real e saúde do vídeo.
-              </CardDescription>
             </CardHeader>
             <Table>
               <TableHeader className="bg-slate-950/20">
                 <TableRow className="border-white/5 h-10">
-                  <TableHead className="text-[9px] uppercase font-black px-4 w-[60px]">Rank</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Confronto / Vídeo ID</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black px-4 w-[60px]">Pos</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Confronto / Canal</TableHead>
                   <TableHead className="text-[9px] uppercase font-black">Score</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Justificativa Técnica</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Diagnóstico</TableHead>
                   <TableHead className="text-[9px] uppercase font-black text-right px-4">Ação</TableHead>
                 </TableRow>
               </TableHeader>
@@ -259,7 +247,7 @@ export default function AdminSnookerAutomationPage() {
                             <span className="text-[11px] font-black text-white uppercase italic">{chan.playerA.name} vs {chan.playerB.name}</span>
                             {isPrimary && <Badge className="bg-primary text-black text-[7px] font-black h-3.5 italic uppercase">PRINCIPAL</Badge>}
                           </div>
-                          <span className="text-[9px] text-muted-foreground font-mono uppercase">{chan.embedId} • {chan.status}</span>
+                          <span className="text-[9px] text-muted-foreground font-mono uppercase">{chan.sourceName} • {chan.status}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -277,15 +265,12 @@ export default function AdminSnookerAutomationPage() {
                           className={cn("h-8 text-[9px] font-black uppercase", isForced ? "text-red-500" : "text-primary")}
                           onClick={() => setManualPrimarySnookerChannel(isForced ? null : chan.id)}
                         >
-                          {isForced ? 'Remover Fixação' : 'Fixar Como Principal'}
+                          {isForced ? 'Desafixar' : 'Fixar Principal'}
                         </Button>
                       </TableCell>
                     </TableRow>
                   );
                 })}
-                {candidates.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="text-center py-12 text-muted-foreground italic">Nenhuma transmissão válida disponível para o ranking.</TableCell></TableRow>
-                )}
               </TableBody>
             </Table>
           </Card>
@@ -297,7 +282,7 @@ export default function AdminSnookerAutomationPage() {
               <TableHeader className="bg-slate-950/50">
                 <TableRow className="border-white/5 h-10">
                   <TableHead className="text-[9px] uppercase font-black px-4">Thumbnail / Jogo</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Status de Validação</TableHead>
+                  <TableHead className="text-[9px] uppercase font-black">Saúde do Vídeo</TableHead>
                   <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -314,24 +299,24 @@ export default function AdminSnookerAutomationPage() {
                           </div>
                           <div>
                             <p className="text-[11px] font-black text-white uppercase italic">{channel.playerA.name} vs {channel.playerB.name}</p>
-                            <p className="text-[9px] text-muted-foreground font-mono uppercase">{channel.embedId} • {channel.sourceName}</p>
+                            <p className="text-[9px] text-muted-foreground font-mono uppercase">{channel.sourceName}</p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1.5">
                           <Badge className={cn("text-[8px] h-4 uppercase font-black", isVideoValid ? 'bg-green-600/20 text-green-500' : 'bg-red-600/20 text-red-500')}>
-                            {isVideoValid ? 'VÍDEO VÁLIDO' : 'ERRO: ID INVÁLIDO'}
+                            {isVideoValid ? 'VÁLIDO' : 'ID INVÁLIDO'}
                           </Badge>
                           <Badge variant="outline" className="text-[8px] h-4 uppercase font-black border-white/10">{channel.status}</Badge>
                         </div>
                       </TableCell>
                       <TableCell className="text-right px-4 space-x-1">
                         {channel.sourceStatus === 'detected' && isVideoValid && (
-                          <button className="h-8 w-8 text-green-500 hover:bg-green-500/10 flex items-center justify-center rounded-lg" onClick={() => approveAutoSnookerChannel(channel.id)}><Check size={14} /></button>
+                          <button className="h-8 w-8 text-green-500 hover:bg-green-500/10 flex items-center justify-center rounded-lg" onClick={() => approveAutoSnookerChannel(channel.id)} title="Aprovar"><Check size={14} /></button>
                         )}
-                        <button className="h-8 w-8 text-white/30 hover:text-white flex items-center justify-center" onClick={() => window.open(channel.youtubeUrl, '_blank')}><ExternalLink size={14} /></button>
-                        <button className="h-8 w-8 text-destructive hover:bg-destructive/10 flex items-center justify-center rounded-lg" onClick={() => archiveAutoSnookerChannel(channel.id)}><Trash2 size={14} /></button>
+                        <button className="h-8 w-8 text-white/30 hover:text-white flex items-center justify-center" onClick={() => window.open(channel.youtubeUrl, '_blank')} title="Ver no YouTube"><ExternalLink size={14} /></button>
+                        <button className="h-8 w-8 text-destructive hover:bg-destructive/10 flex items-center justify-center rounded-lg" onClick={() => archiveAutoSnookerChannel(channel.id)} title="Arquivar"><Trash2 size={14} /></button>
                       </TableCell>
                     </TableRow>
                   );
@@ -345,37 +330,36 @@ export default function AdminSnookerAutomationPage() {
           <Card className="border-white/5 bg-card/50 overflow-hidden">
             <CardHeader className="bg-slate-950/50 border-b border-white/5 flex flex-row items-center justify-between p-4">
               <CardTitle className="text-xs font-black uppercase italic tracking-widest text-white flex items-center gap-2">
-                <History size={14} className="text-primary" /> Log de Transações do Motor de Busca
+                <History size={14} className="text-primary" /> Log de Transações do Sync
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={clearSnookerSyncLogs} className="h-7 text-[9px] font-black uppercase hover:bg-red-500/10 hover:text-red-500 px-3">Limpar Histórico</Button>
+              <Button variant="ghost" size="sm" onClick={clearSnookerSyncLogs} className="h-7 text-[9px] font-black uppercase hover:bg-red-500/10 hover:text-red-500 px-3">Limpar</Button>
             </CardHeader>
-            <Table>
-              <TableHeader className="bg-slate-950/20">
-                <TableRow className="border-white/5 h-8">
-                  <TableHead className="text-[9px] uppercase font-black px-4">Data/Hora</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Fonte</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black">Mensagem Técnica</TableHead>
-                  <TableHead className="text-[9px] uppercase font-black text-center">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {snookerSyncLogs.map(log => (
-                  <TableRow key={log.id} className="border-white/5 hover:bg-white/5 transition-colors">
-                    <TableCell className="px-4 py-3"><span className="text-[10px] font-mono text-slate-400">{new Date(log.createdAt).toLocaleString('pt-BR')}</span></TableCell>
-                    <TableCell><span className="text-[10px] font-black text-white uppercase italic">{log.sourceName || 'Global'}</span></TableCell>
-                    <TableCell><p className="text-[10px] text-slate-300 max-w-md truncate">{log.message}</p></TableCell>
-                    <TableCell className="text-center">
-                      <Badge className={cn("text-[7px] h-4 uppercase font-black px-1.5", log.status === 'success' ? "bg-green-600/20 text-green-500" : "bg-red-600/20 text-red-500")}>
-                        {log.status}
-                      </Badge>
-                    </TableCell>
+            <div className="max-h-[400px] overflow-y-auto">
+              <Table>
+                <TableHeader className="bg-slate-950/20">
+                  <TableRow className="border-white/5 h-8">
+                    <TableHead className="text-[9px] uppercase font-black px-4">Hora</TableHead>
+                    <TableHead className="text-[9px] uppercase font-black">Fonte</TableHead>
+                    <TableHead className="text-[9px] uppercase font-black">Mensagem</TableHead>
+                    <TableHead className="text-[9px] uppercase font-black text-center">Status</TableHead>
                   </TableRow>
-                ))}
-                {snookerSyncLogs.length === 0 && (
-                  <TableRow><TableCell colSpan={4} className="text-center py-12 text-muted-foreground italic text-xs">Nenhum log técnico registrado.</TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {snookerSyncLogs.map(log => (
+                    <TableRow key={log.id} className="border-white/5 hover:bg-white/5 transition-colors">
+                      <TableCell className="px-4 py-3"><span className="text-[10px] font-mono text-slate-400">{new Date(log.createdAt).toLocaleTimeString('pt-BR')}</span></TableCell>
+                      <TableCell><span className="text-[10px] font-black text-white uppercase italic">{log.sourceName || 'Global'}</span></TableCell>
+                      <TableCell><p className="text-[10px] text-slate-300 max-w-md truncate">{log.message}</p></TableCell>
+                      <TableCell className="text-center">
+                        <Badge className={cn("text-[7px] h-4 uppercase font-black px-1.5", log.status === 'success' ? "bg-green-600/20 text-green-500" : "bg-red-600/20 text-red-500")}>
+                          {log.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
         </TabsContent>
       </Tabs>
@@ -383,15 +367,33 @@ export default function AdminSnookerAutomationPage() {
       <Dialog open={isSourceDialogOpen} onOpenChange={setIsSourceDialogOpen}>
         <DialogContent className="bg-[#0f172a] border-white/10 text-white sm:max-w-xl shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black uppercase italic tracking-tighter">Configurar Fonte YouTube</DialogTitle>
+            <DialogTitle className="text-2xl font-black uppercase italic tracking-tighter text-white">Configurar Fonte de Dados</DialogTitle>
           </DialogHeader>
           {editingSource && (
             <div className="grid gap-6 py-4">
               <div className="grid gap-2">
-                <Label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Nome da Fonte</Label>
+                <Label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Nome da Transmissão</Label>
                 <Input value={editingSource.name} onChange={e => setEditingSource({...editingSource, name: e.target.value})} className="h-11 bg-black/20 border-white/10 text-white" />
               </div>
+              <div className="grid gap-2">
+                <Label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Channel ID (24 caracteres começando com UC)</Label>
+                <Input 
+                  value={editingSource.channelId} 
+                  onChange={e => setEditingSource({...editingSource, channelId: e.target.value})} 
+                  className={cn("h-11 bg-black/20 text-white font-mono", !isValidYoutubeChannelId(editingSource.channelId) ? "border-red-500/50" : "border-white/10")} 
+                  placeholder="Ex: UCkb_vWhEvID_v_vXOnZ_sqQ"
+                />
+                {!isValidYoutubeChannelId(editingSource.channelId) && editingSource.channelId.length > 0 && (
+                  <p className="text-[10px] text-red-500 font-bold uppercase mt-1 flex items-center gap-1">
+                    <ShieldAlert size={10} /> ID do canal inválido ou incompleto. Deve ter 24 caracteres.
+                  </p>
+                )}
+              </div>
               <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Prioridade</Label>
+                  <Input type="number" value={editingSource.priority} onChange={e => setEditingSource({...editingSource, priority: parseInt(e.target.value) || 0})} className="h-11 bg-black/20 border-white/10 text-white" />
+                </div>
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Perfil de Inteligência</Label>
                   <Select value={editingSource.parseProfile} onValueChange={(v: any) => setEditingSource({...editingSource, parseProfile: v})}>
@@ -405,16 +407,12 @@ export default function AdminSnookerAutomationPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Prioridade de Escolha</Label>
-                  <Input type="number" value={editingSource.priority} onChange={e => setEditingSource({...editingSource, priority: parseInt(e.target.value) || 0})} className="h-11 bg-black/20 border-white/10 text-white" />
-                </div>
               </div>
             </div>
           )}
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" className="border-white/10 h-11 px-6 font-bold">Cancelar</Button></DialogClose>
-            <Button onClick={handleSaveSource} className="lux-shine font-black uppercase italic h-11 px-8 rounded-xl shadow-lg">Salvar Configuração</Button>
+            <Button onClick={handleSaveSource} disabled={!editingSource || !isValidYoutubeChannelId(editingSource.channelId)} className="lux-shine font-black uppercase italic h-11 px-8 rounded-xl shadow-lg">Salvar Configuração</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
