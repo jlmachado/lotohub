@@ -1,8 +1,8 @@
+'use client';
+
 /**
  * @fileOverview AppContext - Orquestrador Central de Estado e Sincronização.
  */
-
-'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -24,7 +24,7 @@ import { JDBNormalizedResult } from '@/types/result-types';
 import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
 import { SnookerSyncService } from '@/services/snooker-sync-service';
 import { SnookerPriorityService } from '@/services/snooker-priority-service';
-import { isValidYoutubeVideoId } from '@/utils/youtube';
+import { isValidYoutubeVideoId, isValidYoutubeChannelId } from '@/utils/youtube';
 
 // --- INTERFACES ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -44,7 +44,7 @@ export interface BingoDraw { id: string; drawNumber: number; status: 'scheduled'
 export interface BingoTicket { id: string; drawId: string; userId: string; userName: string; terminalId: string; amountPaid: number; status: 'active' | 'won' | 'lost' | 'refunded'; ticketNumbers: number[]; createdAt: string; isBot?: boolean; bancaId: string; }
 export interface BingoPayout { id: string; drawId: string; userId: string; userName: string; terminalId: string; amount: number; status: 'pending' | 'paid' | 'failed' | 'cancelled'; type: 'quadra' | 'kina' | 'keno'; createdAt: string; }
 
-export interface SnookerChannel { id: string; title: string; description: string; youtubeUrl: string; embedId: string; sourceVideoId: string; status: 'scheduled' | 'imminent' | 'live' | 'finished' | 'cancelled'; playerA: { name: string; level: number }; playerB: { name: string; level: number }; scoreA: number; scoreB: number; odds: { A: number; B: number; D: number }; houseMargin: number; bestOf: number; priority: number; enabled: boolean; bancaId: string; createdAt: string; updatedAt: string; source?: 'manual' | 'youtube'; sourceName?: string; sourceId?: string; sourceStatus?: 'detected' | 'synced' | 'error'; autoCreated?: boolean; metadataConfidence?: number; parserNotes?: string[]; thumbnailUrl?: string; tournamentName?: string; isManualOverride?: boolean; isPrimaryCandidate?: boolean; priorityScore?: number; primaryReason?: string; isArchived?: boolean; prizeLabel?: string; phase?: string; contentType?: string; }
+export interface SnookerChannel { id: string; title: string; description: string; youtubeUrl: string; embedId: string; sourceVideoId: string; status: 'scheduled' | 'imminent' | 'live' | 'finished' | 'cancelled'; playerA: { name: string; level: number }; playerB: { name: string; level: number }; scoreA: number; scoreB: number; odds: { A: number; B: number; D: number }; houseMargin: number; bestOf: number; priority: number; enabled: boolean; bancaId: string; createdAt: string; updatedAt: string; source?: 'manual' | 'youtube'; sourceName?: string; sourceId?: string; sourceStatus?: 'detected' | 'synced' | 'error'; autoCreated?: boolean; metadataConfidence?: number; parserNotes?: string[]; thumbnailUrl?: string; tournamentName?: string; isManualOverride?: boolean; isPrimaryCandidate?: boolean; priorityScore?: number; primaryReason?: string; isArchived?: boolean; prizeLabel?: string; phase?: string; contentType?: string; originPriority?: number; }
 export interface SnookerAutomationSource { id: string; name: string; channelUrl: string; channelHandle: string; channelId: string; enabled: boolean; priority: number; parseProfile: 'tv_snooker_brasil' | 'junior_snooker' | 'generic'; autoCreateChannels: boolean; autoUpdateChannels: boolean; requireAdminApproval: boolean; lastSyncAt?: string; lastSyncStatus?: 'success' | 'error'; }
 export interface SnookerAutomationSettings { enabled: boolean; sources: SnookerAutomationSource[]; syncIntervalSeconds: number; manualPrimaryChannelId?: string | null; }
 export interface SnookerSyncLog { id: string; createdAt: string; type: string; status: 'success' | 'warning' | 'error' | 'info'; message: string; sourceName?: string; relatedChannelId?: string; }
@@ -72,8 +72,32 @@ const DEFAULT_CASINO_SETTINGS: CasinoSettings = { casinoName: 'LotoHub Casino', 
 
 // IDs REAIS COMPLETOS DO YOUTUBE
 const DEFAULT_SOURCES: SnookerAutomationSource[] = [
-  { id: 'src-tv-snooker', name: 'TV Snooker Brasil', channelUrl: 'https://www.youtube.com/@TVSnookerBrasil', channelHandle: '@TVSnookerBrasil', channelId: 'UCkb_vWhEvID_v_vXOnZ_sqQ', enabled: true, priority: 100, parseProfile: 'tv_snooker_brasil', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: false },
-  { id: 'src-junior-snooker', name: 'Junior Snooker', channelUrl: 'https://www.youtube.com/@juniorsnooker', channelHandle: '@juniorsnooker', channelId: 'UC_vXOnZ_sqQ8OnZ_sqQ_vXOn', enabled: true, priority: 90, parseProfile: 'junior_snooker', autoCreateChannels: true, autoUpdateChannels: true, requireAdminApproval: true }
+  { 
+    id: 'src-tv-snooker', 
+    name: 'TV Snooker Brasil', 
+    channelUrl: 'https://www.youtube.com/channel/UClp9MNyRB6qqF8G5xg12cGQ', 
+    channelHandle: '@TVSnookerBrasil', 
+    channelId: 'UClp9MNyRB6qqF8G5xg12cGQ', 
+    enabled: true, 
+    priority: 100, 
+    parseProfile: 'tv_snooker_brasil', 
+    autoCreateChannels: true, 
+    autoUpdateChannels: true, 
+    requireAdminApproval: false 
+  },
+  { 
+    id: 'src-junior-snooker', 
+    name: 'Junior Snooker', 
+    channelUrl: 'https://www.youtube.com/channel/UCiB6W2G8RooVFN8R_ciRALA', 
+    channelHandle: '@juniorsnooker', 
+    channelId: 'UCiB6W2G8RooVFN8R_ciRALA', 
+    enabled: true, 
+    priority: 90, 
+    parseProfile: 'junior_snooker', 
+    autoCreateChannels: true, 
+    autoUpdateChannels: true, 
+    requireAdminApproval: true 
+  }
 ];
 
 const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = { enabled: true, sources: DEFAULT_SOURCES, syncIntervalSeconds: 300, manualPrimaryChannelId: null };
@@ -135,7 +159,33 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (session) { const u = getUserByTerminal(session.terminal); setUser(u); } else { setUser(null); }
     
     setLedger(LedgerService.getEntries()); setBanners(getStorageItem('app:banners:v1', [])); setPopups(getStorageItem('app:popups:v1', [])); setNews(getStorageItem('news_messages', [])); setApostas(getStorageItem('app:apostas:v1', [])); setPostedResults(getStorageItem('app:posted_results:v1', [])); setJdbResults(getStorageItem('app:jdb_results:v1', [])); setFootballBets(getStorageItem('app:football_bets:v1', [])); setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS)); setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES)); setCasinoSettings(getStorageItem('app:casino_settings:v1', DEFAULT_CASINO_SETTINGS)); setBingoSettings(getStorageItem('app:bingo_settings:v1', DEFAULT_BINGO_SETTINGS)); setBingoDraws(getStorageItem('app:bingo_draws:v1', [])); setBingoTickets(getStorageItem('app:bingo_tickets:v1', [])); setBingoPayouts(getStorageItem('app:bingo_payouts:v1', [])); 
-    setSnookerChannels(getStorageItem('app:snooker_channels:v1', [])); setSnookerFinancialHistory(getStorageItem('app:snooker_history:v1', [])); setSnookerBets(getStorageItem('app:snooker_bets:v1', [])); setSnookerCashOutLog(getStorageItem('app:snooker_cashout:v1', [])); setSnookerLiveConfig(getStorageItem('app:snooker_cfg:v1', DEFAULT_SNOOKER_CFG)); setSnookerChatMessages(getStorageItem('app:snooker_chat:v1', [])); setSnookerScoreboards(getStorageItem('app:snooker_scores:v1', {})); setSnookerBetsFeed(getStorageItem('app:snooker_bets_feed:v1', [])); setSnookerActivityFeed(getStorageItem('app:snooker_activity_feed:v1', [])); setSnookerSyncLogs(getStorageItem('app:snooker_sync_logs:v1', [])); setSnookerAutomationSettings(getStorageItem('app:snooker_automation:v1', DEFAULT_SNOOKER_AUTOMATION)); setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', DEFAULT_PLAYER_CONFIG));
+    setSnookerChannels(getStorageItem('app:snooker_channels:v1', [])); setSnookerFinancialHistory(getStorageItem('app:snooker_history:v1', [])); setSnookerBets(getStorageItem('app:snooker_bets:v1', [])); setSnookerCashOutLog(getStorageItem('app:snooker_cashout:v1', [])); setSnookerLiveConfig(getStorageItem('app:snooker_cfg:v1', DEFAULT_SNOOKER_CFG)); setSnookerChatMessages(getStorageItem('app:snooker_chat:v1', [])); setSnookerScoreboards(getStorageItem('app:snooker_scores:v1', {})); setSnookerBetsFeed(getStorageItem('app:snooker_bets_feed:v1', [])); setSnookerActivityFeed(getStorageItem('app:snooker_activity_feed:v1', [])); setSnookerSyncLogs(getStorageItem('app:snooker_sync_logs:v1', [])); 
+    
+    // Reparo Automático de IDs de Canais
+    const currentAutomation = getStorageItem<SnookerAutomationSettings>('app:snooker_automation:v1', DEFAULT_SNOOKER_AUTOMATION);
+    let hasRepair = false;
+    currentAutomation.sources = currentAutomation.sources.map(src => {
+      // Repara Junior Snooker
+      if (src.id === 'src-junior-snooker' && (!isValidYoutubeChannelId(src.channelId) || src.channelId !== 'UCiB6W2G8RooVFN8R_ciRALA')) {
+        src.channelId = 'UCiB6W2G8RooVFN8R_ciRALA';
+        src.channelUrl = 'https://www.youtube.com/channel/UCiB6W2G8RooVFN8R_ciRALA';
+        hasRepair = true;
+      }
+      // Repara TV Snooker Brasil
+      if (src.id === 'src-tv-snooker' && (!isValidYoutubeChannelId(src.channelId) || src.channelId !== 'UClp9MNyRB6qqF8G5xg12cGQ')) {
+        src.channelId = 'UClp9MNyRB6qqF8G5xg12cGQ';
+        src.channelUrl = 'https://www.youtube.com/channel/UClp9MNyRB6qqF8G5xg12cGQ';
+        hasRepair = true;
+      }
+      return src;
+    });
+
+    if (hasRepair) {
+      setStorageItem('app:snooker_automation:v1', currentAutomation);
+    }
+
+    setSnookerAutomationSettings(currentAutomation); 
+    setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', DEFAULT_PLAYER_CONFIG));
     const savedFootball = getStorageItem('app:football:unified:v1', null); if (savedFootball) setFootballData(prev => ({ ...prev, ...savedFootball })); else setFootballData(prev => ({ ...prev, leagues: ESPN_LEAGUE_CATALOG }));
   }, []);
 
@@ -163,6 +213,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       let allLogs: SnookerSyncLog[] = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
 
       for (const source of sourcesToSync) {
+        if (!isValidYoutubeChannelId(source.channelId)) {
+          const skipLog: SnookerSyncLog = { 
+            id: `log-skip-${Date.now()}-${source.id}`, 
+            createdAt: new Date().toISOString(), 
+            type: 'SYNC_SKIP', 
+            status: 'error', 
+            message: `Ignorado: Channel ID inválido para ${source.name}`,
+            sourceName: source.name 
+          };
+          allLogs = [skipLog, ...allLogs].slice(0, 200);
+          continue;
+        }
+
         try {
           const { updatedChannels, summary } = await SnookerSyncService.sync(currentChannels, user?.bancaId || 'default', source, settings);
           currentChannels = updatedChannels;
@@ -277,7 +340,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const settleSnookerRound = useCallback((channelId: string, winner: string) => { const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); const currentBets = getStorageItem<any[]>('app:snooker_bets:v1', []); const betsToSettle = currentBets.filter(b => b.channelId === channelId && b.status === 'open'); betsToSettle.forEach(bet => { if (bet.pick === winner) { const prize = bet.amount * 1.95; const realUser = getUserByTerminal(bet.userName); if (realUser) { upsertUser({ terminal: realUser.terminal, saldo: realUser.saldo + prize }); LedgerService.addEntry({ bancaId: realUser.bancaId || 'default', userId: realUser.id, terminal: realUser.terminal, tipoUsuario: realUser.tipoUsuario, modulo: 'Sinuca', type: 'BET_WIN', amount: prize, balanceBefore: realUser.saldo, balanceAfter: realUser.saldo + prize, referenceId: bet.id, description: `Prêmio Sinuca` }); } } }); setStorageItem('app:snooker_bets:v1', currentBets.map(b => b.channelId === channelId && b.status === 'open' ? { ...b, status: b.pick === winner ? 'won' as const : 'lost' as const } : b)); if (winner !== 'EMPATE') setCelebrationTrigger(true); notify(); }, [notify]);
   const clearCelebration = useCallback(() => setCelebrationTrigger(false), []);
 
-  const syncFootballAll = useCallback(async (force = false) => { setFootballData(prev => ({ ...prev, syncStatus: 'syncing' })); try { const activeLeagues = getStorageItem('app:football:unified:v1', { leagues: ESPN_LEAGUE_CATALOG }).leagues.filter((l: any) => l.active); let allMatches: any[] = []; const leagueStandings: Record<string, any[]> = {}; for (const league of activeLeagues) { const [standingsData, scoreboardData] = await Promise.all([espnService.getStandings(league.slug), espnService.getScoreboard(league.slug)]); if (standingsData) leagueStandings[league.slug] = normalizeESPNStandings(standingsData); if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)]; } const unified = allMatches.map(match => { const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || [], match.id); const baseModel = { id: match.id, league: match.leagueName, leagueSlug: match.leagueSlug, homeTeam: match.homeTeam.name, awayTeam: match.awayTeam.name, homeLogo: match.homeTeam.logo, awayLogo: match.awayTeam.logo, kickoff: match.date, status: match.status, minute: match.clock || '', scoreHome: match.homeTeam.score, scoreAway: match.awayTeam.score, hasOdds: true, isLive: match.status === 'LIVE', isFinished: match.status === 'FINISHED', marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN' }; const markets = FootballMarketsEngine.generateAllMarkets(probs); const processed = FootballLiveEngine.processLiveState(baseModel as any, match); return { ...processed, markets, hasOdds: true, odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } }; }); const data = { leagues: ESPN_LEAGUE_CATALOG, matches: allMatches, unifiedMatches: unified, lastSyncAt: new Date().toISOString() }; setStorageItem('app:football:unified:v1', data); setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' })); if (force) toast({ title: 'Sync Concluído' }); } catch (e) { setFootballData(prev => ({ ...prev, syncStatus: 'error' })); } }, [toast]);
+  const syncFootballAll = useCallback(async (force = false) => { setFootballData(prev => ({ ...prev, syncStatus: 'syncing' })); try { const activeLeagues = getStorageItem('app:football:unified:v1', { leagues: ESPN_LEALOG_CATALOG }).leagues.filter((l: any) => l.active); let allMatches: any[] = []; const leagueStandings: Record<string, any[]> = {}; for (const league of activeLeagues) { const [standingsData, scoreboardData] = await Promise.all([espnService.getStandings(league.slug), espnService.getScoreboard(league.slug)]); if (standingsData) leagueStandings[league.slug] = normalizeESPNStandings(standingsData); if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)]; } const unified = allMatches.map(match => { const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || [], match.id); const baseModel = { id: match.id, league: match.leagueName, leagueSlug: match.leagueSlug, homeTeam: match.homeTeam.name, awayTeam: match.awayTeam.name, homeLogo: match.homeTeam.logo, awayLogo: match.awayTeam.logo, kickoff: match.date, status: match.status, minute: match.clock || '', scoreHome: match.homeTeam.score, scoreAway: match.awayTeam.score, hasOdds: true, isLive: match.status === 'LIVE', isFinished: match.status === 'FINISHED', marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN' }; const markets = FootballMarketsEngine.generateAllMarkets(probs); const processed = FootballLiveEngine.processLiveState(baseModel as any, match); return { ...processed, markets, hasOdds: true, odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } }; }); const data = { leagues: ESPN_LEAGUE_CATALOG, matches: allMatches, unifiedMatches: unified, lastSyncAt: new Date().toISOString() }; setStorageItem('app:football:unified:v1', data); setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' })); if (force) toast({ title: 'Sync Concluído' }); } catch (e) { setFootballData(prev => ({ ...prev, syncStatus: 'error' })); } }, [toast]);
   const updateLeagueConfig = useCallback((id: string, config: any) => { setFootballData(prev => { const leagues = prev.leagues.map(l => l.id === id ? { ...l, ...config } : l); const updated = { ...prev, leagues }; setStorageItem('app:football:unified:v1', updated); return updated; }); notify(); }, [notify]);
   const placeFootballBet = useCallback(async (stake: number): Promise<string | null> => { if (!user) { router.push('/login'); return null; } const pouleId = generatePoule(); const totalOdds = parseFloat(betSlip.reduce((acc, item) => acc * (item.odd || 1), 1).toFixed(2)); const result = BetService.processBet(user, { userId: user.id, modulo: 'Futebol', valor: stake, retornoPotencial: totalOdds > 0 ? stake * totalOdds : 0, descricao: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`, referenceId: pouleId }); if (result.success) { const currentBets = getStorageItem<FootballBet[]>('app:football_bets:v1', []); setStorageItem('app:football_bets:v1', [{ id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', terminal: user.terminal, stake, potentialWin: stake * totalOdds, items: betSlip, status: 'OPEN', createdAt: new Date().toISOString() }, ...currentBets]); setBetSlip([]); notify(); return pouleId; } return null; }, [user, betSlip, notify, router]);
   const handleFinalizarAposta = useCallback((aposta: any, valorTotal: number): string | null => { if (!user) { router.push('/login'); return null; } const pouleId = generatePoule(); const result = BetService.processBet(user, { userId: user.id, modulo: aposta.loteria, valor: valorTotal, retornoPotencial: 0, descricao: `${aposta.loteria}: ${aposta.numeros}`, referenceId: pouleId }); if (result.success) { const currentApostas = getStorageItem<Aposta[]>('app:apostas:v1', []); setStorageItem('app:apostas:v1', [{ ...aposta, id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', status: 'aguardando', createdAt: new Date().toISOString() }, ...currentApostas]); notify(); return pouleId; } return null; }, [user, notify, router]);
