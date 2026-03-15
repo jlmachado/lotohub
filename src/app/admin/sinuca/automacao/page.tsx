@@ -51,7 +51,12 @@ export default function AdminSnookerAutomationPage() {
   const [isSourceDialogOpen, setIsSourceDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<SnookerAutomationSource | null>(null);
 
-  // Candidatos para transmissão principal (Score > 0 e Vídeo Válido)
+  // Filtra logs para detectar erros de configuração de chave
+  const configError = useMemo(() => {
+    return snookerSyncLogs.find(l => l.status === 'error' && l.message.includes('Key')) || 
+           (snookerSyncState === 'error' && snookerSyncLogs[0]?.message.includes('Key'));
+  }, [snookerSyncLogs, snookerSyncState]);
+
   const candidates = useMemo(() => 
     [...snookerChannels]
       .filter(c => !c.isArchived && isValidYoutubeVideoId(c.embedId))
@@ -72,7 +77,9 @@ export default function AdminSnookerAutomationPage() {
     errors: snookerSyncLogs.filter(l => l.status === 'error').length
   }), [autoChannels, snookerSyncLogs, snookerAutomationSettings.sources]);
 
-  const handleManualSyncAll = async () => { await syncSnookerFromYoutube(true); };
+  const handleManualSyncAll = async () => { 
+    await syncSnookerFromYoutube(true); 
+  };
 
   const handleEditSource = (source: SnookerAutomationSource) => {
     setEditingSource(source);
@@ -87,11 +94,6 @@ export default function AdminSnookerAutomationPage() {
       toast({ title: "Fonte Atualizada" });
     }
   };
-
-  const nextRunMinutes = useMemo(() => {
-    // Para simplificação de prototype, mostramos um timer de monitoramento
-    return 5; 
-  }, []);
 
   return (
     <main className="p-4 md:p-8 space-y-6">
@@ -121,12 +123,10 @@ export default function AdminSnookerAutomationPage() {
         </div>
       </div>
 
-      {/* KPI Cards Profissionais */}
       <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <StatCard title="Fontes Ativas" value={stats.activeSources} icon={Database} color="text-primary" />
         <StatCard title="Lives Reais" value={stats.live} icon={Play} color="text-green-500" />
         <StatCard title="Vídeos Inválidos" value={stats.invalid} icon={MonitorOff} color="text-red-500" />
-        <StatCard title="Próximo Sync" value={`${nextRunMinutes}m`} icon={History} color="text-blue-400" />
         
         <Card className={cn(
           "border-white/5 bg-slate-900 shadow-inner overflow-hidden relative",
@@ -139,9 +139,27 @@ export default function AdminSnookerAutomationPage() {
             <div>
               <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Motor Snooker</p>
               <p className={cn("text-xl font-black italic uppercase", snookerSyncState === 'error' ? "text-red-500" : "text-white")}>
-                {snookerSyncState === 'error' ? 'Falha' : snookerSyncState}
+                {snookerSyncState === 'error' ? 'Falha' : snookerSyncState === 'idle' ? 'Pronto' : 'Sync...'}
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Status Real da Integração */}
+        <Card className={cn(
+          "border-white/5 shadow-inner overflow-hidden",
+          configError ? "bg-red-600/10" : "bg-green-600/10"
+        )}>
+          <CardHeader className="p-3 pb-0">
+            <p className="text-[9px] font-black uppercase text-muted-foreground">Status API</p>
+          </CardHeader>
+          <CardContent className="p-3 pt-1">
+            <Badge className={cn(
+              "font-black italic uppercase text-[10px]",
+              configError ? "bg-red-600 text-white" : "bg-green-600 text-white"
+            )}>
+              {configError ? "CHAVE NÃO CONFIGURADA" : "INTEGRAÇÃO ATIVA"}
+            </Badge>
           </CardContent>
         </Card>
       </div>
@@ -155,15 +173,22 @@ export default function AdminSnookerAutomationPage() {
         </TabsList>
 
         <TabsContent value="sources" className="mt-6 space-y-6">
-          <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex items-center gap-4">
-            <div className="p-3 bg-primary/10 rounded-xl">
-              <Key size={24} className="text-primary" />
+          <div className={cn(
+            "p-4 border rounded-2xl flex items-center gap-4",
+            configError ? "bg-red-600/5 border-red-600/20" : "bg-primary/5 border-primary/20"
+          )}>
+            <div className={cn("p-3 rounded-xl", configError ? "bg-red-600/10" : "bg-primary/10")}>
+              <Key size={24} className={configError ? "text-red-500" : "text-primary"} />
             </div>
             <div>
-              <h4 className="text-sm font-black uppercase italic text-white">Status da YouTube API Key</h4>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase">Integração backend via process.env.YOUTUBE_API_KEY</p>
+              <h4 className="text-sm font-black uppercase italic text-white">Chave YouTube Data API</h4>
+              <p className="text-[10px] text-muted-foreground font-bold uppercase">
+                {configError ? "A variável YOUTUBE_API_KEY não foi encontrada no servidor." : "Variável de ambiente configurada e protegida no backend."}
+              </p>
             </div>
-            <Badge className="ml-auto bg-green-600/20 text-green-500 border-green-500/30 font-black italic">CONECTADO</Badge>
+            <Badge className={cn("ml-auto font-black italic", configError ? "bg-red-600 text-white" : "bg-green-600 text-white")}>
+              {configError ? "ERRO" : "OK"}
+            </Badge>
           </div>
 
           <div className="grid gap-4">

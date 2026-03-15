@@ -9,13 +9,15 @@ import { isValidYoutubeVideoId } from '@/utils/youtube';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const channelHandle = searchParams.get('channelHandle');
 
-  if (!YOUTUBE_API_KEY) {
+  // Acesso estritamente no servidor para garantir leitura correta das ENV
+  const apiKey = process.env.YOUTUBE_API_KEY;
+
+  if (!apiKey) {
+    console.error('[YouTube API Route] Erro: YOUTUBE_API_KEY não encontrada no processo.');
     return NextResponse.json({ 
       success: false, 
       error: 'CONFIG_ERROR',
@@ -33,15 +35,29 @@ export async function GET(request: Request) {
     searchUrl.searchParams.append('order', 'date');
     searchUrl.searchParams.append('type', 'video');
     searchUrl.searchParams.append('q', query);
-    searchUrl.searchParams.append('key', YOUTUBE_API_KEY);
+    searchUrl.searchParams.append('key', apiKey);
 
-    const response = await fetch(searchUrl.toString(), { cache: 'no-store' });
+    console.log(`[YouTube API Route] Iniciando busca para: ${query}`);
+
+    const response = await fetch(searchUrl.toString(), { 
+      cache: 'no-store',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
     
     if (!response.ok) {
       const errorData = await response.json();
+      console.error('[YouTube API Route] Erro retornado pelo Google:', errorData);
+      
       if (response.status === 403) {
-        return NextResponse.json({ success: false, error: 'QUOTA_EXCEEDED', message: 'Limite de requisições do YouTube atingido.' }, { status: 403 });
+        return NextResponse.json({ 
+          success: false, 
+          error: 'QUOTA_EXCEEDED', 
+          message: 'Limite de requisições do YouTube atingido ou chave inválida.' 
+        }, { status: 403 });
       }
+      
       throw new Error(errorData.error?.message || 'Erro na API do YouTube');
     }
 
@@ -81,11 +97,11 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('[YouTube API Error]:', error.message);
+    console.error('[YouTube API Route Error]:', error.message);
     return NextResponse.json({ 
       success: false, 
       error: 'FETCH_ERROR',
-      message: error.message 
+      message: error.message || 'Falha inesperada ao consultar YouTube'
     }, { status: 500 });
   }
 }

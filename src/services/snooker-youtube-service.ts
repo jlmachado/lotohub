@@ -31,18 +31,30 @@ export class SnookerYoutubeService {
       const url = new URL('/api/snooker/sync', window.location.origin);
       url.searchParams.append('channelHandle', channelHandle);
 
-      const response = await fetch(url.toString(), { cache: 'no-store' });
+      const response = await fetch(url.toString(), { 
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
       
       const result = await response.json();
       
       if (!response.ok) {
-        throw new Error(result.message || 'Falha na comunicação com o motor de busca.');
+        // Captura erros estruturados do nosso backend (ex: CONFIG_ERROR)
+        const errorMsg = result.message || `Erro HTTP ${response.status}`;
+        throw new Error(errorMsg);
       }
       
-      return result.success ? (result.data || []) : [];
+      if (result.success === false) {
+        throw new Error(result.message || 'Falha desconhecida na sincronização.');
+      }
+      
+      return result.data || [];
     } catch (error: any) {
-      console.error('[SnookerYoutubeService] Erro ao buscar dados:', error.message);
-      throw error;
+      console.error('[SnookerYoutubeService] Falha na comunicação:', error.message);
+      // Propaga a mensagem original para que o usuário veja no painel admin
+      throw new Error(error.message || 'Erro ao conectar com o serviço de sincronização.');
     }
   }
 
@@ -50,10 +62,8 @@ export class SnookerYoutubeService {
    * Normaliza o item da API do YouTube para o formato interno resiliente.
    */
   static normalizeItem(ytItem: any): SnookerYoutubeItem | null {
-    // Tenta extrair o videoId de múltiplos locais possíveis no payload da API v3
     const videoId = ytItem.sourceVideoId || ytItem.id?.videoId || ytItem.videoId;
     
-    // BARREIRA DE SEGURANÇA: Se o ID não for válido, não prosseguimos com a normalização para o player
     if (!isValidYoutubeVideoId(videoId)) {
       return {
         sourceVideoId: videoId || 'invalid',
@@ -66,7 +76,7 @@ export class SnookerYoutubeService {
         status: 'video',
         isEmbeddable: false,
         rawPayload: ytItem,
-        validation: { valid: false, reason: 'ID de vídeo do YouTube inválido ou mal-formado.' }
+        validation: { valid: false, reason: 'ID de vídeo do YouTube inválido.' }
       };
     }
 
