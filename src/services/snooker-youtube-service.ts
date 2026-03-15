@@ -1,6 +1,6 @@
 /**
  * @fileOverview Serviço de normalização de dados reais da YouTube API para o sistema de Sinuca.
- * Reforçado com validações rigorosas de Video ID.
+ * Reforçado com validações rigorosas de Video ID para garantir integridade do player.
  */
 
 import { isValidYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
@@ -16,11 +16,15 @@ export interface SnookerYoutubeItem {
   status: 'live' | 'upcoming' | 'video';
   isEmbeddable: boolean;
   rawPayload: any;
+  validation?: {
+    valid: boolean;
+    reason?: string;
+  };
 }
 
 export class SnookerYoutubeService {
   /**
-   * Busca dados de canais via API interna (que faz a ponte com YouTube Data API).
+   * Busca dados de canais via API interna (que faz a ponte segura com YouTube Data API).
    */
   static async fetchChannelData(channelHandle: string): Promise<any[]> {
     try {
@@ -29,12 +33,12 @@ export class SnookerYoutubeService {
 
       const response = await fetch(url.toString(), { cache: 'no-store' });
       
+      const result = await response.json();
+      
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Falha na sincronização');
+        throw new Error(result.message || 'Falha na comunicação com o motor de busca.');
       }
       
-      const result = await response.json();
       return result.success ? (result.data || []) : [];
     } catch (error: any) {
       console.error('[SnookerYoutubeService] Erro ao buscar dados:', error.message);
@@ -43,14 +47,27 @@ export class SnookerYoutubeService {
   }
 
   /**
-   * Normaliza o item da API do YouTube para o formato interno.
+   * Normaliza o item da API do YouTube para o formato interno resiliente.
    */
   static normalizeItem(ytItem: any): SnookerYoutubeItem | null {
-    const videoId = ytItem.id?.videoId;
+    // Tenta extrair o videoId de múltiplos locais possíveis no payload da API v3
+    const videoId = ytItem.sourceVideoId || ytItem.id?.videoId || ytItem.videoId;
     
+    // BARREIRA DE SEGURANÇA: Se o ID não for válido, não prosseguimos com a normalização para o player
     if (!isValidYoutubeVideoId(videoId)) {
-      console.warn('[SnookerYoutubeService] Ignorando item com VideoID inválido:', videoId);
-      return null;
+      return {
+        sourceVideoId: videoId || 'invalid',
+        youtubeUrl: '',
+        embedId: '',
+        title: ytItem.snippet?.title || 'Item Inválido',
+        description: '',
+        thumbnailUrl: '',
+        publishedAt: new Date().toISOString(),
+        status: 'video',
+        isEmbeddable: false,
+        rawPayload: ytItem,
+        validation: { valid: false, reason: 'ID de vídeo do YouTube inválido ou mal-formado.' }
+      };
     }
 
     const statusMap: Record<string, 'live' | 'upcoming' | 'video'> = {
@@ -68,8 +85,9 @@ export class SnookerYoutubeService {
       thumbnailUrl: ytItem.snippet.thumbnails?.medium?.url || ytItem.snippet.thumbnails?.default?.url,
       publishedAt: ytItem.snippet.publishedAt,
       status: statusMap[ytItem.snippet.liveBroadcastContent] || 'video',
-      isEmbeddable: ytItem.isEmbeddableCandidate !== false,
-      rawPayload: ytItem
+      isEmbeddable: true,
+      rawPayload: ytItem,
+      validation: { valid: true }
     };
   }
 }

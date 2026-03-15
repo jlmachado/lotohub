@@ -1,13 +1,13 @@
 /**
- * @fileOverview Utilitários centrais para validação e manipulação de URLs e IDs do YouTube.
+ * @fileOverview Utilitários centrais para validação e manipulação de URLs e IDs do YouTube com rigor profissional.
  */
 
 /**
- * Valida se um ID de vídeo do YouTube é sintaticamente correto (11 caracteres).
+ * Valida se um ID de vídeo do YouTube é sintaticamente correto (exatamente 11 caracteres).
+ * O YouTube usa IDs que incluem letras, números, hífen (-) e underscore (_).
  */
 export function isValidYoutubeVideoId(videoId: string | null | undefined): boolean {
   if (!videoId || typeof videoId !== 'string') return false;
-  // O YouTube usa IDs de 11 caracteres que podem incluir letras, números, hífen (-) e underscore (_)
   const regex = /^[a-zA-Z0-9_-]{11}$/;
   return regex.test(videoId);
 }
@@ -57,7 +57,7 @@ export function normalizeYoutubeUrl(input: string | null | undefined): string | 
 }
 
 /**
- * Verifica se o vídeo é um candidato válido para incorporação.
+ * Verifica se o vídeo é um candidato válido para incorporação no player.
  */
 export function isEmbeddableCandidate(videoId: string | null | undefined): boolean {
   return isValidYoutubeVideoId(videoId);

@@ -1,6 +1,6 @@
 /**
- * @fileOverview Orquestrador de Sincronização Multicanal.
- * Agora utiliza dados REAIS do YouTube e aplica barreiras de integridade.
+ * @fileOverview Orquestrador de Sincronização Multicanal Robusto.
+ * Agora utiliza dados REAIS do YouTube e aplica barreiras de integridade rigorosas.
  */
 
 import { SnookerYoutubeService } from './snooker-youtube-service';
@@ -34,7 +34,7 @@ export class SnookerSyncService {
     };
     
     try {
-      // 1. Busca dados REAIS da YouTube API
+      // 1. Busca dados REAIS da YouTube API via proxy interno seguro
       const rawData = await SnookerYoutubeService.fetchChannelData(source.channelHandle);
       summary.itemsRead = rawData.length;
 
@@ -44,29 +44,30 @@ export class SnookerSyncService {
         try {
           const normalized = SnookerYoutubeService.normalizeItem(ytItem);
           
-          // 2. Barreira de Qualidade: Ignora se o vídeo for inválido
-          if (!normalized || !isValidYoutubeVideoId(normalized.embedId)) {
+          // 2. Barreira de Qualidade: Ignora ou marca erro se o vídeo for inválido
+          if (!normalized || !normalized.validation?.valid) {
             summary.invalidVideos++;
             return;
           }
 
           const parsed = SnookerParserService.parse(normalized.title, normalized.description, source.parseProfile);
           
-          // 3. Identificação Única Estável
+          // 3. Identificação Única Estável baseada no ID REAL do YouTube
+          // Isso evita duplicatas e IDs simulados no banco local
           const uniqueId = `yt_${normalized.embedId}`;
           const existingIdx = newChannelsList.findIndex(c => c.id === uniqueId);
 
-          // Determinar status lógico do sistema
+          // Determinar status lógico do sistema baseado no status real da transmissão
           let internalStatus: SnookerChannel['status'] = 'scheduled';
           if (normalized.status === 'live') internalStatus = 'live';
+          else if (normalized.status === 'upcoming') internalStatus = 'imminent';
           else if (normalized.status === 'video') internalStatus = 'finished';
 
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
             
-            // Proteção de Override Manual
+            // Proteção de Override Manual: Admin sempre manda mais que o robô
             if (existing.isManualOverride) {
-              // Só atualiza o status se mudou, mas preserva títulos editados
               if (internalStatus !== existing.status) {
                 newChannelsList[existingIdx] = { 
                   ...existing, 
@@ -78,7 +79,7 @@ export class SnookerSyncService {
               return;
             }
 
-            // Atualização de dados sincronizados
+            // Atualização de dados sincronizados reais
             newChannelsList[existingIdx] = {
               ...existing,
               status: internalStatus,
@@ -86,11 +87,12 @@ export class SnookerSyncService {
               tournamentName: parsed.tournamentName,
               thumbnailUrl: normalized.thumbnailUrl,
               metadataConfidence: parsed.confidence,
-              updatedAt: new Date().toISOString()
+              updatedAt: new Date().toISOString(),
+              sourceStatus: 'synced'
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
-            // 4. Criação de Novo Canal baseado em vídeo REAL
+            // 4. Criação de Novo Canal baseado em vídeo REAL e VÁLIDO
             const newChannel: SnookerChannel = {
               id: uniqueId,
               title: parsed.eventTitle,
@@ -104,7 +106,7 @@ export class SnookerSyncService {
               originPriority: source.priority,
               sourceStatus: source.requireAdminApproval ? 'detected' : 'synced',
               autoCreated: true,
-              scheduledAt: normalized.publishedAt, // Fallback caso não tenha streamingDetails
+              scheduledAt: normalized.publishedAt,
               status: internalStatus,
               playerA: { name: parsed.playerA, level: 5 },
               playerB: { name: parsed.playerB, level: 5 },
@@ -118,6 +120,7 @@ export class SnookerSyncService {
               bancaId,
               thumbnailUrl: normalized.thumbnailUrl,
               tournamentName: parsed.tournamentName,
+              prizeLabel: parsed.prizeLabel,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             };
@@ -129,7 +132,7 @@ export class SnookerSyncService {
         }
       });
 
-      // 5. Re-ranking de prioridade para transmissão principal
+      // 5. Re-ranking de prioridade para garantir que a transmissão mais importante seja a principal
       newChannelsList = SnookerPriorityService.rankItems(newChannelsList);
 
       return { updatedChannels: newChannelsList, summary };

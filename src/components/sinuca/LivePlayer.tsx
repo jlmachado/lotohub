@@ -1,12 +1,12 @@
 /**
- * @fileOverview Player de Vídeo para Sinuca ao Vivo.
- * Reforçado com validação de VideoID para evitar erros de incorporação.
+ * @fileOverview Player de Vídeo para Sinuca ao Vivo blindado.
+ * Reforçado com validação rigorosa de embedId para evitar erros de "vídeo indisponível".
  */
 
 'use client';
 import { Card } from "@/components/ui/card";
-import { Eye, Volume2, VolumeX, Maximize, Timer, MonitorOff, ShieldAlert } from "lucide-react";
-import { useEffect, useState, useMemo } from "react";
+import { Eye, Volume2, VolumeX, Maximize, MonitorOff, ShieldAlert, AlertTriangle } from "lucide-react";
+import { useState, useMemo } from "react";
 import { useAppContext } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
 import { isValidYoutubeVideoId, buildYoutubeEmbedUrl } from "@/utils/youtube";
@@ -27,7 +27,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
         snookerPresence[channelId]?.viewers.length || channel?.viewerCount || 0,
     [snookerPresence, channelId, channel?.viewerCount]);
 
-    // VALIDAÇÃO OBRIGATÓRIA ANTES DE RENDERIZAR IFRAME
+    // VALIDAÇÃO CRÍTICA: Verifica se o ID é real antes de tentar carregar o iframe
     const isVideoReady = useMemo(() => 
         isValidYoutubeVideoId(channel?.embedId), 
     [channel?.embedId]);
@@ -38,7 +38,7 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
 
     return (
         <Card className="casino-card-glow relative overflow-hidden bg-black rounded-2xl group shadow-2xl">
-            {/* Overlays */}
+            {/* Overlays de Informação */}
             <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
                 {showBadge && isVideoReady && (
                     <div className="live-badge live-badge-pulsing shadow-xl shadow-red-600/20">
@@ -87,11 +87,14 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
                         <div className="space-y-1">
                             <p className="text-white font-black uppercase italic tracking-tighter text-lg">Transmissão Indisponível</p>
                             <p className="text-white/40 text-[10px] font-bold uppercase max-w-[300px] leading-relaxed">
-                                O vídeo original não foi encontrado ou o link de transmissão é inválido.
+                                O identificador de vídeo informado é inválido ou a incorporação foi desativada pelo autor.
                             </p>
-                            <div className="mt-4 p-2 bg-white/5 rounded-lg border border-white/10 flex items-center gap-2 justify-center">
-                                <ShieldAlert size={12} className="text-amber-500" />
-                                <span className="text-[9px] font-mono text-slate-400">ID TÉCNICO: {channel.embedId || 'N/A'}</span>
+                            <div className="mt-4 p-3 bg-red-600/10 rounded-xl border border-red-600/20 flex flex-col items-center gap-2">
+                                <div className="flex items-center gap-2 text-amber-500">
+                                    <AlertTriangle size={14} />
+                                    <span className="text-[10px] font-black uppercase">Diagnóstico Admin</span>
+                                </div>
+                                <span className="text-[9px] font-mono text-slate-400 break-all">ID: {channel.embedId || 'NÃO DETECTADO'}</span>
                             </div>
                         </div>
                     </div>
@@ -102,17 +105,15 @@ export const LivePlayer = ({ channelId }: LivePlayerProps) => {
                 <div className="flex items-center gap-2">
                     <div className={cn("w-1 h-1 rounded-full", isVideoReady ? "bg-red-500" : "bg-slate-600")} />
                     <span className="text-[8px] font-black uppercase tracking-[3px] text-white/30 italic">
-                        {channel.sourceName || 'Transmissão Oficial'}
+                        {channel.sourceName || 'Fonte Manual'}
                     </span>
                 </div>
                 {channel.source === 'youtube' && (
-                    <Badge className="bg-primary/10 text-primary border-primary/20 text-[7px] h-4 font-black uppercase">LIVE SYNC</Badge>
+                    <span className="bg-primary/10 text-primary border border-primary/20 text-[7px] font-black h-4 px-1.5 rounded-full flex items-center">
+                        REALTIME SYNC
+                    </span>
                 )}
             </div>
         </Card>
     );
 }
-
-const Badge = ({ children, className }: any) => (
-  <span className={cn("px-2 py-0.5 rounded-full text-[9px] font-black border flex items-center justify-center whitespace-nowrap", className)}>{children}</span>
-);
