@@ -1,13 +1,13 @@
+
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fortune Tiger - Oficial</title>
+    <title>Fortune Tiger - Engine</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Overlay de Carregamento -->
     <div id="loader" class="loader-overlay">
         <div class="loader-content">
             <div class="tiger-spinner"></div>
@@ -15,59 +15,53 @@
         </div>
     </div>
 
-    <!-- Container Principal do Jogo -->
-    <div id="game-container" style="opacity: 0;">
+    <div id="game-container" class="game-wrapper">
         <header class="game-header">
-            <div class="logo-area">
-                <img src="images/logo.png" alt="Fortune Tiger Logo" class="game-logo">
-            </div>
-            <div class="tiger-mascot">
-                <img src="images/tiger.png" alt="Tiger" class="tiger-img">
-            </div>
+            <img src="images/logo.png" alt="Fortune Tiger" class="game-logo">
         </header>
 
-        <main class="game-viewport">
-            <div class="reels-frame">
-                <div id="reels-container" class="reels-container">
-                    <!-- Bobinas geradas via JS -->
-                </div>
+        <main class="reels-section">
+            <div class="reels-container" id="reels-container">
+                <div class="reel" id="reel-0"></div>
+                <div class="reel" id="reel-1"></div>
+                <div class="reel" id="reel-2"></div>
+            </div>
+            <div class="tiger-decoration">
+                <img src="images/tiger.png" alt="" class="tiger-mascot">
             </div>
         </main>
 
         <footer class="game-footer">
-            <div class="info-bar">
-                <div class="info-item">
+            <div class="stats-row">
+                <div class="stat-box">
                     <span>SALDO</span>
-                    <p id="balance-display">R$ 0,00</p>
+                    <span id="balance-display">R$ 0,00</span>
                 </div>
-                <div class="info-item">
-                    <span>APOSTA</span>
-                    <p id="bet-display">R$ 1,00</p>
-                </div>
-                <div class="info-item">
+                <div class="stat-box">
                     <span>GANHO</span>
-                    <p id="win-display">R$ 0,00</p>
+                    <span id="win-display">R$ 0,00</span>
                 </div>
             </div>
 
-            <div class="controls-area">
-                <button id="minus-btn" class="control-btn">-</button>
-                <div id="spin-wrapper">
-                    <button id="spin-btn" class="spin-button">
-                        <img src="images/spin_btn.png" alt="Girar">
-                    </button>
+            <div class="controls-row">
+                <div class="bet-controls">
+                    <button id="bet-minus" class="btn-adjust">-</button>
+                    <div class="bet-value">
+                        <span class="label">APOSTA</span>
+                        <span id="bet-display">R$ 1,00</span>
+                    </div>
+                    <button id="bet-plus" class="btn-adjust">+</button>
                 </div>
-                <button id="plus-btn" class="control-btn">+</button>
+                
+                <button id="spin-btn" class="spin-button">
+                    <img src="images/spin_btn.png" alt="Girar">
+                </button>
+
+                <div class="auto-spin">
+                    <button id="auto-btn" class="btn-secondary">AUTO</button>
+                </div>
             </div>
         </footer>
-    </div>
-
-    <!-- Overlay de Vitória -->
-    <div id="win-overlay" class="win-overlay hidden">
-        <div class="win-content">
-            <h2 id="win-title">BIG WIN!</h2>
-            <p id="win-amount">R$ 0,00</p>
-        </div>
     </div>
 
     <script src="script.js"></script>
