@@ -1,6 +1,6 @@
 /**
  * @fileOverview Orquestrador de Sincronização Multicanal Robusto.
- * Atualizado para configurar janelas de aposta automáticas.
+ * Atualizado para tratar corretamente scheduledAt e janelas de aposta.
  */
 
 import { SnookerYoutubeService } from './snooker-youtube-service';
@@ -53,15 +53,17 @@ export class SnookerSyncService {
           const uniqueId = `yt_${normalized.embedId}`;
           const existingIdx = newChannelsList.findIndex(c => c.id === uniqueId);
 
+          // Determinar horário programado (Prioriza scheduledAt se disponível no feed)
+          const scheduledAt = normalized.scheduledAt || normalized.publishedAt;
+          const eventTime = new Date(scheduledAt);
+
           let internalStatus: SnookerChannel['status'] = 'scheduled';
           if (normalized.status === 'live') internalStatus = 'live';
           else if (normalized.status === 'upcoming') internalStatus = 'imminent';
           else if (normalized.status === 'video') internalStatus = 'finished';
 
-          // Configuração de Janela de Aposta Automática
-          const eventTime = new Date(normalized.publishedAt);
-          const opensAt = new Date(eventTime.getTime() - (120 * 60 * 1000)).toISOString(); // 2h antes
-          const closesAt = new Date(eventTime.getTime() + (240 * 60 * 1000)).toISOString(); // 4h depois do início estimado
+          // Janela de Aposta Padrão: Abre 2h antes do início
+          const bettingOpensAt = new Date(eventTime.getTime() - (120 * 60 * 1000)).toISOString();
 
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
@@ -81,6 +83,7 @@ export class SnookerSyncService {
             newChannelsList[existingIdx] = {
               ...existing,
               status: internalStatus,
+              scheduledAt: scheduledAt,
               title: parsed.eventTitle,
               tournamentName: parsed.tournamentName,
               thumbnailUrl: normalized.thumbnailUrl,
@@ -88,9 +91,7 @@ export class SnookerSyncService {
               updatedAt: new Date().toISOString(),
               sourceStatus: 'synced',
               enabled: existing.enabled || internalStatus === 'live' || internalStatus === 'imminent',
-              // Garante que campos de aposta existam
-              bettingAvailability: existing.bettingAvailability || 'all',
-              bettingOpensAt: existing.bettingOpensAt || opensAt
+              bettingOpensAt: existing.bettingOpensAt || bettingOpensAt
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
@@ -107,7 +108,7 @@ export class SnookerSyncService {
               originPriority: source.priority,
               sourceStatus: source.requireAdminApproval ? 'detected' : 'synced',
               autoCreated: true,
-              scheduledAt: normalized.publishedAt,
+              scheduledAt: scheduledAt,
               status: internalStatus,
               playerA: { name: parsed.playerA, level: 5 },
               playerB: { name: parsed.playerB, level: 5 },
@@ -124,10 +125,8 @@ export class SnookerSyncService {
               prizeLabel: parsed.prizeLabel,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
-              // Mercado Aberto por padrão para novos itens válidos
               bettingAvailability: 'all',
-              bettingOpensAt: opensAt,
-              bettingClosesAt: closesAt
+              bettingOpensAt: bettingOpensAt
             };
             newChannelsList.unshift(newChannel);
             summary.created++;

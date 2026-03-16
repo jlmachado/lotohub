@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { useEffect, useState, useMemo } from "react";
 import { Calendar, Video, Clock, Star, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getSnookerMarketState } from "@/utils/snooker-rules";
 
 interface ChannelSelectorProps {
     activeChannelId: string;
@@ -41,24 +42,15 @@ const CountdownTimer = ({ scheduledAt }: { scheduledAt: string }) => {
     return <span className="font-mono text-primary">{timeLeft}</span>;
 };
 
-const getStatusBadgeConfig = (channel: SnookerChannel) => {
-    if (channel.visibilityStatus === 'live') return { label: 'AO VIVO', variant: 'destructive' as const };
-    if (channel.visibilityStatus === 'upcoming') return { label: 'PRÓXIMO', variant: 'default' as const };
-    return { label: 'ENCERRADO', variant: 'outline' as const };
-};
-
 export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSelectorProps) => {
     const { snookerChannels, snookerPrimaryChannelId } = useAppContext();
 
     const availableChannels = useMemo(() => {
-        // Filtra apenas canais visíveis (Live ou Próximos de hoje/futuro)
         return (snookerChannels || [])
             .filter(c => c.enabled && !c.isArchived && c.visibilityStatus !== 'expired' && c.visibilityStatus !== 'hidden')
             .sort((a, b) => {
-                // Prioridade 1: Live primeiro
                 if (a.visibilityStatus === 'live' && b.visibilityStatus !== 'live') return -1;
                 if (a.visibilityStatus !== 'live' && b.visibilityStatus === 'live') return 1;
-                // Prioridade 2: Score de prioridade
                 return (b.priorityScore || 0) - (a.priorityScore || 0);
             });
     }, [snookerChannels]);
@@ -87,9 +79,14 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Badge variant={getStatusBadgeConfig(activeChannel).variant} className="h-5 text-[8px] uppercase font-black italic">
-                                        {getStatusBadgeConfig(activeChannel).label}
-                                    </Badge>
+                                    {(() => {
+                                        const market = getSnookerMarketState(activeChannel);
+                                        return (
+                                            <Badge variant={activeChannel.visibilityStatus === 'live' ? 'destructive' : 'secondary'} className={cn("h-5 text-[8px] uppercase font-black italic", market.color)}>
+                                                {market.label}
+                                            </Badge>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         ) : "Nenhuma transmissão ativa"}
@@ -100,7 +97,9 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
                         <div className="p-4 text-center text-xs text-muted-foreground italic">Nenhum jogo ao vivo ou próximo jogo disponível.</div>
                     ) : (
                         availableChannels.map(channel => {
-                            const badge = getStatusBadgeConfig(channel);
+                            const market = getSnookerMarketState(channel);
+                            const eventTime = new Date(channel.scheduledAt || channel.createdAt);
+                            
                             return (
                                 <SelectItem key={channel.id} value={channel.id} className="hover:bg-white/5 cursor-pointer p-3 border-b border-white/5 last:border-0">
                                     <div className="flex flex-col gap-1 w-full min-w-[300px]">
@@ -113,20 +112,20 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
                                                 <Badge className="bg-primary text-black text-[7px] font-black h-3.5 px-1 uppercase italic">Principal</Badge>
                                               )}
                                             </div>
-                                            <Badge variant={badge.variant} className="h-4 text-[7px] uppercase font-black">
-                                                {badge.label}
+                                            <Badge variant={channel.visibilityStatus === 'live' ? 'destructive' : 'secondary'} className={cn("h-4 text-[7px] uppercase font-black", market.color)}>
+                                                {market.label}
                                             </Badge>
                                         </div>
                                         <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
                                             <div className="flex items-center gap-1.5">
                                                 <Calendar size={10} />
-                                                {new Date(channel.scheduledAt).toLocaleDateString('pt-BR')} • {new Date(channel.scheduledAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
+                                                {eventTime.toLocaleDateString('pt-BR')} • {eventTime.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 {channel.visibilityStatus === 'upcoming' && (
                                                     <div className="flex items-center gap-1 text-primary">
                                                         <Clock size={10} />
-                                                        <CountdownTimer scheduledAt={channel.scheduledAt} />
+                                                        <CountdownTimer scheduledAt={eventTime.toISOString()} />
                                                     </div>
                                                 )}
                                             </div>

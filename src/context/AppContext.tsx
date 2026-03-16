@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central de Estado e Sincronização.
- * Atualizado com lógica de visibilidade temporal e regras de mercado unificadas.
+ * Atualizado com lógica de visibilidade temporal e atualização dinâmica de status.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -26,7 +26,7 @@ import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
 import { SnookerSyncService } from '@/services/snooker-sync-service';
 import { SnookerPriorityService } from '@/services/snooker-priority-service';
 import { isValidYoutubeVideoId, isValidYoutubeChannelId } from '@/utils/youtube';
-import { getSnookerMarketState } from '@/utils/snooker-rules';
+import { getSnookerMarketState, resolveSnookerChannelStatus } from '@/utils/snooker-rules';
 
 // --- INTERFACES ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -109,18 +109,22 @@ const DEFAULT_SOURCES: SnookerAutomationSource[] = [
 const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = { enabled: true, sources: DEFAULT_SOURCES, syncIntervalSeconds: 300, manualPrimaryChannelId: null };
 
 /**
- * Utilitário de visibilidade temporal expandido para considerar regras de aposta
+ * Utilitário de visibilidade temporal expandido.
+ * Classifica o canal baseado no horário atual.
  */
 const computeChannelVisibility = (channel: SnookerChannel): Partial<SnookerChannel> => {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   
+  // Resolve status dinâmico
+  const dynamicStatus = resolveSnookerChannelStatus(channel, now);
+  
   const eventDate = new Date(channel.scheduledAt || channel.createdAt);
   const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
 
-  const isLive = channel.status === 'live';
+  const isLive = dynamicStatus === 'live' || channel.status === 'live';
   const isFinished = channel.status === 'finished' || channel.status === 'cancelled';
-  const isExpired = eventDay < today;
+  const isExpired = !isLive && !isFinished && eventDay < today;
   
   let visibilityStatus: SnookerChannel['visibilityStatus'] = 'upcoming';
   
@@ -132,17 +136,12 @@ const computeChannelVisibility = (channel: SnookerChannel): Partial<SnookerChann
     visibilityStatus = 'hidden';
   }
 
-  // Se não tiver regras de aposta, inicializa com padrão aberto
-  const bettingAvailability = channel.bettingAvailability || 'all';
-  const bettingOpensAt = channel.bettingOpensAt || new Date(eventDate.getTime() - (120 * 60 * 1000)).toISOString();
-
   return {
+    status: dynamicStatus,
     visibilityStatus,
     isExpired,
     isUpcoming: visibilityStatus === 'upcoming',
-    isLiveNow: isLive,
-    bettingAvailability,
-    bettingOpensAt
+    isLiveNow: isLive
   };
 };
 
@@ -206,12 +205,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setLedger(LedgerService.getEntries()); setBanners(getStorageItem('app:banners:v1', [])); setPopups(getStorageItem('app:popups:v1', [])); setNews(getStorageItem('news_messages', [])); setApostas(getStorageItem('app:apostas:v1', [])); setPostedResults(getStorageItem('app:posted_results:v1', [])); setJdbResults(getStorageItem('app:jdb_results:v1', [])); setFootballBets(getStorageItem('app:football_bets:v1', [])); setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS)); setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES)); setCasinoSettings(getStorageItem('app:casino_settings:v1', DEFAULT_CASINO_SETTINGS)); setBingoSettings(getStorageItem('app:bingo_settings:v1', DEFAULT_BINGO_SETTINGS)); setBingoDraws(getStorageItem('app:bingo_draws:v1', [])); setBingoTickets(getStorageItem('app:bingo_tickets:v1', [])); setBingoPayouts(getStorageItem('app:bingo_payouts:v1', [])); 
     
     const savedChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+    // Reavalia visibilidade no carregamento
     const updatedChannels = savedChannels.map(c => ({ ...c, ...computeChannelVisibility(c) }));
     setSnookerChannels(updatedChannels);
 
     setSnookerFinancialHistory(getStorageItem('app:snooker_history:v1', [])); setSnookerBets(getStorageItem('app:snooker_bets:v1', [])); setSnookerCashOutLog(getStorageItem('app:snooker_cashout:v1', [])); setSnookerLiveConfig(getStorageItem('app:snooker_cfg:v1', DEFAULT_SNOOKER_CFG)); setSnookerChatMessages(getStorageItem('app:snooker_chat:v1', [])); setSnookerScoreboards(getStorageItem('app:snooker_scores:v1', {})); setSnookerBetsFeed(getStorageItem('app:snooker_bets_feed:v1', [])); setSnookerActivityFeed(getStorageItem('app:snooker_activity_feed:v1', [])); setSnookerSyncLogs(getStorageItem('app:snooker_sync_logs:v1', [])); 
     
     const currentAutomation = getStorageItem<SnookerAutomationSettings>('app:snooker_automation:v1', DEFAULT_SNOOKER_AUTOMATION);
+    // Reparo automático de IDs de canal
+    if (currentAutomation.sources) {
+      currentAutomation.sources = currentAutomation.sources.map(s => {
+        if (s.id === 'tv-snooker-brasil') return { ...s, channelId: 'UClp9MNyRB6qqF8G5xg12cGQ' };
+        if (s.id === 'junior-snooker') return { ...s, channelId: 'UCiB6W2G8RooVFN8R_ciRALA' };
+        return s;
+      });
+    }
     setSnookerAutomationSettings(currentAutomation); 
     setLiveMiniPlayerConfig(getStorageItem('app:mini_player_cfg:v1', DEFAULT_PLAYER_CONFIG));
     const savedFootball = getStorageItem('app:football:unified:v1', null); if (savedFootball) setFootballData(prev => ({ ...prev, ...savedFootball })); else setFootballData(prev => ({ ...prev, leagues: ESPN_LEAGUE_CATALOG }));
@@ -252,6 +260,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
+      // Reavalia visibilidade temporal antes de salvar
       const finalizedChannels = currentChannels.map(c => ({ ...c, ...computeChannelVisibility(c) }));
 
       setStorageItem('app:snooker_channels:v1', finalizedChannels);
