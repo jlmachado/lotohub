@@ -59,10 +59,12 @@ export default function ResultadosPublicPage() {
   };
 
   const handlePrint = (result: any) => {
+    const firstPrize = result.prizes.find((p: any) => p.position === 1);
+    
     const ticketData = {
       banca: 'LOTOHUB',
       title: 'RESULTADO OFICIAL',
-      ticketId: 'RES-' + result.id.split('-').pop(),
+      ticketId: 'RES-' + result.id.split('-').pop()?.substring(0, 8),
       terminal: 'SINC QUADRO',
       datetime: `${new Date(result.date + 'T12:00:00').toLocaleDateString('pt-BR')} ${result.time}`,
       estado: result.stateName,
@@ -71,9 +73,17 @@ export default function ResultadosPublicPage() {
       jogo: `${result.stateName} - ${result.extractionName}`,
       cliente: 'Público',
       vendedor: 'Sistema LotoHub',
+      // Derivações do 1º prêmio para o template administrativo
+      firstPrize: firstPrize ? {
+        milhar: firstPrize.milhar,
+        centena: firstPrize.milhar.slice(-3),
+        dezena: firstPrize.milhar.slice(-2),
+        grupo: firstPrize.grupo,
+        animal: firstPrize.animal
+      } : null,
       apostas: result.prizes.map((p: any) => ({
-        modalidade: `${p.position}º PRÊMIO`,
-        numero: `${p.milhar} - ${p.animal.toUpperCase()}`,
+        modalidade: `${p.position}º`,
+        numero: `${p.milhar} | Gr. ${p.grupo} - ${p.animal.toUpperCase()}`,
         valor: `Gr. ${p.grupo}`
       })),
       total: 'RESULTADO PUBLICADO',

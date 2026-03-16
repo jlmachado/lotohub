@@ -3,152 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Impressão de Bilhete Profissional</title>
+    <title>Impressão - LotoHub</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
         body {
             font-family: 'Courier New', Courier, monospace;
-            margin: 0;
-            padding: 10px;
-            background: white;
+            background-color: white;
             color: black;
-            line-height: 1.2;
-            font-size: 12px;
+            font-size: 13px;
+            line-height: 1.3;
+            padding: 10px;
         }
-        .ticket {
+        .container {
             width: 300px;
             margin: 0 auto;
             white-space: pre-wrap;
             word-wrap: break-word;
         }
-        .text-center { text-align: center; }
-        .bold { font-weight: bold; }
-        .title { font-size: 16px; font-weight: 900; }
-        
+        .center {
+            text-align: center;
+        }
+        .bold {
+            font-weight: bold;
+        }
+        .divider {
+            border-top: 1px dashed black;
+            margin: 8px 0;
+        }
+        .double-divider {
+            border-top: 2px solid black;
+            margin: 8px 0;
+        }
         @media print {
             body { padding: 0; }
-            .ticket { width: 100%; max-width: 300px; }
             .no-print { display: none; }
         }
     </style>
 </head>
 <body>
-    <div id="ticket-container" class="ticket">Preparando bilhete...</div>
+    <div id="content" class="container">
+        <!-- O conteúdo será injetado via JS -->
+        Aguardando dados...
+    </div>
 
     <script>
-        window.onload = function() {
+        function renderContent() {
             const rawData = localStorage.getItem('PRINT_TICKET_DATA');
             if (!rawData) {
-                document.getElementById('ticket-container').innerHTML = "ERRO: DADOS NÃO ENCONTRADOS";
+                document.getElementById('content').innerHTML = "Erro: Dados não encontrados.";
                 return;
             }
 
-            try {
-                const data = JSON.parse(rawData);
-                const container = document.getElementById('ticket-container');
+            const data = JSON.parse(rawData);
+            const contentEl = document.getElementById('content');
+            
+            let html = "";
 
-                // Utilitários de Formatação para Monospace (32 colunas)
-                const line = "================================";
-                const sep  = "--------------------------------";
-                
-                const center = (str) => {
-                    const spaces = Math.max(0, Math.floor((32 - str.length) / 2));
-                    return " ".repeat(spaces) + str;
-                };
-
-                const justify = (left, right) => {
-                    const dots = Math.max(1, 32 - left.length - right.length);
-                    return left + " ".repeat(dots) + right;
-                };
-
-                const fmtVal = (val) => {
-                    return "R$ " + String(val).replace('.', ',');
-                };
-
-                let content = "";
-
-                // Cabeçalho
-                content += center(data.banca.toUpperCase()) + "\n";
-                content += center("COMPROVANTE DE APOSTA") + "\n";
-                content += line + "\n";
-                content += "Tipo: " + (data.loteriaLabel || data.loteria || "Jogo do Bicho") + "\n\n";
-
-                // Dados do Bilhete
-                content += "Bilhete:  " + (data.ticketId || "N/A") + "\n";
-                content += "Banca:    " + (data.bancaId || "10000") + "\n";
-                content += "Terminal: " + (data.terminal || "N/A") + "\n\n";
-                
-                content += "Emitido em:\n";
-                content += (data.datetime || "") + "\n\n";
-                
-                content += "Usuário: " + (data.cliente || "Consumidor") + "\n";
-                content += "Perfil:  " + (data.perfil || "USUARIO") + "\n";
-                content += sep + "\n";
-
-                // Dados da Extração
-                content += "DADOS DA EXTRAÇÃO\n\n";
-                content += "Estado:  " + (data.estado || "") + "\n";
-                content += "Loteria: " + (data.loteria || "") + "\n";
-                content += "Horário: " + (data.horario || "") + "\n\n";
-                
-                const uniqueMods = [...new Set(data.apostas.map(a => a.modalidade))];
-                content += "Modalidades:\n";
-                content += uniqueMods.join(' / ') + "\n";
-                content += sep + "\n";
-
-                // Itens Apostados (Formato Tabela)
-                content += "ITENS APOSTADOS\n\n";
-                content += "SEQ MODALID. | NUMERO | VALOR\n";
-                
-                data.apostas.forEach((ap, i) => {
-                    const seq = String(i + 1).padStart(2, '0');
-                    const mod = ap.modalidade.substring(0, 8).padEnd(8, ' ');
-                    const num = String(ap.numero).substring(0, 6).padEnd(6, ' ');
-                    const val = fmtVal(ap.valor).padStart(9, ' ');
-                    content += `[${seq}] ${mod} | ${num} |${val}\n`;
-                });
-
-                content += sep + "\n";
-
-                // Resumo Financeiro
-                content += "RESUMO FINANCEIRO\n\n";
-                content += justify("Subtotal:", data.total) + "\n";
-                content += justify("Desconto:", "R$ 0,00") + "\n";
-                content += justify("TOTAL FINAL:", data.total) + "\n\n";
-
-                if (data.possivelRetorno && data.possivelRetorno !== '---') {
-                    content += "Possível retorno:\n";
-                    content += "R$ " + data.possivelRetorno + "\n";
-                }
-                
-                content += sep + "\n";
-
-                // Status e Auditoria
-                content += "STATUS\n\n";
-                content += "Situação:\n";
-                content += (data.statusText || "AGUARDANDO RESULTADO") + "\n\n";
-                content += "Código:\n";
-                content += (data.idFormatado || ("JD-BCH-" + data.ticketId)) + "\n\n";
-                content += "Validador:\n";
-                content += (data.ticketId + "-" + data.terminal).substring(0, 32) + "\n";
-                
-                content += sep + "\n";
-                content += center("Este comprovante confirma o") + "\n";
-                content += center("registro da aposta.") + "\n";
-                content += center("Guarde para conferência.") + "\n";
-                content += line;
-
-                container.innerHTML = content;
-
-                // Disparar impressão após render estável
-                setTimeout(() => {
-                    window.print();
-                }, 800);
-
-            } catch (e) {
-                console.error("Erro no processamento do bilhete:", e);
-                document.getElementById('ticket-container').innerHTML = "ERRO AO GERAR DOCUMENTO";
+            // CABEÇALHO
+            html += `<div class="center bold">`;
+            html += `${data.banca.toUpperCase()}\n`;
+            html += `--------------------------------\n`;
+            html += `${data.title}\n`;
+            if (data.title === 'RESULTADO OFICIAL') {
+                html += `JOGO DO BICHO\n`;
             }
-        };
+            html += `================================</div>\n\n`;
+
+            if (data.title === 'RESULTADO OFICIAL') {
+                // LAYOUT DE RESULTADO PROFISSIONAL
+                html += `Estado : ${data.estado || '---'}\n`;
+                html += `Loteria: ${data.loteria || '---'}\n`;
+                html += `Horário: ${data.horario || '--:--'}\n`;
+                const dataFormatada = data.datetime ? data.datetime.split(' ')[0] : '---';
+                html += `Data   : ${dataFormatada}\n\n`;
+
+                html += `--------------------------------\n`;
+                html += `   CLASSIFICAÇÃO DOS PRÊMIOS\n`;
+                html += `--------------------------------\n\n`;
+
+                if (data.apostas && data.apostas.length > 0) {
+                    data.apostas.forEach(p => {
+                        // Formato: 1º -> 1234 | Gr. 14 - Gato
+                        html += `${p.modalidade.padEnd(4)} -> ${p.numero}\n`;
+                    });
+                }
+
+                if (data.firstPrize) {
+                    html += `\n--------------------------------\n`;
+                    html += `    DERIVAÇÕES DO 1º PRÊMIO\n\n`;
+                    html += `Grupo  : ${data.firstPrize.grupo}\n`;
+                    html += `Dezena : ${data.firstPrize.dezena}\n`;
+                    html += `Centena: ${data.firstPrize.centena}\n`;
+                    html += `Milhar : ${data.firstPrize.milhar}\n`;
+                }
+
+            } else {
+                // LAYOUT DE BILHETE PADRÃO (FALLBACK)
+                html += `Bilhete : ${data.ticketId}\n`;
+                html += `Terminal: ${data.terminal}\n`;
+                html += `Data    : ${data.datetime}\n`;
+                if (data.vendedor) html += `Vendedor: ${data.vendedor}\n`;
+                html += `--------------------------------\n\n`;
+
+                html += `<div class="bold">JOGO: ${data.jogo}</div>\n\n`;
+
+                if (data.apostas && data.apostas.length > 0) {
+                    data.apostas.forEach((ap, idx) => {
+                        html += `[${(idx + 1).toString().padStart(2, '0')}] ${ap.modalidade.padEnd(10)} | ${ap.numero.padEnd(5)} | R$ ${ap.valor}\n`;
+                    });
+                }
+
+                html += `\n--------------------------------\n`;
+                html += `TOTAL APOSTADO: ${data.total}\n`;
+                if (data.possivelRetorno && data.possivelRetorno !== '---') {
+                    html += `RETORNO POSS.: R$ ${data.possivelRetorno}\n`;
+                }
+            }
+
+            // RODAPÉ COMUM
+            html += `\n--------------------------------\n`;
+            html += `<div class="center">Sistema LotoHub\n`;
+            html += `Resultado oficial registrado\n`;
+            html += `--------------------------------\n\n`;
+            html += `BOA SORTE!</div>\n`;
+            html += `<div class="center">================================</div>`;
+
+            contentEl.innerHTML = html;
+
+            // Dispara a impressão após renderizar
+            setTimeout(() => {
+                window.print();
+                // Opcional: fechar a janela após imprimir
+                // window.close();
+            }, 800);
+        }
+
+        window.onload = renderContent;
     </script>
 </body>
 </html>
