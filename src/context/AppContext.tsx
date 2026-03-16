@@ -2,7 +2,6 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central de Estado e Sincronização.
- * Expandido com suporte a Reconhecimento Automático de Placar e Sincronização Inteligente.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -26,7 +25,7 @@ import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
 import { SnookerSyncService } from '@/services/snooker-sync-service';
 import { SnookerPriorityService } from '@/services/snooker-priority-service';
 import { isValidYoutubeVideoId, isValidYoutubeChannelId } from '@/utils/youtube';
-import { resolveSnookerChannelStatus } from '@/utils/snooker-rules';
+import { resolveSnookerChannelStatus, isSnookerVisibleOnHome } from '@/utils/snooker-rules';
 
 // --- INTERFACES ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -218,7 +217,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const snookerSyncInFlightRef = useRef(false);
 
   const snookerPrimaryChannelId = useMemo(() => {
-    const eligible = snookerChannels.filter(c => c.visibilityStatus !== 'expired' && c.visibilityStatus !== 'hidden' && c.enabled);
+    const eligible = snookerChannels.filter(c => c.enabled && !c.isArchived && isValidYoutubeVideoId(c.embedId));
     return SnookerPriorityService.choosePrimary(eligible, snookerAutomationSettings.manualPrimaryChannelId);
   }, [snookerChannels, snookerAutomationSettings.manualPrimaryChannelId]);
 
@@ -242,6 +241,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setSnookerFinancialHistory(getStorageItem<SnookerFinancialSummary[]>('app:snooker_history:v1', [])); setSnookerBets(getStorageItem('app:snooker_bets:v1', [])); setSnookerCashOutLog(getStorageItem('app:snooker_cashout:v1', [])); setSnookerLiveConfig(getStorageItem('app:snooker_cfg:v1', DEFAULT_SNOOKER_CFG)); setSnookerChatMessages(getStorageItem('app:snooker_chat:v1', [])); setSnookerScoreboards(getStorageItem<Record<string, SnookerScoreboard>>('app:snooker_scores:v1', {})); setSnookerBetsFeed(getStorageItem('app:snooker_bets_feed:v1', [])); setSnookerActivityFeed(getStorageItem('app:snooker_activity_feed:v1', [])); setSnookerSyncLogs(getStorageItem('app:snooker_sync_logs:v1', [])); 
     
     const currentAutomation = getStorageItem<SnookerAutomationSettings>('app:snooker_automation:v1', DEFAULT_SNOOKER_AUTOMATION);
+    // Reparo de IDs antigos
     if (currentAutomation.sources) {
       currentAutomation.sources = currentAutomation.sources.map(s => {
         if (s.id === 'tv-snooker-brasil') return { ...s, channelId: 'UClp9MNyRB6qqF8G5xg12cGQ' };
@@ -422,7 +422,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const deleteSnookerChatMessage = useCallback((id: string) => { const current = getStorageItem<any[]>('app:snooker_chat:v1', []); setStorageItem('app:snooker_chat:v1', current.map(m => m.id === id ? { ...m, deleted: true } : m)); notify(); }, [notify]);
   const sendSnookerReaction = useCallback((channelId: string, reaction: string) => { if (!user) return; const entry = { id: Date.now(), channelId, text: `${user.nome || user.terminal} reagiu com ${reaction}`, createdAt: new Date().toISOString() }; const currentFeed = getStorageItem<any[]>('app:snooker_activity_feed:v1', []); setStorageItem('app:snooker_activity_feed:v1', [entry, ...currentFeed].slice(0, 50)); notify(); }, [user, notify]);
   const updateSnookerLiveConfig = useCallback((c: any) => { setStorageItem('app:snooker_cfg:v1', c); notify(); }, [notify]);
-  const updateSnookerScoreboard = useCallback((id: string, s: any) => { const current = getStorageItem<Record<string, SnookerScoreboard>>('app:snooker_scores:v1', {}); setStorageItem('app:snooker_scores:v1', { ...current, [id]: { ...s, updatedAt: new Date().toISOString() } }); notify(); }, [notify]);
+  
+  const updateSnookerScoreboard = useCallback((id: string, s: any) => { 
+    const currentScores = getStorageItem<Record<string, SnookerScoreboard>>('app:snooker_scores:v1', {}); 
+    const updatedScoreboard = { ...s, updatedAt: new Date().toISOString() };
+    setStorageItem('app:snooker_scores:v1', { ...currentScores, [id]: updatedScoreboard }); 
+    
+    // Sincroniza também no objeto do Canal para manter consistência pública
+    const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
+    const updatedChannels = currentChannels.map(c => 
+      c.id === id ? { ...c, scoreA: s.scoreA, scoreB: s.scoreB, updatedAt: new Date().toISOString() } : c
+    );
+    setStorageItem('app:snooker_channels:v1', updatedChannels);
+    
+    notify(); 
+  }, [notify]);
+
   const addSnookerChannel = useCallback((c: any) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', [...current, { ...c, scoreA: 0, scoreB: 0, status: 'scheduled', enabled: true, odds: { A: 1.95, B: 1.95, D: 3.20 } }]); notify(); }, [notify]);
   const updateSnookerChannel = useCallback((c: any) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', current.map(i => i.id === c.id ? c : i)); notify(); }, [notify]);
   const deleteSnookerChannel = useCallback((id: string) => { const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); setStorageItem('app:snooker_channels:v1', current.filter(i => i.id !== id)); notify(); }, [notify]);

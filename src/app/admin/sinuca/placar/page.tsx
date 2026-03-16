@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Minus, Plus, Zap, ShieldCheck, RefreshCw, Eye, BrainCircuit, Check, X, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -26,53 +26,89 @@ export default function AdminSinucaPlacarPage() {
     const [selectedChannelId, setSelectedChannelId] = useState<string>('');
     const [scoreboard, setScoreboard] = useState<SnookerScoreboard | null>(null);
     const [lastReading, setLastReading] = useState<SnookerScoreReading | null>(null);
-    const recognitionTimer = useRef<NodeJS.Timeout | null>(null);
+    
+    // Refs para controle preciso do loop de reconhecimento
+    const recognitionLoopRef = useRef<NodeJS.Timeout | null>(null);
+    const isRunningRef = useRef(false);
+    const isCancelledRef = useRef(false);
 
     const activeChannel = useMemo(() => 
         snookerChannels.find(c => c.id === selectedChannelId), 
     [selectedChannelId, snookerChannels]);
 
+    // Sincroniza estado local com o persistido quando muda seleção
     useEffect(() => {
         if (selectedChannelId && snookerScoreboards[selectedChannelId]) {
             setScoreboard(JSON.parse(JSON.stringify(snookerScoreboards[selectedChannelId])));
+            setLastReading(null);
+            SnookerScoreRecognitionService.clearBuffer(selectedChannelId);
         } else {
             setScoreboard(null);
         }
     }, [selectedChannelId, snookerScoreboards]);
 
-    // Loop de Reconhecimento Assistido
-    useEffect(() => {
-      if (snookerScoreRecognitionSettings.enabled && activeChannel?.status === 'live' && scoreboard) {
-        const runCycle = async () => {
-          const reading = await SnookerScoreRecognitionService.processFrame(
-            activeChannel,
-            scoreboard,
-            snookerScoreRecognitionSettings
-          );
-          
-          if (reading) {
-            setLastReading(reading);
-            
-            // Auto-Aplicação
-            if (SnookerScoreRecognitionService.shouldAutoApply(reading, scoreboard, snookerScoreRecognitionSettings)) {
-              if (reading.scoreA !== scoreboard.scoreA || reading.scoreB !== scoreboard.scoreB) {
-                const updated = { ...scoreboard, scoreA: reading.scoreA, scoreB: reading.scoreB };
-                updateSnookerScoreboard(selectedChannelId, updated);
-                setScoreboard(updated);
-                toast({ title: "Placar atualizado via IA", description: `Detectado: ${reading.scoreA} x ${reading.scoreB}` });
-              }
-            }
-          }
-        };
+    /**
+     * Motor do Ciclo de Reconhecimento.
+     * Usa setTimeout recursivo para evitar sobreposição de execuções assíncronas.
+     */
+    const runRecognitionCycle = useCallback(async () => {
+      if (isCancelledRef.current || !activeChannel || !scoreboard) {
+        isRunningRef.current = false;
+        return;
+      }
 
-        recognitionTimer.current = setInterval(runCycle, snookerScoreRecognitionSettings.captureIntervalSeconds * 1000);
+      isRunningRef.current = true;
+
+      // Executa o pipeline de leitura
+      const reading = await SnookerScoreRecognitionService.processFrame(
+        activeChannel,
+        scoreboard,
+        snookerScoreRecognitionSettings
+      );
+
+      if (reading) {
+        setLastReading(reading);
+        
+        // Lógica de Auto-Aplicação
+        if (SnookerScoreRecognitionService.shouldAutoApply(reading, scoreboard, snookerScoreRecognitionSettings)) {
+          const updated = { ...scoreboard, scoreA: reading.scoreA, scoreB: reading.scoreB };
+          updateSnookerScoreboard(selectedChannelId, updated);
+          setScoreboard(updated);
+          toast({ 
+            title: "Placar Atualizado via IA", 
+            description: `Detectado: ${reading.scoreA} x ${reading.scoreB} (Estabilidade: ${reading.stableCount})` 
+          });
+        }
+      }
+
+      // Agenda próximo ciclo respeitando o intervalo configurado
+      const interval = (snookerScoreRecognitionSettings.captureIntervalSeconds || 10) * 1000;
+      recognitionLoopRef.current = setTimeout(runRecognitionCycle, interval);
+    }, [activeChannel, scoreboard, selectedChannelId, snookerScoreRecognitionSettings, updateSnookerScoreboard, toast]);
+
+    // Efeito principal de ativação do loop
+    useEffect(() => {
+      isCancelledRef.current = false;
+
+      if (snookerScoreRecognitionSettings.enabled && activeChannel?.status === 'live' && scoreboard) {
+        // Dispara o primeiro ciclo imediatamente
+        if (!isRunningRef.current) {
+          runRecognitionCycle();
+        }
       } else {
-        if (recognitionTimer.current) clearInterval(recognitionTimer.current);
+        // Para o loop se desativado ou canal não for live
+        if (recognitionLoopRef.current) {
+          clearTimeout(recognitionLoopRef.current);
+        }
+        isRunningRef.current = false;
         setLastReading(null);
       }
 
-      return () => { if (recognitionTimer.current) clearInterval(recognitionTimer.current); };
-    }, [selectedChannelId, snookerScoreRecognitionSettings, activeChannel?.status, scoreboard, updateSnookerScoreboard, toast]);
+      return () => {
+        isCancelledRef.current = true;
+        if (recognitionLoopRef.current) clearTimeout(recognitionLoopRef.current);
+      };
+    }, [snookerScoreRecognitionSettings.enabled, activeChannel?.status, selectedChannelId, runRecognitionCycle, scoreboard]);
 
     const handleScoreChange = (player: 'A' | 'B', delta: number) => {
         if (!scoreboard) return;
@@ -86,7 +122,7 @@ export default function AdminSinucaPlacarPage() {
             updateSnookerScoreboard(selectedChannelId, scoreboard);
             toast({
                 title: 'Placar Atualizado!',
-                description: 'O placar foi atualizado para todos os espectadores.'
+                description: 'O placar oficial foi publicado.'
             });
         }
     };
@@ -96,7 +132,7 @@ export default function AdminSinucaPlacarPage() {
         const updated = { ...scoreboard, scoreA: lastReading.scoreA, scoreB: lastReading.scoreB };
         setScoreboard(updated);
         updateSnookerScoreboard(selectedChannelId, updated);
-        toast({ title: "Sugestão aplicada com sucesso" });
+        toast({ title: "Sugestão da IA aplicada" });
       }
     };
     
@@ -107,7 +143,7 @@ export default function AdminSinucaPlacarPage() {
                     <Link href="/admin/sinuca"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
                     <div>
                         <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Controle de Placar</h1>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Modo Assistido por IA Ativo</p>
+                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Gestão de Extração em Tempo Real</p>
                     </div>
                 </div>
             </div>
@@ -128,7 +164,7 @@ export default function AdminSinucaPlacarPage() {
                                     <SelectValue placeholder="Selecione um canal..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {snookerChannels.map(c => (
+                                    {snookerChannels.filter(c => !c.isArchived).map(c => (
                                         <SelectItem key={c.id} value={c.id} className="font-bold">
                                             {c.playerA.name} x {c.playerB.name}
                                         </SelectItem>
@@ -143,7 +179,9 @@ export default function AdminSinucaPlacarPage() {
                                     {/* Player A */}
                                     <div className="space-y-6 p-6 border border-white/5 rounded-2xl bg-black/20 shadow-inner">
                                         <h3 className="font-black text-sm uppercase italic text-primary">Jogador A</h3>
-                                        <Input value={scoreboard.playerA.name} readOnly className="h-10 font-bold bg-transparent border-white/5 opacity-50" />
+                                        <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5">
+                                          <p className="text-xs font-bold text-white uppercase">{scoreboard.playerA.name}</p>
+                                        </div>
                                         <div className="flex items-center gap-4 bg-slate-900 rounded-xl p-2 border border-white/5 shadow-2xl">
                                             <Button size="icon" variant="ghost" className="h-12 w-12 rounded-lg hover:bg-white/5" onClick={() => handleScoreChange('A', -1)}><Minus /></Button>
                                             <Input type="number" className="text-center text-4xl font-black italic bg-transparent border-0 h-12 text-primary" value={scoreboard.scoreA} />
@@ -154,7 +192,9 @@ export default function AdminSinucaPlacarPage() {
                                     {/* Player B */}
                                     <div className="space-y-6 p-6 border border-white/5 rounded-2xl bg-black/20 shadow-inner">
                                         <h3 className="font-black text-sm uppercase italic text-primary">Jogador B</h3>
-                                        <Input value={scoreboard.playerB.name} readOnly className="h-10 font-bold bg-transparent border-white/5 opacity-50" />
+                                        <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5">
+                                          <p className="text-xs font-bold text-white uppercase">{scoreboard.playerB.name}</p>
+                                        </div>
                                         <div className="flex items-center gap-4 bg-slate-900 rounded-xl p-2 border border-white/5 shadow-2xl">
                                             <Button size="icon" variant="ghost" className="h-12 w-12 rounded-lg hover:bg-white/5" onClick={() => handleScoreChange('B', -1)}><Minus /></Button>
                                             <Input type="number" className="text-center text-4xl font-black italic bg-transparent border-0 h-12 text-primary" value={scoreboard.scoreB} />
@@ -162,11 +202,11 @@ export default function AdminSinucaPlacarPage() {
                                         </div>
                                     </div>
                                 </div>
-                                <Button size="lg" onClick={handleSave} className="w-full h-14 rounded-xl font-black uppercase italic lux-shine">Publicar Alterações</Button>
+                                <Button size="lg" onClick={handleSave} className="w-full h-14 rounded-xl font-black uppercase italic lux-shine shadow-lg">Publicar Placar Oficial</Button>
                             </>
                         ) : (
                             <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-3xl opacity-40">
-                                <p className="font-bold uppercase text-xs tracking-widest">Selecione uma mesa para operar.</p>
+                                <p className="font-bold uppercase text-xs tracking-widest text-slate-500">Selecione uma mesa ativa para operar o juiz.</p>
                             </div>
                         )}
                     </CardContent>
@@ -183,32 +223,36 @@ export default function AdminSinucaPlacarPage() {
                   <CardContent className="pt-6 space-y-6">
                     {!snookerScoreRecognitionSettings.enabled ? (
                       <div className="text-center py-8">
-                        <Badge variant="outline" className="mb-2">DESATIVADO</Badge>
-                        <p className="text-xs text-muted-foreground uppercase font-bold">O assistente de IA está desligado.</p>
+                        <Badge variant="outline" className="mb-2 border-white/10">DESATIVADO</Badge>
+                        <p className="text-xs text-muted-foreground uppercase font-bold">Ative a automação para iniciar a leitura visual.</p>
+                      </div>
+                    ) : !selectedChannelId ? (
+                      <div className="text-center py-8">
+                        <p className="text-xs text-muted-foreground uppercase font-bold italic">Selecione um canal para ver a análise...</p>
                       </div>
                     ) : !lastReading ? (
                       <div className="text-center py-8">
                         <RefreshCw className="h-8 w-8 text-primary animate-spin mx-auto mb-4" />
-                        <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">Aguardando Captura de Vídeo...</p>
+                        <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">Aguardando Ciclo de Leitura...</p>
                       </div>
                     ) : (
                       <div className="space-y-4 animate-in fade-in">
                         <div className="flex items-center justify-between bg-black/40 p-3 rounded-xl border border-white/5">
-                          <span className="text-[10px] font-black text-slate-500 uppercase">Confiança</span>
+                          <span className="text-[10px] font-black text-slate-500 uppercase">Confiabilidade</span>
                           <Badge className={cn("font-black italic", lastReading.confidence > 0.8 ? "bg-green-600" : "bg-amber-600")}>
                             {(lastReading.confidence * 100).toFixed(0)}%
                           </Badge>
                         </div>
 
-                        <div className="bg-slate-900 p-4 rounded-2xl border border-white/10 shadow-inner">
-                          <p className="text-[9px] font-black text-primary uppercase tracking-[3px] text-center mb-4 italic">Placar Detectado</p>
+                        <div className="bg-slate-900 p-4 rounded-2xl border border-white/10 shadow-inner relative overflow-hidden">
+                          <p className="text-[9px] font-black text-primary uppercase tracking-[3px] text-center mb-4 italic">Análise de Frame</p>
                           <div className="flex items-center justify-center gap-6">
                             <span className="text-4xl font-black italic text-white tabular-nums">{lastReading.scoreA}</span>
                             <span className="text-xs font-black text-slate-600 uppercase">VS</span>
                             <span className="text-4xl font-black italic text-white tabular-nums">{lastReading.scoreB}</span>
                           </div>
                           <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center">
-                            <span className="text-[10px] font-bold text-muted-foreground">Estabilidade:</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase">Estabilidade:</span>
                             <div className="flex gap-1">
                               {Array.from({ length: snookerScoreRecognitionSettings.requiredStableReads }).map((_, i) => (
                                 <div key={i} className={cn("h-1.5 w-4 rounded-full transition-colors", i < lastReading.stableCount ? "bg-green-500" : "bg-white/10")} />
@@ -219,7 +263,7 @@ export default function AdminSinucaPlacarPage() {
 
                         {lastReading.stableCount >= 1 && (
                           <div className="flex gap-2">
-                            <Button variant="outline" className="flex-1 border-red-500/20 text-red-500 hover:bg-red-500/10 h-11" onClick={() => setLastReading(null)}><X size={16} /></Button>
+                            <Button variant="outline" className="flex-1 border-white/10 text-slate-400 h-11" onClick={() => setLastReading(null)}><X size={16} /></Button>
                             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black uppercase italic text-xs h-11" onClick={handleApplyReading}><Check size={16} className="mr-1" /> Aplicar</Button>
                           </div>
                         )}
@@ -228,11 +272,13 @@ export default function AdminSinucaPlacarPage() {
 
                     <div className="p-3 bg-black/20 rounded-xl border border-white/5 space-y-3">
                       <div className="flex items-center justify-between">
-                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Modo Auto-Aplicar</Label>
-                        <Badge variant="outline" className="text-[8px] h-4">BETA</Badge>
+                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Status do Motor</Label>
+                        <Badge variant="outline" className="text-[8px] h-4 bg-primary/5 border-primary/20 text-primary">OPERACIONAL</Badge>
                       </div>
-                      <p className="text-[9px] text-muted-foreground leading-relaxed font-medium">
-                        Se ativado, a IA atualizará o placar automaticamente quando a confiança atingir 90% por 3 ciclos estáveis.
+                      <p className="text-[9px] text-muted-foreground leading-relaxed font-medium uppercase italic">
+                        {snookerScoreRecognitionSettings.autoApplyScore 
+                          ? `Auto-Apply: Ativo (${snookerScoreRecognitionSettings.minConfidenceToAutoApply * 100}% conf. / ${snookerScoreRecognitionSettings.requiredStableReads}x stab.)` 
+                          : 'Modo Sugestão: Clique em aplicar para atualizar o placar público.'}
                       </p>
                     </div>
                   </CardContent>
