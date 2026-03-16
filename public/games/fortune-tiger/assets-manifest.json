@@ -1,0 +1,47 @@
+{
+  "module": "Fortune Tiger",
+  "version": "1.0.0",
+  "source": "https://github.com/marvieiradev/fortune-tiger-clone",
+  "lastAudit": "2024-03-20",
+  "assets": [
+    {
+      "file": "index.html",
+      "type": "structure",
+      "path": "public/games/fortune-tiger/index.html",
+      "status": "official"
+    },
+    {
+      "file": "images/fortune-tiger.png",
+      "type": "image",
+      "path": "public/games/fortune-tiger/images/fortune-tiger.png",
+      "description": "Logo do topo"
+    },
+    {
+      "file": "images/bg-game.png",
+      "type": "image",
+      "path": "public/games/fortune-tiger/images/bg-game.png",
+      "description": "Moldura da máquina"
+    },
+    {
+      "file": "images/wild.png",
+      "type": "image",
+      "path": "public/games/fortune-tiger/images/wild.png",
+      "description": "Símbolo Wild (Tigre)"
+    },
+    {
+      "file": "media/roleta.mp3",
+      "type": "audio",
+      "path": "public/games/fortune-tiger/media/roleta.mp3",
+      "description": "Som de giro"
+    },
+    {
+      "file": "media/ganho.mp3",
+      "type": "audio",
+      "path": "public/games/fortune-tiger/media/ganho.mp3",
+      "description": "Som de vitória"
+    }
+  ],
+  "requirements": [
+    "Os arquivos .png e .mp3 listados devem ser baixados do repositório marvieiradev/fortune-tiger-clone e colocados nas respectivas pastas public/games/fortune-tiger/images e public/games/fortune-tiger/media."
+  ]
+}

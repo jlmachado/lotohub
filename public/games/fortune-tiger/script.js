@@ -1,108 +1,125 @@
 /**
- * @fileOverview Lógica do Jogo Fortune Tiger (Fiel ao Clone).
+ * @fileOverview Engine Profissional de Slot - Fortune Tiger Clone.
+ * Lida com animações, lógica de símbolos e comunicação com o wrapper.
  */
 
-const symbols = [
-    'images/symbol_1.png', // Laranja
-    'images/symbol_2.png', // Fogos
-    'images/symbol_3.png', // Envelope
-    'images/symbol_4.png', // Saco de Ouro
-    'images/symbol_5.png', // Lingote
-    'images/symbol_6.png', // Pote de Ouro
-    'images/symbol_7.png'  // Tigre (Wild)
+const SYMBOLS = [
+    { id: 'wild', img: 'images/wild.png', value: 10 },
+    { id: 'pote', img: 'images/pote-ouro.png', value: 5 },
+    { id: 'ouro', img: 'images/ouro.png', value: 3 },
+    { id: 'envelope', img: 'images/envelope.png', value: 2 },
+    { id: 'bolinho', img: 'images/bolinho.png', value: 1.5 },
+    { id: 'moedas', img: 'images/moedas.png', value: 1 },
 ];
 
 let currentBalance = 0;
 let currentBet = 1.00;
 let spinning = false;
 
-// Sons
+// Audio objects
 const sounds = {
-    spin: new Audio('media/spin.mp3'),
-    win: new Audio('media/win.mp3'),
-    click: new Audio('media/click.mp3')
+    spin: new Audio('media/roleta.mp3'),
+    win: new Audio('media/ganho.mp3'),
+    bg: new Audio('media/musica.mp3')
 };
 
 function init() {
     setupReels();
-    
-    document.getElementById('btn-spin').addEventListener('click', startSpin);
-    document.getElementById('btn-plus').addEventListener('click', () => adjustBet(0.5));
-    document.getElementById('btn-minus').addEventListener('click', () => adjustBet(-0.5));
-
-    window.addEventListener('message', (event) => {
-        if (event.data.type === 'SYNC_BALANCE') {
-            currentBalance = event.data.balance;
+    window.addEventListener('message', (e) => {
+        if (e.data.type === 'SYNC_BALANCE') {
+            currentBalance = e.data.balance;
             updateUI();
         }
     });
-
-    // Notifica o Wrapper que o jogo carregou
+    
+    // Notifica wrapper que o jogo está pronto
     window.parent.postMessage({ type: 'GAME_READY' }, '*');
+    
+    document.getElementById('spin-button').addEventListener('click', spin);
 }
 
 function setupReels() {
-    for (let i = 1; i <= 3; i++) {
-        const reel = document.getElementById(`reel-${i}`);
-        reel.innerHTML = '';
-        for (let j = 0; j < 15; j++) {
-            const sym = document.createElement('div');
-            sym.className = 'symbol';
-            sym.style.backgroundImage = `url(${symbols[Math.floor(Math.random() * symbols.length)]})`;
-            reel.appendChild(sym);
+    const reels = document.querySelectorAll('.reel');
+    reels.forEach(reel => {
+        for(let i=0; i<15; i++) {
+            const sym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+            const div = document.createElement('div');
+            div.className = 'symbol';
+            div.innerHTML = `<img src="${sym.img}" alt="${sym.id}">`;
+            reel.appendChild(div);
         }
-    }
-}
-
-function adjustBet(amount) {
-    sounds.click.play().catch(() => {});
-    currentBet = Math.max(0.5, currentBet + amount);
-    updateUI();
+    });
 }
 
 function updateUI() {
-    document.getElementById('balance-value').innerText = `R$ ${currentBalance.toFixed(2)}`;
-    document.getElementById('current-bet').innerText = `R$ ${currentBet.toFixed(2)}`;
+    document.getElementById('display-balance').innerText = `R$ ${currentBalance.toFixed(2).replace('.', ',')}`;
+    document.getElementById('display-bet').innerText = `R$ ${currentBet.toFixed(2).replace('.', ',')}`;
 }
 
-async function startSpin() {
+function adjustBet(delta) {
+    if (spinning) return;
+    currentBet = Math.max(1.00, currentBet + delta);
+    updateUI();
+}
+
+async function spin() {
     if (spinning || currentBalance < currentBet) return;
-
+    
     spinning = true;
+    currentBalance -= currentBet;
+    updateUI();
+    
+    sounds.spin.currentTime = 0;
     sounds.spin.play().catch(() => {});
-    
-    // Notifica débito
-    window.parent.postMessage({ type: 'SLOT_BET', amount: currentBet }, '*');
 
     const reels = document.querySelectorAll('.reel');
-    
-    reels.forEach((reel, idx) => {
-        reel.style.transition = `transform ${1 + idx * 0.5}s cubic-bezier(.41,-0.01,.57,1.01)`;
-        reel.style.transform = `translateY(-70%)`;
-    });
+    const results = [];
 
-    setTimeout(() => {
-        stopSpin();
-    }, 2000);
-}
-
-function stopSpin() {
-    const reels = document.querySelectorAll('.reel');
-    reels.forEach(reel => {
+    // Animação de giro
+    for (let i = 0; i < reels.length; i++) {
+        const reel = reels[i];
         reel.style.transition = 'none';
         reel.style.transform = 'translateY(0)';
-        setupReels(); // Novo sorteio visual
-    });
-
-    // Simulação de ganho (Heurística de Demonstração)
-    if (Math.random() > 0.7) {
-        const win = currentBet * (2 + Math.random() * 5);
-        sounds.win.play().catch(() => {});
-        document.getElementById('last-win-value').innerText = `R$ ${win.toFixed(2)}`;
-        window.parent.postMessage({ type: 'SLOT_WIN', amount: win }, '*');
+        
+        // Simula o deslocamento
+        setTimeout(() => {
+            reel.style.transition = `transform ${1.5 + (i * 0.5)}s cubic-bezier(0.45, 0.05, 0.55, 0.95)`;
+            reel.style.transform = 'translateY(-70%)';
+        }, 50);
     }
 
-    spinning = false;
+    // Aguarda final do giro
+    setTimeout(() => {
+        checkWin();
+        spinning = false;
+    }, 3000);
+}
+
+function checkWin() {
+    // Lógica simplificada de vitória baseada em probabilidade (RTP simulado)
+    const winChance = Math.random();
+    if (winChance > 0.7) {
+        const multiplier = (Math.random() * 5) + 2;
+        const prize = currentBet * multiplier;
+        showWin(prize);
+    }
+}
+
+function showWin(amount) {
+    const overlay = document.getElementById('win-overlay');
+    const winAmount = document.getElementById('win-amount');
+    
+    winAmount.innerText = `R$ ${amount.toFixed(2).replace('.', ',')}`;
+    overlay.classList.remove('hidden');
+    
+    sounds.win.play().catch(() => {});
+    
+    // Notifica wrapper do prêmio
+    window.parent.postMessage({ type: 'SLOT_WIN', amount }, '*');
+
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+    }, 3000);
 }
 
 window.onload = init;
