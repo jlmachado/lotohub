@@ -1,58 +1,70 @@
+
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fortune Tiger - Clone Oficial</title>
+    <title>Fortune Tiger - Oficial</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="game-wrapper">
-        <div class="header">
-            <img src="images/fortune-tiger.png" alt="Fortune Tiger Logo" class="logo">
-        </div>
+    <div id="game-container">
+        <div class="background-wrapper"></div>
+        
+        <div class="game-content">
+            <header class="game-header">
+                <div class="logo"></div>
+            </header>
 
-        <div class="slot-machine">
-            <div class="reels-container">
-                <div class="reels" id="reels">
+            <div class="reels-section">
+                <div class="reel-container">
                     <div class="reel" id="reel1"></div>
                     <div class="reel" id="reel2"></div>
                     <div class="reel" id="reel3"></div>
                 </div>
-                <!-- Linhas de Pagamento Visuais -->
-                <div class="paylines"></div>
             </div>
-        </div>
 
-        <div class="controls">
-            <div class="balance-info">
-                <span class="label">SALDO</span>
-                <span id="display-balance" class="value">R$ 0,00</span>
-            </div>
-            
-            <div class="bet-controls">
-                <button class="bet-btn" onclick="adjustBet(-1)">-</button>
-                <div class="bet-value">
-                    <span class="label">APOSTA</span>
-                    <span id="display-bet" class="value">R$ 1,00</span>
+            <div class="hud-section">
+                <div class="display-container">
+                    <div class="info-row">
+                        <div class="info-box">
+                            <span class="label">SALDO</span>
+                            <span id="balance-display" class="value">R$ 0,00</span>
+                        </div>
+                        <div class="info-box">
+                            <span class="label">GANHO</span>
+                            <span id="win-display" class="value">R$ 0,00</span>
+                        </div>
+                    </div>
+                    <div class="bet-control">
+                        <button class="btn-minus" id="btn-minus">-</button>
+                        <div class="bet-value-box">
+                            <span class="label">APOSTA</span>
+                            <span id="bet-display" class="value">R$ 1,00</span>
+                        </div>
+                        <button class="btn-plus" id="btn-plus">+</button>
+                    </div>
                 </div>
-                <button class="bet-btn" onclick="adjustBet(1)">+</button>
-            </div>
 
-            <button id="spin-button" class="spin-button">
-                <img src="images/moedas.png" alt="Spin" class="spin-icon">
-            </button>
+                <div class="controls">
+                    <button id="spin-button" class="spin-btn"></button>
+                </div>
+            </div>
         </div>
 
-        <div id="win-overlay" class="win-overlay hidden">
+        <!-- Overlays -->
+        <div id="win-overlay" class="overlay hidden">
             <div class="win-content">
-                <img src="images/fogos.png" alt="Win" class="win-bg">
-                <h2 id="win-text">BIG WIN!</h2>
-                <span id="win-amount">R$ 0,00</span>
+                <h2 class="win-title">BIG WIN!</h2>
+                <p id="win-amount-total" class="win-amount">R$ 0,00</p>
             </div>
+        </div>
+
+        <div id="loading-screen" class="loading-screen">
+            <div class="loader"></div>
+            <p>CARREGANDO ASSETS...</p>
         </div>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
