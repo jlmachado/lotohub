@@ -14,13 +14,27 @@ import {
   FileBarChart, ShieldCheck
 } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { formatBRL } from '@/utils/currency';
 import { ProviderStatusCard } from '@/components/admin/betting/ProviderStatusCard';
 import { cn } from '@/lib/utils';
 
 export default function AdminFutebolDashboardPage() {
   const { footballData, footballBets, syncFootballAll } = useAppContext();
+  const didInitialSyncRef = useRef(false);
+
+  // Auto-sync ao entrar
+  useEffect(() => {
+    if (didInitialSyncRef.current) return;
+    
+    const lastSync = footballData.lastSyncAt ? new Date(footballData.lastSyncAt).getTime() : 0;
+    const diff = (Date.now() - lastSync) / 1000;
+    
+    if (diff > 300 || footballData.unifiedMatches.length === 0) {
+      didInitialSyncRef.current = true;
+      syncFootballAll();
+    }
+  }, [footballData.lastSyncAt, footballData.unifiedMatches.length, syncFootballAll]);
 
   const stats = useMemo(() => {
     const bets = footballBets || [];
@@ -50,7 +64,7 @@ export default function AdminFutebolDashboardPage() {
         <div className="flex gap-2">
           <Button 
             variant="outline" 
-            onClick={() => syncFootballAll?.(true)}
+            onClick={() => syncFootballAll(true)}
             disabled={isSyncing}
             className="h-11 rounded-xl font-bold border-white/10"
           >
@@ -65,7 +79,6 @@ export default function AdminFutebolDashboardPage() {
         </div>
       </div>
 
-      {/* PROVIDER STATUS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <ProviderStatusCard 
           name="ESPN SITE API" 
@@ -88,7 +101,6 @@ export default function AdminFutebolDashboardPage() {
         />
       </div>
 
-      {/* KPI GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiBox title="Volume Aberto" value={formatBRL(stats.totalStaked)} color="text-primary" sub="Total em jogo" />
         <KpiBox title="Responsabilidade" value={formatBRL(stats.totalLiability)} color="text-red-500" sub="Risco de pagamento" />

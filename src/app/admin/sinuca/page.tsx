@@ -6,11 +6,11 @@ import { useRouter } from 'next/navigation';
 import { 
   Cog, Gamepad2, ChevronLeft, Ticket, BarChart as BarChartIcon, 
   Tv, MessageSquare, DollarSign, Users, TrendingUp, 
-  TrendingDown, Play, HandCoins, Zap 
+  TrendingDown, Play, HandCoins, Zap, RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAppContext } from '@/context/AppContext';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Bar, BarChart, Line, LineChart, XAxis, YAxis, Tooltip } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -33,10 +33,22 @@ const StatCard = ({ title, value, icon: Icon, description }: { title: string; va
 
 export default function AdminSinucaDashboardPage() {
   const router = useRouter();
-  const { snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog } = useAppContext();
+  const { snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerCashOutLog, syncSnookerFromYoutube, snookerSyncState } = useAppContext();
   const [mounted, setMounted] = useState(false);
+  const didInitialSyncRef = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Auto-sync ao entrar se necessário
+  useEffect(() => {
+    if (!mounted || didInitialSyncRef.current) return;
+    
+    // Na sinuca, como o estado de live é muito volátil, forçamos um sync 
+    // se não houver canais ou se o sync for mais velho que 2 min
+    const hasChannels = snookerChannels.length > 0;
+    didInitialSyncRef.current = true;
+    syncSnookerFromYoutube();
+  }, [mounted, snookerChannels.length, syncSnookerFromYoutube]);
 
   const dashboardStats = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -113,9 +125,20 @@ export default function AdminSinucaDashboardPage() {
 
   return (
     <main className="p-4 md:p-8">
-      <div className="flex items-center gap-4 mb-6">
-          <Link href="/admin"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
-          <h1 className="text-3xl font-bold">Dashboard de Sinuca</h1>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            <Link href="/admin"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
+            <h1 className="text-3xl font-bold">Dashboard de Sinuca</h1>
+          </div>
+          <Button 
+            variant="outline" 
+            onClick={() => syncSnookerFromYoutube(true)} 
+            disabled={snookerSyncState === 'syncing'}
+            className="h-11 rounded-xl font-bold border-white/10"
+          >
+            {snookerSyncState === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+            Sincronizar Agora
+          </Button>
       </div>
       
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">

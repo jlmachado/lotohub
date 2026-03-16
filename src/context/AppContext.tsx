@@ -2,10 +2,10 @@
 
 /**
  * @fileOverview AppContext - Orquestrador Central de Estado e Sincronização.
- * Expandido com suporte a Reconhecimento Automático de Placar.
+ * Expandido com suporte a Reconhecimento Automático de Placar e Sincronização Inteligente.
  */
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getSession, logout as authLogout } from '@/utils/auth';
@@ -80,6 +80,8 @@ export interface SnookerChannel {
   liveConfidence?: 'low' | 'medium' | 'high';
   detectionSource?: string;
   scoreOverlayProfile?: string;
+  originPriority?: number;
+  viewerCount?: number;
 }
 
 export interface SnookerScoreboard {
@@ -212,6 +214,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [snookerScoreRecognitionSettings, setSnookerScoreRecognitionSettings] = useState<SnookerScoreRecognitionSettings>(DEFAULT_SNOOKER_RECOGNITION);
   const [snookerCurrentReading, setSnookerCurrentReading] = useState<SnookerScoreReading | null>(null);
 
+  const footballSyncInFlightRef = useRef(false);
+  const snookerSyncInFlightRef = useRef(false);
+
   const snookerPrimaryChannelId = useMemo(() => {
     const eligible = snookerChannels.filter(c => c.visibilityStatus !== 'expired' && c.visibilityStatus !== 'hidden' && c.enabled);
     return SnookerPriorityService.choosePrimary(eligible, snookerAutomationSettings.manualPrimaryChannelId);
@@ -261,15 +266,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, [loadLocalData]);
 
   const syncSnookerFromYoutube = useCallback(async (force = false, sourceId?: string) => {
-    if (snookerSyncState === 'syncing' && !force) return;
+    if (snookerSyncInFlightRef.current && !force) return;
+    snookerSyncInFlightRef.current = true;
     setSnookerSyncState('syncing');
     
-    const settings = getStorageItem<SnookerAutomationSettings>('app:snooker_automation:v1', DEFAULT_SNOOKER_AUTOMATION);
-    const sourcesToSync = sourceId ? settings.sources.filter(s => s.id === sourceId) : settings.sources.filter(s => s.enabled);
-
-    if (sourcesToSync.length === 0) { setSnookerSyncState('idle'); return; }
-
     try {
+      const settings = getStorageItem<SnookerAutomationSettings>('app:snooker_automation:v1', DEFAULT_SNOOKER_AUTOMATION);
+      const sourcesToSync = sourceId ? settings.sources.filter(s => s.id === sourceId) : settings.sources.filter(s => s.enabled);
+
+      if (sourcesToSync.length === 0) { setSnookerSyncState('idle'); return; }
+
       let currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
 
       for (const source of sourcesToSync) {
@@ -292,8 +298,59 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       notify();
     } catch (e: any) {
       setSnookerSyncState('error');
+    } finally {
+      snookerSyncInFlightRef.current = false;
     }
-  }, [user, notify, snookerSyncState]);
+  }, [user, notify]);
+
+  const syncFootballAll = useCallback(async (force = false) => {
+    if (footballSyncInFlightRef.current && !force) return;
+    footballSyncInFlightRef.current = true;
+    setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
+
+    try {
+      const activeLeagues = getStorageItem('app:football:unified:v1', { leagues: ESPN_LEAGUE_CATALOG }).leagues.filter((l: any) => l.active);
+      let allMatches: any[] = [];
+      const leagueStandings: Record<string, any[]> = {};
+
+      for (const league of activeLeagues) {
+        const [standingsData, scoreboardData] = await Promise.all([
+          espnService.getStandings(league.slug),
+          espnService.getScoreboard(league.slug)
+        ]);
+        if (standingsData) leagueStandings[league.slug] = normalizeESPNStandings(standingsData);
+        if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)];
+      }
+
+      const unified = allMatches.map(match => {
+        const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || [], match.id);
+        const baseModel = { id: match.id, league: match.leagueName, leagueSlug: match.leagueSlug, homeTeam: match.homeTeam.name, awayTeam: match.awayTeam.name, homeLogo: match.homeTeam.logo, awayLogo: match.awayTeam.logo, kickoff: match.date, status: match.status, minute: match.clock || '', scoreHome: match.homeTeam.score, scoreAway: match.awayTeam.score, hasOdds: true, isLive: match.status === 'LIVE', isFinished: match.status === 'FINISHED', marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN' };
+        const markets = FootballMarketsEngine.generateAllMarkets(probs);
+        const processed = FootballLiveEngine.processLiveState(baseModel as any, match);
+        return { ...processed, markets, hasOdds: true, odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } };
+      });
+
+      const lastSyncAt = new Date().toISOString();
+      
+      setFootballData(prev => {
+        const data = { 
+          leagues: prev.leagues.length > 0 ? prev.leagues : ESPN_LEAGUE_CATALOG, 
+          matches: allMatches, 
+          unifiedMatches: unified, 
+          lastSyncAt,
+          syncStatus: 'success' as const
+        };
+        setStorageItem('app:football:unified:v1', data);
+        return data;
+      });
+
+      if (force) toast({ title: 'Sync Concluído' });
+    } catch (e) {
+      setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
+    } finally {
+      footballSyncInFlightRef.current = false;
+    }
+  }, [toast]);
 
   const setManualPrimarySnookerChannel = useCallback((id: string | null) => {
     const settings = { ...snookerAutomationSettings, manualPrimaryChannelId: id };
@@ -372,7 +429,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const settleSnookerRound = useCallback((channelId: string, winner: string) => { const currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []); const currentBets = getStorageItem<any[]>('app:snooker_bets:v1', []); const betsToSettle = currentBets.filter(b => b.channelId === channelId && b.status === 'open'); betsToSettle.forEach(bet => { if (bet.pick === winner) { const prize = bet.amount * 1.95; const realUser = getUserByTerminal(bet.userName); if (realUser) { upsertUser({ terminal: realUser.terminal, saldo: realUser.saldo + prize }); LedgerService.addEntry({ bancaId: realUser.bancaId || 'default', userId: realUser.id, terminal: realUser.terminal, tipoUsuario: realUser.tipoUsuario, modulo: 'Sinuca', type: 'BET_WIN', amount: prize, balanceBefore: realUser.saldo, balanceAfter: realUser.saldo + prize, referenceId: bet.id, description: `Prêmio Sinuca` }); } } }); setStorageItem('app:snooker_bets:v1', currentBets.map(b => b.channelId === channelId && b.status === 'open' ? { ...b, status: b.pick === winner ? 'won' as const : 'lost' as const } : b)); if (winner !== 'EMPATE') setCelebrationTrigger(true); notify(); }, [notify]);
   const clearCelebration = useCallback(() => setCelebrationTrigger(false), []);
 
-  const syncFootballAll = useCallback(async (force = false) => { setFootballData(prev => ({ ...prev, syncStatus: 'syncing' })); try { const activeLeagues = getStorageItem('app:football:unified:v1', { leagues: [] }).leagues.filter((l: any) => l.active); let allMatches: any[] = []; const leagueStandings: Record<string, any[]> = {}; for (const league of activeLeagues) { const [standingsData, scoreboardData] = await Promise.all([espnService.getStandings(league.slug), espnService.getScoreboard(league.slug)]); if (standingsData) leagueStandings[league.slug] = normalizeESPNStandings(standingsData); if (scoreboardData) allMatches = [...allMatches, ...normalizeESPNScoreboard(scoreboardData, league.slug)]; } const unified = allMatches.map(match => { const probs = FootballOddsEngine.calculateMatchProbabilities(match.homeTeam.id, match.awayTeam.id, leagueStandings[match.leagueSlug] || [], match.id); const baseModel = { id: match.id, league: match.leagueName, leagueSlug: match.leagueSlug, homeTeam: match.homeTeam.name, awayTeam: match.awayTeam.name, homeLogo: match.homeTeam.logo, awayLogo: match.awayTeam.logo, kickoff: match.date, status: match.status, minute: match.clock || '', scoreHome: match.homeTeam.score, scoreAway: match.awayTeam.score, hasOdds: true, isLive: match.status === 'LIVE', isFinished: match.status === 'FINISHED', marketStatus: match.status === 'FINISHED' ? 'CLOSED' : 'OPEN' }; const markets = FootballMarketsEngine.generateAllMarkets(probs); const processed = FootballLiveEngine.processLiveState(baseModel as any, match); return { ...processed, markets, hasOdds: true, odds: { home: markets[0].selections[0].odd, draw: markets[0].selections[1].odd, away: markets[0].selections[2].odd } }; }); const data = { leagues: prev.leagues, matches: allMatches, unifiedMatches: unified, lastSyncAt: new Date().toISOString() }; setStorageItem('app:football:unified:v1', data); setFootballData(prev => ({ ...prev, ...data, syncStatus: 'success' })); if (force) toast({ title: 'Sync Concluído' }); } catch (e) { setFootballData(prev => ({ ...prev, syncStatus: 'error' })); } }, [toast]);
   const updateLeagueConfig = useCallback((id: string, config: any) => { setFootballData(prev => { const leagues = prev.leagues.map(l => l.id === id ? { ...l, ...config } : l); const updated = { ...prev, leagues }; setStorageItem('app:football:unified:v1', updated); return updated; }); notify(); }, [notify]);
   const findLeagueById = useCallback((id: string) => { return footballData.leagues.find(l => l.id === id); }, [footballData.leagues]);
   const placeFootballBet = useCallback(async (stake: number): Promise<string | null> => { if (!user) { router.push('/login'); return null; } const pouleId = generatePoule(); const totalOdds = parseFloat(betSlip.reduce((acc, item) => acc * (item.odd || 1), 1).toFixed(2)); const result = BetService.processBet(user, { userId: user.id, modulo: 'Futebol', valor: stake, retornoPotencial: totalOdds > 0 ? stake * totalOdds : 0, description: `Futebol: ${betSlip.map(i => i.matchName).join(' | ')}`, referenceId: pouleId }); if (result.success) { const currentBets = getStorageItem<FootballBet[]>('app:football_bets:v1', []); setStorageItem('app:football_bets:v1', [{ id: pouleId, userId: user.id, bancaId: user.bancaId || 'default', terminal: user.terminal, stake, potentialWin: stake * totalOdds, items: betSlip, status: 'OPEN', createdAt: new Date().toISOString() }, ...currentBets]); setBetSlip([]); notify(); return pouleId; } return null; }, [user, betSlip, notify, router]);

@@ -1,4 +1,3 @@
-
 'use client';
 import { CasinoLayout } from "@/components/sinuca/CasinoLayout";
 import { LiveChat } from "@/components/sinuca/LiveChat";
@@ -33,53 +32,56 @@ export default function SinucaAoVivoPage() {
     const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
     const [isClient, setIsClient] = useState(false);
     const [now, setNow] = useState(new Date());
-    const initialSyncDone = useRef(false);
+    const initialSyncDoneRef = useRef(false);
 
     useEffect(() => {
         setIsClient(true);
-        // Atualiza o relógio interno a cada minuto para manter status de visibilidade preciso
         const timer = setInterval(() => setNow(new Date()), 60000);
         return () => clearInterval(timer);
     }, []);
 
-    // 1. Sincronização Automática ao entrar na rota
+    // Sincronização Inteligente de Entrada
     useEffect(() => {
-        if (isClient && !initialSyncDone.current) {
-            initialSyncDone.current = true;
-            console.log('[Sinuca ao Vivo] Iniciando sincronização automática de entrada...');
-            syncSnookerFromYoutube(true);
-        }
-    }, [isClient, syncSnookerFromYoutube]);
+        if (!isClient || initialSyncDoneRef.current) return;
+        
+        const performSync = async () => {
+            initialSyncDoneRef.current = true;
+            
+            // Verifica staleness antes de sync agressivo
+            const hasLive = (snookerChannels || []).some(c => c.status === 'live');
+            const threshold = hasLive ? 60000 : 300000;
+            
+            // Para sinuca, como o status de 'live' no YouTube muda rápido, 
+            // forçamos o sync se não houver um sync muito recente
+            await syncSnookerFromYoutube(true);
+        };
+
+        performSync();
+    }, [isClient, syncSnookerFromYoutube, snookerChannels]);
     
-    // 2. Filtra canais visíveis usando a lógica de tempo real (mesma da HOME)
     const visibleChannels = useMemo(() => 
         (snookerChannels || []).filter(c => isSnookerVisibleOnHome(c, now)),
     [snookerChannels, now]);
 
-    // 3. Lógica de Seleção do Canal Ativo (Reativa ao Sync)
+    // Atualiza o canal ativo baseado no resultado do Sync ou seleção manual
     useEffect(() => {
         if (!isClient) return;
 
-        // Verifica se o canal atual ainda é válido/visível
         const currentActiveIsValid = activeChannelId && visibleChannels.some(c => c.id === activeChannelId);
         
         if (!currentActiveIsValid) {
-            // Tenta selecionar o principal sugerido pelo sistema
             if (snookerPrimaryChannelId && visibleChannels.some(c => c.id === snookerPrimaryChannelId)) {
                 setActiveChannelId(snookerPrimaryChannelId);
             } 
-            // Fallback: primeiro canal da lista visível
             else if (visibleChannels.length > 0) {
                 setActiveChannelId(visibleChannels[0].id);
             } 
-            // Nenhum canal disponível
             else {
                 setActiveChannelId(null);
             }
         }
     }, [isClient, visibleChannels, snookerPrimaryChannelId, activeChannelId]);
 
-    // 4. Gestão de Presença no Canal
     useEffect(() => {
         if (!activeChannelId || !user) return;
         joinChannel(activeChannelId, user.id);
@@ -90,7 +92,6 @@ export default function SinucaAoVivoPage() {
 
     if (!isClient) return null;
 
-    // Estado de Loading Inicial (quando não há canais e está sincronizando)
     const isInitialLoading = snookerSyncState === 'syncing' && visibleChannels.length === 0;
 
     if (isInitialLoading) {
@@ -107,7 +108,6 @@ export default function SinucaAoVivoPage() {
         );
     }
 
-    // Fallback para nenhum canal encontrado
     if (visibleChannels.length === 0 && snookerSyncState !== 'syncing') {
         return (
             <CasinoLayout>
@@ -144,7 +144,6 @@ export default function SinucaAoVivoPage() {
                 />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-                {/* Conteúdo Principal: Player e Widgets */}
                 <div className="lg:col-span-2 space-y-6">
                     {activeChannelId ? (
                         <LivePlayer channelId={activeChannelId} />
@@ -159,7 +158,6 @@ export default function SinucaAoVivoPage() {
                     {activeChannelId && <MySnookerBets channelId={activeChannelId} />}
                 </div>
 
-                {/* Sidebar: Chat e Placar */}
                 <div className="lg:col-span-1 space-y-6">
                     {activeChannelId && <ScoreboardCard channelId={activeChannelId} />}
                     {activeChannelId && <LiveChat channelId={activeChannelId}/>}

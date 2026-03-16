@@ -10,7 +10,7 @@ import { Header } from '@/components/header';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Calendar, Search } from 'lucide-react';
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useRef } from 'react';
 import { BetSlip } from '@/components/betting/BetSlip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ import { FootballDashboardStats } from '@/components/dashboard/football/Football
 export default function FootballDashboard() {
   const { footballData, syncFootballAll, addBetToSlip, betSlip } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
+  const didInitialSyncRef = useRef(false);
 
   const liveMatches = useMemo(() => 
     footballData.unifiedMatches.filter(m => m.isLive && !m.isFinished), 
@@ -45,16 +46,35 @@ export default function FootballDashboard() {
     noOdds: footballData.unifiedMatches.filter(m => !m.hasOdds).length
   }), [liveMatches, footballData]);
 
+  // Sincronização Inteligente de Entrada
   useEffect(() => {
-    if (footballData.unifiedMatches.length === 0 && footballData.syncStatus === 'idle') {
-      syncFootballAll();
-    }
-    // Sync periódico a cada 60s se houver jogos LIVE
+    if (didInitialSyncRef.current) return;
+    
+    const checkSync = async () => {
+      const now = Date.now();
+      const lastSync = footballData.lastSyncAt ? new Date(footballData.lastSyncAt).getTime() : 0;
+      const diff = (now - lastSync) / 1000;
+      const hasLive = footballData.unifiedMatches.some(m => m.isLive);
+      
+      // Regra de Staleness: 60s se houver live, 300s se não
+      const staleThreshold = hasLive ? 60 : 300;
+
+      if (diff > staleThreshold || footballData.unifiedMatches.length === 0) {
+        didInitialSyncRef.current = true;
+        await syncFootballAll();
+      }
+    };
+
+    checkSync();
+  }, [footballData.lastSyncAt, footballData.unifiedMatches, syncFootballAll]);
+
+  // Polling apenas se houver jogos LIVE
+  useEffect(() => {
     if (liveMatches.length > 0) {
       const timer = setInterval(() => syncFootballAll(), 60000);
       return () => clearInterval(timer);
     }
-  }, [footballData.unifiedMatches.length, footballData.syncStatus, syncFootballAll, liveMatches.length]);
+  }, [liveMatches.length, syncFootballAll]);
 
   const handleSelectOdd = (match: any, market: string, selection: string, odd: number) => {
     addBetToSlip({
@@ -97,7 +117,7 @@ export default function FootballDashboard() {
             </div>
             <Button 
               variant="outline" 
-              onClick={() => syncFootballAll(true)}
+              onClick={() => syncFootballAll(true)} 
               disabled={footballData.syncStatus === 'syncing'}
               className="border-white/10 bg-white/5 h-11 px-6 rounded-xl lux-shine"
             >
