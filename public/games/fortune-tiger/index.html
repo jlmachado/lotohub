@@ -4,67 +4,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fortune Tiger - Oficial</title>
+    <title>Fortune Tiger - Engine</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <div id="game-container">
-        <div class="background-wrapper"></div>
-        
-        <div class="game-content">
-            <header class="game-header">
-                <div class="logo"></div>
-            </header>
-
-            <div class="reels-section">
-                <div class="reel-container">
-                    <div class="reel" id="reel1"></div>
-                    <div class="reel" id="reel2"></div>
-                    <div class="reel" id="reel3"></div>
-                </div>
-            </div>
-
-            <div class="hud-section">
-                <div class="display-container">
-                    <div class="info-row">
-                        <div class="info-box">
-                            <span class="label">SALDO</span>
-                            <span id="balance-display" class="value">R$ 0,00</span>
-                        </div>
-                        <div class="info-box">
-                            <span class="label">GANHO</span>
-                            <span id="win-display" class="value">R$ 0,00</span>
-                        </div>
-                    </div>
-                    <div class="bet-control">
-                        <button class="btn-minus" id="btn-minus">-</button>
-                        <div class="bet-value-box">
-                            <span class="label">APOSTA</span>
-                            <span id="bet-display" class="value">R$ 1,00</span>
-                        </div>
-                        <button class="btn-plus" id="btn-plus">+</button>
-                    </div>
-                </div>
-
-                <div class="controls">
-                    <button id="spin-button" class="spin-btn"></button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Overlays -->
-        <div id="win-overlay" class="overlay hidden">
-            <div class="win-content">
-                <h2 class="win-title">BIG WIN!</h2>
-                <p id="win-amount-total" class="win-amount">R$ 0,00</p>
-            </div>
-        </div>
-
-        <div id="loading-screen" class="loading-screen">
-            <div class="loader"></div>
-            <p>CARREGANDO ASSETS...</p>
+<body class="game-body">
+    
+    <!-- Loader de Assets (Proteção contra travamento) -->
+    <div id="loader" class="loader-overlay">
+        <div class="loader-content">
+            <div class="tiger-spinner"></div>
+            <h2 id="loading-text">CARREGANDO ASSETS...</h2>
+            <p class="loader-subtext">Prepare sua sorte</p>
         </div>
     </div>
+
+    <!-- Container Principal do Jogo -->
+    <div id="game-container" class="game-wrapper" style="opacity: 0; transition: opacity 0.5s ease;">
+        
+        <!-- Topo: Logo e Tigre -->
+        <header class="game-header">
+            <img src="images/logo.png" alt="Fortune Tiger" class="game-logo">
+        </header>
+
+        <!-- Área das Bobinas (Reels) -->
+        <main class="reels-section">
+            <div class="reels-container">
+                <div class="reel" id="reel-0"></div>
+                <div class="reel" id="reel-1"></div>
+                <div class="reel" id="reel-2"></div>
+            </div>
+        </main>
+
+        <!-- HUD Inferior: Controles e Saldo -->
+        <footer class="game-footer">
+            <div class="balance-display">
+                <span class="label">SALDO</span>
+                <span id="balance-value" class="value">0,00</span>
+            </div>
+
+            <div class="controls-row">
+                <button id="btn-minus" class="bet-control">-</button>
+                <div class="bet-display">
+                    <span class="label">APOSTA</span>
+                    <span id="bet-value" class="value">1,00</span>
+                </div>
+                <button id="btn-plus" class="bet-control">+</button>
+            </div>
+
+            <div class="spin-section">
+                <button id="spin-button" class="spin-btn">
+                    <div class="spin-icon"></div>
+                </button>
+            </div>
+        </footer>
+
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>

@@ -1,98 +1,21 @@
 
 {
-  "game": "Fortune Tiger Official Clone",
-  "version": "1.0.0",
-  "basePath": "/games/fortune-tiger/",
+  "version": "2.0.0",
+  "status": "resilient",
+  "description": "Lista de auditoria de assets com tratamento de erro em runtime.",
   "assets": [
-    {
-      "file": "images/bg.png",
-      "type": "image",
-      "description": "Fundo principal do jogo",
-      "status": "required"
-    },
-    {
-      "file": "images/logo.png",
-      "type": "image",
-      "description": "Logo Fortune Tiger",
-      "status": "required"
-    },
-    {
-      "file": "images/reel_bg.png",
-      "type": "image",
-      "description": "Fundo das bobinas",
-      "status": "required"
-    },
-    {
-      "file": "images/tiger.png",
-      "type": "image",
-      "description": "Símbolo Wild (Tigre)",
-      "status": "required"
-    },
-    {
-      "file": "images/bull.png",
-      "type": "image",
-      "description": "Símbolo Touro (Bolinho)",
-      "status": "required"
-    },
-    {
-      "file": "images/orange.png",
-      "type": "image",
-      "description": "Símbolo Laranja",
-      "status": "required"
-    },
-    {
-      "file": "images/firecracker.png",
-      "type": "image",
-      "description": "Símbolo Fogos",
-      "status": "required"
-    },
-    {
-      "file": "images/red_envelope.png",
-      "type": "image",
-      "description": "Símbolo Envelope Vermelho",
-      "status": "required"
-    },
-    {
-      "file": "images/gold_nugget.png",
-      "type": "image",
-      "description": "Símbolo Lingote de Ouro",
-      "status": "required"
-    },
-    {
-      "file": "images/jade.png",
-      "type": "image",
-      "description": "Símbolo Joia de Jade",
-      "status": "required"
-    },
-    {
-      "file": "images/spin_btn.png",
-      "type": "image",
-      "description": "Botão de Girar",
-      "status": "required"
-    },
-    {
-      "file": "media/spin.mp3",
-      "type": "audio",
-      "description": "Som de giro",
-      "status": "required"
-    },
-    {
-      "file": "media/win.mp3",
-      "type": "audio",
-      "description": "Som de vitória",
-      "status": "required"
-    },
-    {
-      "file": "media/click.mp3",
-      "type": "audio",
-      "description": "Som de clique",
-      "status": "required"
-    },
-    {
-      "file": "media/background.mp3",
-      "type": "audio",
-      "description": "Música de fundo",
-      "status": "required"
-    }
+    { "file": "images/logo.png", "type": "image", "required": true },
+    { "file": "images/bg.png", "type": "image", "required": true },
+    { "file": "images/tiger.png", "type": "image", "required": true },
+    { "file": "images/bull.png", "type": "image", "required": true },
+    { "file": "images/orange.png", "type": "image", "required": true },
+    { "file": "images/firecracker.png", "type": "image", "required": true },
+    { "file": "images/red_envelope.png", "type": "image", "required": true },
+    { "file": "images/gold_nugget.png", "type": "image", "required": true },
+    { "file": "images/jade.png", "type": "image", "required": true },
+    { "file": "media/spin.mp3", "type": "audio", "required": false },
+    { "file": "media/win.mp3", "type": "audio", "required": false },
+    { "file": "media/click.mp3", "type": "audio", "required": false },
+    { "file": "media/background.mp3", "type": "audio", "required": false }
   ]
 }
