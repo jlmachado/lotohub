@@ -1,23 +1,32 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Minus, Plus, Zap, ShieldCheck, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Minus, Plus, Zap, ShieldCheck, RefreshCw, Eye, BrainCircuit, Check, X, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAppContext, SnookerScoreboard } from '@/context/AppContext';
+import { useAppContext, SnookerScoreboard, SnookerScoreReading } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { SnookerScoreRecognitionService } from '@/services/snooker-score-recognition-service';
 
 export default function AdminSinucaPlacarPage() {
-    const { snookerScoreboards, snookerChannels, updateSnookerScoreboard } = useAppContext();
+    const { 
+      snookerScoreboards, 
+      snookerChannels, 
+      updateSnookerScoreboard,
+      snookerScoreRecognitionSettings,
+      updateSnookerScoreRecognitionSettings
+    } = useAppContext();
     const { toast } = useToast();
 
     const [selectedChannelId, setSelectedChannelId] = useState<string>('');
     const [scoreboard, setScoreboard] = useState<SnookerScoreboard | null>(null);
+    const [lastReading, setLastReading] = useState<SnookerScoreReading | null>(null);
+    const recognitionTimer = useRef<NodeJS.Timeout | null>(null);
 
     const activeChannel = useMemo(() => 
         snookerChannels.find(c => c.id === selectedChannelId), 
@@ -31,16 +40,40 @@ export default function AdminSinucaPlacarPage() {
         }
     }, [selectedChannelId, snookerScoreboards]);
 
-    const handlePlayerChange = (player: 'A' | 'B', field: 'name' | 'score', value: string) => {
-        setScoreboard(prev => prev ? {
-            ...prev,
-            [player === 'A' ? 'playerA' : 'playerB']: {
-                ...prev[player === 'A' ? 'playerA' : 'playerB'],
-                [field]: value
+    // Loop de Reconhecimento Assistido
+    useEffect(() => {
+      if (snookerScoreRecognitionSettings.enabled && activeChannel?.status === 'live' && scoreboard) {
+        const runCycle = async () => {
+          const reading = await SnookerScoreRecognitionService.processFrame(
+            activeChannel,
+            scoreboard,
+            snookerScoreRecognitionSettings
+          );
+          
+          if (reading) {
+            setLastReading(reading);
+            
+            // Auto-Aplicação
+            if (SnookerScoreRecognitionService.shouldAutoApply(reading, scoreboard, snookerScoreRecognitionSettings)) {
+              if (reading.scoreA !== scoreboard.scoreA || reading.scoreB !== scoreboard.scoreB) {
+                const updated = { ...scoreboard, scoreA: reading.scoreA, scoreB: reading.scoreB };
+                updateSnookerScoreboard(selectedChannelId, updated);
+                setScoreboard(updated);
+                toast({ title: "Placar atualizado via IA", description: `Detectado: ${reading.scoreA} x ${reading.scoreB}` });
+              }
             }
-        } : null);
-    };
-    
+          }
+        };
+
+        recognitionTimer.current = setInterval(runCycle, snookerScoreRecognitionSettings.captureIntervalSeconds * 1000);
+      } else {
+        if (recognitionTimer.current) clearInterval(recognitionTimer.current);
+        setLastReading(null);
+      }
+
+      return () => { if (recognitionTimer.current) clearInterval(recognitionTimer.current); };
+    }, [selectedChannelId, snookerScoreRecognitionSettings, activeChannel?.status, scoreboard, updateSnookerScoreboard, toast]);
+
     const handleScoreChange = (player: 'A' | 'B', delta: number) => {
         if (!scoreboard) return;
         const currentScore = player === 'A' ? scoreboard.scoreA : scoreboard.scoreB;
@@ -58,16 +91,13 @@ export default function AdminSinucaPlacarPage() {
         }
     };
 
-    const handleResetFromAutomation = () => {
-        if (!activeChannel || !scoreboard) return;
-        setScoreboard({
-            ...scoreboard,
-            matchTitle: activeChannel.tournamentName || activeChannel.title,
-            playerA: { ...scoreboard.playerA, name: activeChannel.playerA.name },
-            playerB: { ...scoreboard.playerB, name: activeChannel.playerB.name },
-            statusText: activeChannel.status === 'live' ? 'AO VIVO' : 'Agendado'
-        });
-        toast({ title: "Dados da Automação Carregados", description: "O cabeçalho e nomes foram atualizados conforme o YouTube." });
+    const handleApplyReading = () => {
+      if (lastReading && scoreboard) {
+        const updated = { ...scoreboard, scoreA: lastReading.scoreA, scoreB: lastReading.scoreB };
+        setScoreboard(updated);
+        updateSnookerScoreboard(selectedChannelId, updated);
+        toast({ title: "Sugestão aplicada com sucesso" });
+      }
     };
     
     return (
@@ -77,148 +107,138 @@ export default function AdminSinucaPlacarPage() {
                     <Link href="/admin/sinuca"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
                     <div>
                         <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Controle de Placar</h1>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Modo Assistido Híbrido Ativo</p>
+                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Modo Assistido por IA Ativo</p>
                     </div>
                 </div>
-                {activeChannel?.source === 'youtube' && scoreboard && (
-                    <Button variant="outline" size="sm" onClick={handleResetFromAutomation} className="gap-2 font-bold border-white/10 h-10 px-4 rounded-xl">
-                        <RefreshCw size={14} className="text-primary" /> Resetar p/ Automação
-                    </Button>
-                )}
             </div>
 
-            <Card className="max-w-4xl mx-auto border-white/5 bg-card/50 shadow-2xl">
-                <CardHeader className="bg-white/5 border-b border-white/5">
-                    <CardTitle className="text-sm font-black uppercase italic flex items-center gap-2">
-                        <Zap size={16} className="text-primary" /> Terminal do Juiz
-                    </CardTitle>
-                    <CardDescription className="text-[10px] uppercase font-bold">
-                        Selecione a mesa e atualize a pontuação frame a frame.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-8 pt-6">
-                    <div className="grid gap-2 max-w-sm">
-                        <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Mesa em Operação</Label>
-                        <Select value={selectedChannelId} onValueChange={setSelectedChannelId}>
-                            <SelectTrigger className="bg-slate-900 h-12 rounded-xl border-white/10 font-bold">
-                                <SelectValue placeholder="Selecione um canal..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {snookerChannels.map(c => (
-                                    <SelectItem key={c.id} value={c.id} className="font-bold">
-                                        {c.playerA.name} x {c.playerB.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    
-                    {scoreboard ? (
-                        <>
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between px-1">
-                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Título / Torneio</Label>
-                                    {activeChannel?.source === 'youtube' && (
-                                        <Badge variant="secondary" className="bg-red-600/10 text-red-500 border-red-500/20 text-[8px] h-4 uppercase font-black">YouTube Sync</Badge>
-                                    )}
-                                </div>
-                                <Input 
-                                    value={scoreboard.matchTitle} 
-                                    onChange={(e) => setScoreboard(prev => prev ? {...prev, matchTitle: e.target.value} : null)} 
-                                    className="bg-black/20 border-white/10 h-12 text-lg font-black uppercase italic"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                {/* Player A */}
-                                <div className="space-y-6 p-6 border border-white/5 rounded-2xl bg-black/20 shadow-inner">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="font-black text-sm uppercase italic text-primary">Jogador A (Mandante)</h3>
-                                        <ShieldCheck size={16} className="text-white/20" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-[9px] uppercase font-bold">Nome de Exibição</Label>
-                                        <Input value={scoreboard.playerA.name} onChange={(e) => handlePlayerChange('A', 'name', e.target.value)} className="h-10 font-bold" />
-                                    </div>
-                                    <div className="space-y-3">
-                                        <Label className="text-[9px] uppercase font-bold">Placar Geral (Gols/Frames)</Label>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                <Card className="border-white/5 bg-card/50 shadow-2xl">
+                    <CardHeader className="bg-white/5 border-b border-white/5">
+                        <CardTitle className="text-sm font-black uppercase italic flex items-center gap-2">
+                            <Zap size={16} className="text-primary" /> Terminal do Juiz
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-8 pt-6">
+                        <div className="grid gap-2 max-w-sm">
+                            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Mesa em Operação</Label>
+                            <Select value={selectedChannelId} onValueChange={setSelectedChannelId}>
+                                <SelectTrigger className="bg-slate-900 h-12 rounded-xl border-white/10 font-bold">
+                                    <SelectValue placeholder="Selecione um canal..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {snookerChannels.map(c => (
+                                        <SelectItem key={c.id} value={c.id} className="font-bold">
+                                            {c.playerA.name} x {c.playerB.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        
+                        {scoreboard ? (
+                            <>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {/* Player A */}
+                                    <div className="space-y-6 p-6 border border-white/5 rounded-2xl bg-black/20 shadow-inner">
+                                        <h3 className="font-black text-sm uppercase italic text-primary">Jogador A</h3>
+                                        <Input value={scoreboard.playerA.name} readOnly className="h-10 font-bold bg-transparent border-white/5 opacity-50" />
                                         <div className="flex items-center gap-4 bg-slate-900 rounded-xl p-2 border border-white/5 shadow-2xl">
                                             <Button size="icon" variant="ghost" className="h-12 w-12 rounded-lg hover:bg-white/5" onClick={() => handleScoreChange('A', -1)}><Minus /></Button>
-                                            <Input 
-                                                type="number" 
-                                                className="text-center text-4xl font-black italic bg-transparent border-0 h-12 text-primary" 
-                                                value={scoreboard.scoreA} 
-                                                onChange={(e) => setScoreboard(prev => prev ? {...prev, scoreA: parseInt(e.target.value) || 0} : null)} 
-                                            />
+                                            <Input type="number" className="text-center text-4xl font-black italic bg-transparent border-0 h-12 text-primary" value={scoreboard.scoreA} />
                                             <Button size="icon" variant="ghost" className="h-12 w-12 rounded-lg hover:bg-white/5" onClick={() => handleScoreChange('A', 1)}><Plus /></Button>
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Player B */}
-                                <div className="space-y-6 p-6 border border-white/5 rounded-2xl bg-black/20 shadow-inner">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="font-black text-sm uppercase italic text-primary">Jogador B (Visitante)</h3>
-                                        <ShieldCheck size={16} className="text-white/20" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-[9px] uppercase font-bold">Nome de Exibição</Label>
-                                        <Input value={scoreboard.playerB.name} onChange={(e) => handlePlayerChange('B', 'name', e.target.value)} className="h-10 font-bold" />
-                                    </div>
-                                    <div className="space-y-3">
-                                        <Label className="text-[9px] uppercase font-bold">Placar Geral (Gols/Frames)</Label>
+                                    {/* Player B */}
+                                    <div className="space-y-6 p-6 border border-white/5 rounded-2xl bg-black/20 shadow-inner">
+                                        <h3 className="font-black text-sm uppercase italic text-primary">Jogador B</h3>
+                                        <Input value={scoreboard.playerB.name} readOnly className="h-10 font-bold bg-transparent border-white/5 opacity-50" />
                                         <div className="flex items-center gap-4 bg-slate-900 rounded-xl p-2 border border-white/5 shadow-2xl">
                                             <Button size="icon" variant="ghost" className="h-12 w-12 rounded-lg hover:bg-white/5" onClick={() => handleScoreChange('B', -1)}><Minus /></Button>
-                                            <Input 
-                                                type="number" 
-                                                className="text-center text-4xl font-black italic bg-transparent border-0 h-12 text-primary" 
-                                                value={scoreboard.scoreB} 
-                                                onChange={(e) => setScoreboard(prev => prev ? {...prev, scoreB: parseInt(e.target.value) || 0} : null)} 
-                                            />
+                                            <Input type="number" className="text-center text-4xl font-black italic bg-transparent border-0 h-12 text-primary" value={scoreboard.scoreB} />
                                             <Button size="icon" variant="ghost" className="h-12 w-12 rounded-lg hover:bg-white/5" onClick={() => handleScoreChange('B', 1)}><Plus /></Button>
                                         </div>
                                     </div>
                                 </div>
+                                <Button size="lg" onClick={handleSave} className="w-full h-14 rounded-xl font-black uppercase italic lux-shine">Publicar Alterações</Button>
+                            </>
+                        ) : (
+                            <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-3xl opacity-40">
+                                <p className="font-bold uppercase text-xs tracking-widest">Selecione uma mesa para operar.</p>
                             </div>
+                        )}
+                    </CardContent>
+                </Card>
+              </div>
 
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-white/5 rounded-2xl bg-black/10">
-                                <div className="space-y-2">
-                                    <Label className="text-[9px] uppercase font-bold">Status do Jogo (Banner)</Label>
-                                    <Input 
-                                        value={scoreboard.statusText} 
-                                        onChange={(e) => setScoreboard(prev => prev ? {...prev, statusText: e.target.value} : null)} 
-                                        placeholder="Ex: Intervalo, Pausa Técnica..." 
-                                        className="h-10 text-xs font-bold uppercase italic"
-                                    />
-                                </div>
-                                 <div className="space-y-2">
-                                    <Label className="text-[9px] uppercase font-bold">Frame/Set Atual</Label>
-                                    <Input 
-                                        type="number" 
-                                        value={scoreboard.frame} 
-                                        onChange={(e) => setScoreboard(prev => prev ? {...prev, frame: parseInt(e.target.value) || 0} : null)} 
-                                        className="h-10 font-black text-primary"
-                                    />
-                                </div>
-                            </div>
-                        </>
+              <div className="space-y-6">
+                <Card className="border-primary/20 bg-primary/5 shadow-2xl">
+                  <CardHeader className="pb-3 border-b border-primary/10">
+                    <CardTitle className="text-sm font-black uppercase italic flex items-center gap-2">
+                      <BrainCircuit size={16} className="text-primary" /> Visão Assistida (IA)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-6 space-y-6">
+                    {!snookerScoreRecognitionSettings.enabled ? (
+                      <div className="text-center py-8">
+                        <Badge variant="outline" className="mb-2">DESATIVADO</Badge>
+                        <p className="text-xs text-muted-foreground uppercase font-bold">O assistente de IA está desligado.</p>
+                      </div>
+                    ) : !lastReading ? (
+                      <div className="text-center py-8">
+                        <RefreshCw className="h-8 w-8 text-primary animate-spin mx-auto mb-4" />
+                        <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">Aguardando Captura de Vídeo...</p>
+                      </div>
                     ) : (
-                        <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-3xl opacity-40">
-                            <p className="font-bold uppercase text-xs tracking-widest">Selecione uma mesa acima para abrir o terminal.</p>
+                      <div className="space-y-4 animate-in fade-in">
+                        <div className="flex items-center justify-between bg-black/40 p-3 rounded-xl border border-white/5">
+                          <span className="text-[10px] font-black text-slate-500 uppercase">Confiança</span>
+                          <Badge className={cn("font-black italic", lastReading.confidence > 0.8 ? "bg-green-600" : "bg-amber-600")}>
+                            {(lastReading.confidence * 100).toFixed(0)}%
+                          </Badge>
                         </div>
+
+                        <div className="bg-slate-900 p-4 rounded-2xl border border-white/10 shadow-inner">
+                          <p className="text-[9px] font-black text-primary uppercase tracking-[3px] text-center mb-4 italic">Placar Detectado</p>
+                          <div className="flex items-center justify-center gap-6">
+                            <span className="text-4xl font-black italic text-white tabular-nums">{lastReading.scoreA}</span>
+                            <span className="text-xs font-black text-slate-600 uppercase">VS</span>
+                            <span className="text-4xl font-black italic text-white tabular-nums">{lastReading.scoreB}</span>
+                          </div>
+                          <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center">
+                            <span className="text-[10px] font-bold text-muted-foreground">Estabilidade:</span>
+                            <div className="flex gap-1">
+                              {Array.from({ length: snookerScoreRecognitionSettings.requiredStableReads }).map((_, i) => (
+                                <div key={i} className={cn("h-1.5 w-4 rounded-full transition-colors", i < lastReading.stableCount ? "bg-green-500" : "bg-white/10")} />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {lastReading.stableCount >= 1 && (
+                          <div className="flex gap-2">
+                            <Button variant="outline" className="flex-1 border-red-500/20 text-red-500 hover:bg-red-500/10 h-11" onClick={() => setLastReading(null)}><X size={16} /></Button>
+                            <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black uppercase italic text-xs h-11" onClick={handleApplyReading}><Check size={16} className="mr-1" /> Aplicar</Button>
+                          </div>
+                        )}
+                      </div>
                     )}
-                </CardContent>
-                <CardFooter className="bg-slate-950/50 border-t border-white/5 p-6 rounded-b-xl">
-                    <Button 
-                        size="lg" 
-                        onClick={handleSave} 
-                        disabled={!scoreboard}
-                        className="w-full md:w-auto h-14 px-12 rounded-xl font-black uppercase italic lux-shine ml-auto"
-                    >
-                        Salvar e Publicar Placar
-                    </Button>
-                </CardFooter>
-            </Card>
+
+                    <div className="p-3 bg-black/20 rounded-xl border border-white/5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Modo Auto-Aplicar</Label>
+                        <Badge variant="outline" className="text-[8px] h-4">BETA</Badge>
+                      </div>
+                      <p className="text-[9px] text-muted-foreground leading-relaxed font-medium">
+                        Se ativado, a IA atualizará o placar automaticamente quando a confiança atingir 90% por 3 ciclos estáveis.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
         </main>
     );
 }
