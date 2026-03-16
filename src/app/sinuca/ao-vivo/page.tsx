@@ -46,18 +46,11 @@ export default function SinucaAoVivoPage() {
         
         const performSync = async () => {
             initialSyncDoneRef.current = true;
-            
-            // Verifica staleness antes de sync agressivo
-            const hasLive = (snookerChannels || []).some(c => c.status === 'live');
-            const threshold = hasLive ? 60000 : 300000;
-            
-            // Para sinuca, como o status de 'live' no YouTube muda rápido, 
-            // forçamos o sync se não houver um sync muito recente
             await syncSnookerFromYoutube(true);
         };
 
         performSync();
-    }, [isClient, syncSnookerFromYoutube, snookerChannels]);
+    }, [isClient, syncSnookerFromYoutube]);
     
     const visibleChannels = useMemo(() => 
         (snookerChannels || []).filter(c => isSnookerVisibleOnHome(c, now)),
@@ -137,14 +130,14 @@ export default function SinucaAoVivoPage() {
     return (
         <CasinoLayout>
              <ConfettiCannon fire={celebrationTrigger} onComplete={clearCelebration} />
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
                 <ChannelSelector
                     activeChannelId={activeChannelId || ''}
                     onChannelChange={setActiveChannelId}
                 />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-                <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+                <div className="lg:col-span-2 space-y-4 sm:space-y-6">
                     {activeChannelId ? (
                         <LivePlayer channelId={activeChannelId} />
                     ) : (
@@ -152,14 +145,26 @@ export default function SinucaAoVivoPage() {
                             <p className="text-slate-500 font-black uppercase italic text-xs">Selecione uma mesa para assistir</p>
                         </div>
                     )}
-                    {activeChannelId && <ActivityTicker channelId={activeChannelId} />}
-                    {activeChannelId && <BetTicker channelId={activeChannelId} />}
+                    
+                    {activeChannelId && (
+                        <div className="lg:hidden">
+                            <ScoreboardCard channelId={activeChannelId} />
+                        </div>
+                    )}
+
+                    <div className="space-y-4">
+                        {activeChannelId && <ActivityTicker channelId={activeChannelId} />}
+                        {activeChannelId && <BetTicker channelId={activeChannelId} />}
+                    </div>
+
                     {activeChannelId && <BettingPanel channelId={activeChannelId} />}
                     {activeChannelId && <MySnookerBets channelId={activeChannelId} />}
                 </div>
 
-                <div className="lg:col-span-1 space-y-6">
-                    {activeChannelId && <ScoreboardCard channelId={activeChannelId} />}
+                <div className="lg:col-span-1 space-y-4 sm:space-y-6">
+                    <div className="hidden lg:block">
+                        {activeChannelId && <ScoreboardCard channelId={activeChannelId} />}
+                    </div>
                     {activeChannelId && <LiveChat channelId={activeChannelId}/>}
                     {activeChannelId && <ReactionsPanel channelId={activeChannelId} />}
                 </div>

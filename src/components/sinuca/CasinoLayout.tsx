@@ -52,7 +52,7 @@ const AnimatedNumber = ({ value, isCurrency = true, className }: { value: number
 
   const initialText = isCurrency ? 'R$ 0,00' : '0';
 
-  return <p ref={elRef} className={cn("text-base font-semibold", className)} style={isCurrency ? {textShadow: "0 0 14px rgba(245,158,11,0.35)"} : {}}>{initialText}</p>;
+  return <p ref={elRef} className={cn("text-[11px] sm:text-base font-semibold", className)} style={isCurrency ? {textShadow: "0 0 14px rgba(245,158,11,0.35)"} : {}}>{initialText}</p>;
 };
 
 export const CasinoLayout = ({ children }: { children: React.ReactNode }) => {
@@ -67,40 +67,40 @@ export const CasinoLayout = ({ children }: { children: React.ReactNode }) => {
                     <SinucaSidebar className="hidden lg:flex flex-col w-64 h-screen sticky top-0 bg-white dark:bg-black/30 border-r dark:border-white/10 text-gray-800 dark:text-white" />
                 </div>
                 
-                <main className="flex-1">
-                    <div className="lg:hidden p-4 h-[72px] flex justify-between items-center bg-black/30 border-b border-white/10 sticky top-0 z-40">
-                         <Link href="/">
-                           <Logo width={120} height={30} />
+                <main className="flex-1 min-w-0">
+                    <div className="lg:hidden p-3 h-[64px] sm:h-[72px] flex justify-between items-center bg-black/30 border-b border-white/10 sticky top-0 z-40 backdrop-blur-md">
+                         <Link href="/" className="shrink-0">
+                           <Logo height={22} />
                          </Link>
-                        <div className="flex items-center gap-4">
-                           <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 sm:gap-4 ml-2">
+                           <div className="flex items-center gap-2 sm:gap-3">
                                <div className="text-right">
-                                  <p className="text-xs text-white/60 flex items-center gap-1 justify-end"><Wallet className="h-3 w-3 text-amber-400" /> Saldo</p>
+                                  <p className="text-[8px] sm:text-xs text-white/60 flex items-center gap-1 justify-end"><Wallet className="h-2 w-2 sm:h-3 sm:w-3 text-amber-400" /> Saldo</p>
                                   <AnimatedNumber value={balance} />
                                </div>
                                 <div className="text-right">
-                                  <p className="text-xs text-white/60 flex items-center gap-1 justify-end"><Gift className="h-3 w-3 text-green-500" /> Bônus</p>
+                                  <p className="text-[8px] sm:text-xs text-white/60 flex items-center gap-1 justify-end"><Gift className="h-2 w-2 sm:h-3 sm:w-3 text-green-500" /> Bônus</p>
                                   <AnimatedNumber value={bonus} className="text-green-500" />
                                </div>
                            </div>
 
                            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
                                 <SheetTrigger asChild>
-                                    <Button variant="ghost" size="icon" onClick={() => setIsSheetOpen(true)}>
-                                        <Menu className="h-6 w-6 text-white" />
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-white" onClick={() => setIsSheetOpen(true)}>
+                                        <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
                                     </Button>
                                 </SheetTrigger>
-                                <SheetContent side="left" className="p-0 w-[40vw] max-w-[40vw] md:w-[35vw] md:max-w-[35vw] bg-white text-gray-800 border-r-0">
+                                <SheetContent side="left" className="p-0 w-[80vw] max-w-[300px] bg-white text-gray-800 border-r-0">
                                     <SheetHeader className="sr-only">
                                         <SheetTitle>Menu Principal</SheetTitle>
-                                        <SheetDescription>Navegue pelas diferentes seções do site, como cassino, bingo e loterias.</SheetDescription>
+                                        <SheetDescription>Navegue pelas diferentes seções do site.</SheetDescription>
                                     </SheetHeader>
                                     <SinucaSidebar className="flex flex-col h-full" setSheetOpen={setIsSheetOpen} />
                                 </SheetContent>
                             </Sheet>
                         </div>
                     </div>
-                    <div className="p-4 lg:p-8">
+                    <div className="p-2 sm:p-4 lg:p-8 overflow-x-hidden">
                         {children}
                     </div>
                 </main>

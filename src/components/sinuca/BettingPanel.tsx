@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAppContext } from "@/context/AppContext";
 import { useToast } from "@/hooks/use-toast";
-import { Minus, Plus, CheckCircle2, Lock, AlertCircle } from 'lucide-react';
+import { Minus, Plus, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getSnookerMarketState } from '@/utils/snooker-rules';
 
@@ -91,33 +91,33 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
 
     return (
         <Card className="casino-card border-primary/10">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-lg text-white font-black uppercase italic tracking-tighter">
+            <CardHeader className="pb-2 sm:pb-3 flex flex-row items-center justify-between p-3 sm:p-6">
+                <CardTitle className="text-base sm:text-lg text-white font-black uppercase italic tracking-tighter">
                     Painel de Apostas
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                     {market.isBettable && (
-                        <div className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                        <div className="flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-green-500 animate-pulse" />
                     )}
                     <Badge className={cn(
-                        "text-[9px] uppercase font-black px-2 h-5",
+                        "text-[8px] sm:text-[9px] uppercase font-black px-1.5 sm:px-2 h-4.5 sm:h-5",
                         market.isBettable ? "bg-green-600" : "bg-slate-800"
                     )}>
                         {market.label}
                     </Badge>
                 </div>
             </CardHeader>
-            <CardContent className="space-y-5">
+            <CardContent className="space-y-4 sm:space-y-5 p-3 sm:p-6">
                 {!market.isBettable && !isLockedByProfile && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
-                        <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                        <p className="text-[10px] text-amber-200/70 font-bold uppercase tracking-wide leading-relaxed">
+                    <div className="bg-amber-500/10 border border-amber-500/20 p-2 sm:p-3 rounded-xl flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
+                        <AlertCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500 shrink-0 mt-0.5" />
+                        <p className="text-[9px] sm:text-[10px] text-amber-200/70 font-bold uppercase tracking-wide leading-relaxed">
                             {market.reason}
                         </p>
                     </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                     <BetButton 
                         label={channel?.playerA.name || 'Mandante'} 
                         odd={channel?.odds.A || 1} 
@@ -144,40 +144,40 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
                     />
                 </div>
 
-                <div className="space-y-2">
-                    <Label className="text-white/70 text-[10px] uppercase font-bold tracking-widest ml-1">Valor da Aposta (R$)</Label>
-                    <div className="flex items-center gap-3">
-                        <Button variant="outline" size="icon" className="h-12 w-12 border-white/10 rounded-xl" onClick={() => handleAmountChange(-5)} disabled={!market.isBettable}><Minus/></Button>
+                <div className="space-y-1.5 sm:space-y-2">
+                    <Label className="text-white/70 text-[9px] sm:text-[10px] uppercase font-bold tracking-widest ml-1">Valor da Aposta (R$)</Label>
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        <Button variant="outline" size="icon" className="h-10 w-10 sm:h-12 sm:w-12 border-white/10 rounded-xl flex-shrink-0" onClick={() => handleAmountChange(-5)} disabled={!market.isBettable}><Minus className="h-4 w-4"/></Button>
                         <Input 
                             type="number"
                             value={amount}
                             onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                            className="casino-input text-center font-black text-2xl h-12 rounded-xl"
+                            className="casino-input text-center font-black text-xl sm:text-2xl h-10 sm:h-12 rounded-xl flex-grow"
                             disabled={!market.isBettable}
                         />
-                         <Button variant="outline" size="icon" className="h-12 w-12 border-white/10 rounded-xl" onClick={() => handleAmountChange(5)} disabled={!market.isBettable}><Plus/></Button>
+                         <Button variant="outline" size="icon" className="h-10 w-10 sm:h-12 sm:w-12 border-white/10 rounded-xl flex-shrink-0" onClick={() => handleAmountChange(5)} disabled={!market.isBettable}><Plus className="h-4 w-4"/></Button>
                     </div>
                 </div>
 
                 <Button 
                     className={cn(
-                        "w-full h-16 text-lg font-black uppercase italic rounded-xl shadow-xl transition-all active:scale-95",
+                        "w-full h-12 sm:h-16 text-sm sm:text-lg font-black uppercase italic rounded-xl shadow-xl transition-all active:scale-95",
                         !market.isBettable || isLockedByProfile ? "bg-gray-800 text-gray-500 border-white/5" : "casino-gold-button lux-shine"
                     )}
                     onClick={handlePlaceBet}
                     disabled={!market.isBettable || isLockedByProfile || isProcessing}
                 >
-                    {isProcessing ? 'PROCESSANDO...' : isLockedByProfile ? 'FAÇA LOGIN PARA APOSTAR' : market.isBettable ? (channel?.status === 'live' ? 'CONFIRMAR APOSTA AO VIVO' : 'CONFIRMAR PRÉ-JOGO') : market.label}
+                    {isProcessing ? 'PROCESSANDO...' : isLockedByProfile ? 'LOGUE PARA APOSTAR' : market.isBettable ? (channel?.status === 'live' ? 'APOSTA AO VIVO' : 'APOSTA PRÉ-JOGO') : market.label}
                 </Button>
 
                 {selectedBet && channel && market.isBettable && (
-                    <div className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between animate-in zoom-in-95">
-                        <div className="flex items-center gap-2">
-                            <CheckCircle2 className="text-primary h-4 w-4" />
-                            <span className="text-xs font-bold text-white uppercase">Retorno Potencial:</span>
+                    <div className="bg-primary/10 border border-primary/20 p-2.5 sm:p-3 rounded-xl flex items-center justify-between animate-in zoom-in-95">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                            <CheckCircle2 className="text-primary h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                            <span className="text-[10px] sm:text-xs font-bold text-white uppercase">Retorno:</span>
                         </div>
-                        <span className="text-lg font-black text-primary italic">
-                            R$ {(amount * (selectedBet === 'A' ? channel.odds.A : selectedBet === 'B' ? channel.odds.B : channel.odds.D)).toFixed(2)}
+                        <span className="text-base sm:text-lg font-black text-primary italic">
+                            R$ {(amount * (selectedBet === 'A' ? channel.odds.A : selectedBet === 'B' ? channel.odds.B : channel.odds.D)).toFixed(2).replace('.', ',')}
                         </span>
                     </div>
                 )}
@@ -191,15 +191,15 @@ function BetButton({ label, odd, active, updated, onClick, disabled }: any) {
         <Button 
             variant={active ? 'default' : 'outline'}
             className={cn(
-                "flex-col h-20 border-white/10 transition-all rounded-xl",
+                "flex-col h-16 sm:h-20 border-white/10 transition-all rounded-xl p-1",
                 active && "ring-2 ring-primary ring-offset-2 ring-offset-background bg-primary/20",
                 !active && "hover:bg-white/5"
             )}
             onClick={onClick}
             disabled={disabled}
         >
-            <span className="text-[9px] uppercase font-black opacity-60 truncate w-full px-1 mb-1">{label}</span>
-            <span className={cn("text-xl font-black italic text-primary", updated && 'odds-update-flash')}>@{odd.toFixed(2)}</span>
+            <span className="text-[7px] sm:text-[9px] uppercase font-black opacity-60 truncate w-full px-1 mb-0.5 sm:mb-1">{label}</span>
+            <span className={cn("text-base sm:text-xl font-black italic text-primary", updated && 'odds-update-flash')}>@{odd.toFixed(2)}</span>
         </Button>
     );
 }
