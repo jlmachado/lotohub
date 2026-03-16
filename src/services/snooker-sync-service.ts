@@ -1,6 +1,6 @@
 /**
  * @fileOverview Orquestrador de Sincronização Multicanal Robusto.
- * Atualizado para tratar corretamente liveConfidence e detecção híbrida.
+ * Refinado para garantir que canais sincronizados sejam visíveis e prontos para aposta.
  */
 
 import { SnookerYoutubeService } from './snooker-youtube-service';
@@ -56,35 +56,24 @@ export class SnookerSyncService {
           const scheduledAt = ytItem.publishedAt;
           const eventTime = new Date(scheduledAt);
 
-          // Status baseado na confiança da detecção
+          // Determinação de Status
           let internalStatus: SnookerChannel['status'] = 'scheduled';
           if (ytItem.liveConfidence === 'high') {
             internalStatus = 'live';
           } else if (ytItem.liveConfidence === 'medium') {
-            // Se o título diz live mas a página do canal não confirmou, tratamos como iminente
             internalStatus = 'imminent';
           } else if (ytItem.sourceType === 'video') {
             internalStatus = 'finished';
           }
 
-          // Janela de Aposta Padrão
+          // Janela de Aposta Padrão (Abre 120 min antes do jogo)
           const bettingOpensAt = new Date(eventTime.getTime() - (120 * 60 * 1000)).toISOString();
 
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
             
-            if (existing.isManualOverride) {
-              // Mesmo em override, atualizamos o status se detectado como live real
-              if (internalStatus === 'live' && existing.status !== 'live') {
-                newChannelsList[existingIdx] = { 
-                  ...existing, 
-                  status: 'live',
-                  updatedAt: new Date().toISOString() 
-                };
-                summary.updated++;
-              }
-              return;
-            }
+            // Se o admin bloqueou manualmente o canal, respeitamos (enabled: false)
+            if (existing.enabled === false && !source.autoUpdateChannels) return;
 
             newChannelsList[existingIdx] = {
               ...existing,
@@ -95,12 +84,12 @@ export class SnookerSyncService {
               metadataConfidence: parsed.confidence,
               updatedAt: new Date().toISOString(),
               sourceStatus: 'synced',
-              enabled: existing.enabled || internalStatus === 'live' || internalStatus === 'imminent',
               liveConfidence: ytItem.liveConfidence,
               detectionSource: ytItem.detectionSource
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
+            // Criação de NOVO canal
             const newChannel: SnookerChannel = {
               id: uniqueId,
               title: parsed.eventTitle,
@@ -124,7 +113,7 @@ export class SnookerSyncService {
               houseMargin: 8,
               bestOf: parsed.bestOf,
               priority: 10,
-              enabled: !source.requireAdminApproval,
+              enabled: !source.requireAdminApproval, // Habilitado por padrão se não exigir aprovação
               bancaId,
               thumbnailUrl: ytItem.thumbnailUrl,
               tournamentName: parsed.tournamentName,
@@ -144,6 +133,7 @@ export class SnookerSyncService {
         }
       });
 
+      // Recalcula rankings e prioridades
       newChannelsList = SnookerPriorityService.rankItems(newChannelsList);
 
       return { updatedChannels: newChannelsList, summary };

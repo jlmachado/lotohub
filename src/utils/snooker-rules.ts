@@ -1,6 +1,6 @@
 /**
- * @fileOverview Regras de negócio centralizadas para elegibilidade de apostas na Sinuca.
- * Refinado para suportar transição de status baseada no tempo e regras de pré-live.
+ * @fileOverview Regras de negócio centralizadas para elegibilidade de apostas e visibilidade na Sinuca.
+ * Refinado para suportar transição de status baseada no tempo e regras de mercado unificadas.
  */
 
 import { SnookerChannel } from "@/context/AppContext";
@@ -39,7 +39,38 @@ export function resolveSnookerChannelStatus(channel: SnookerChannel, now: Date =
 }
 
 /**
+ * Determina se um canal deve ser exibido na HOME pública.
+ * Regra Unificada: Elimina divergências entre Admin e Home.
+ */
+export function isSnookerVisibleOnHome(channel: SnookerChannel, now: Date = new Date()): boolean {
+  if (!channel || !channel.enabled || channel.isArchived) return false;
+  
+  // Se o vídeo não é um candidato válido ao player, não mostra na home principal
+  if (channel.sourceStatus === 'error') return false;
+
+  const currentStatus = resolveSnookerChannelStatus(channel, now);
+
+  // Regra de Exibição: Live ou Upcoming (Próximos) do dia
+  if (currentStatus === 'live' || currentStatus === 'imminent') return true;
+  
+  if (currentStatus === 'scheduled') {
+    // Só mostra na home se não estiver expirado (data de ontem pra trás)
+    const scheduledDate = new Date(channel.scheduledAt || channel.createdAt);
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    
+    const itemDate = new Date(scheduledDate);
+    itemDate.setHours(0, 0, 0, 0);
+
+    return itemDate >= today;
+  }
+
+  return false;
+}
+
+/**
  * Determina se um canal de sinuca está apto para receber apostas no momento.
+ * Usado pelo BettingPanel e pela visualização de Mercado.
  */
 export function getSnookerMarketState(channel: SnookerChannel | undefined, now: Date = new Date()): SnookerMarketState {
   if (!channel) {
@@ -48,12 +79,12 @@ export function getSnookerMarketState(channel: SnookerChannel | undefined, now: 
 
   // Resolve status dinâmico baseado no tempo
   const currentStatus = resolveSnookerChannelStatus(channel, now);
-  const isLive = currentStatus === 'live' || channel.status === 'live';
+  const isLive = currentStatus === 'live';
   const isFinished = currentStatus === 'finished' || currentStatus === 'cancelled';
 
   // 1. Bloqueios Críticos
   if (!channel.enabled) {
-    return { isBettable: false, label: 'Desativado', reason: 'Canal desativado', color: 'text-red-500', status: currentStatus };
+    return { isBettable: false, label: 'Desativado', reason: 'Canal desativado pelo administrador', color: 'text-red-500', status: currentStatus };
   }
   if (channel.isArchived) {
     return { isBettable: false, label: 'Arquivado', reason: 'Evento arquivado', color: 'text-slate-500', status: currentStatus };
@@ -87,7 +118,7 @@ export function getSnookerMarketState(channel: SnookerChannel | undefined, now: 
     }
   }
 
-  // 3. Validação por Tipo de Mercado (Prelive / Live Only)
+  // 3. Validação por Tipo de Mercado (Prelive / Live Only / Disabled)
   if (!isLive && bettingAvailability === 'live_only') {
     return { isBettable: false, label: 'Só ao Vivo', reason: 'Apostas abrem apenas no início do jogo', color: 'text-amber-500', status: currentStatus };
   }
@@ -95,7 +126,7 @@ export function getSnookerMarketState(channel: SnookerChannel | undefined, now: 
     return { isBettable: false, label: 'Mercado Fechado', reason: 'Apostas live não permitidas neste evento', color: 'text-red-500', status: currentStatus };
   }
   if (bettingAvailability === 'disabled') {
-    return { isBettable: false, label: 'Suspenso', reason: 'Mercado suspenso pelo administrador', color: 'text-red-500', status: currentStatus };
+    return { isBettable: false, label: 'Suspenso', reason: 'Mercado suspenso manualmente', color: 'text-red-500', status: currentStatus };
   }
 
   // 4. Estados de Sucesso
