@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -15,51 +14,49 @@
         </div>
     </div>
 
-    <div id="game-container" class="game-wrapper">
+    <div id="game-container" class="game-wrapper" style="opacity: 0;">
         <header class="game-header">
-            <img src="images/logo.png" alt="Fortune Tiger" class="game-logo">
+            <div class="logo-container">
+                <img src="images/logo.png" alt="Fortune Tiger" class="game-logo">
+            </div>
         </header>
 
-        <main class="reels-section">
-            <div class="reels-container" id="reels-container">
-                <div class="reel" id="reel-0"></div>
-                <div class="reel" id="reel-1"></div>
-                <div class="reel" id="reel-2"></div>
+        <main class="game-main">
+            <div class="tiger-mascot-container">
+                <img src="images/tiger.png" alt="Tiger" class="tiger-mascot">
             </div>
-            <div class="tiger-decoration">
-                <img src="images/tiger.png" alt="" class="tiger-mascot">
+
+            <div class="reels-section">
+                <div id="reels-container" class="reels-grid">
+                    <!-- Reels via JS -->
+                </div>
             </div>
         </main>
 
         <footer class="game-footer">
-            <div class="stats-row">
-                <div class="stat-box">
-                    <span>SALDO</span>
-                    <span id="balance-display">R$ 0,00</span>
+            <div class="display-row">
+                <div class="display-item">
+                    <span class="label">SALDO</span>
+                    <span id="balance-display" class="value">R$ 0,00</span>
                 </div>
-                <div class="stat-box">
-                    <span>GANHO</span>
-                    <span id="win-display">R$ 0,00</span>
+                <div class="display-item highlight">
+                    <span class="label">GANHO</span>
+                    <span id="win-display" class="value">R$ 0,00</span>
+                </div>
+                <div class="display-item">
+                    <span class="label">APOSTA</span>
+                    <span id="bet-display" class="value">R$ 1,00</span>
                 </div>
             </div>
 
             <div class="controls-row">
-                <div class="bet-controls">
-                    <button id="bet-minus" class="btn-adjust">-</button>
-                    <div class="bet-value">
-                        <span class="label">APOSTA</span>
-                        <span id="bet-display">R$ 1,00</span>
-                    </div>
-                    <button id="bet-plus" class="btn-adjust">+</button>
+                <button id="minus-btn" class="control-btn">−</</button>
+                <div class="spin-wrapper">
+                    <button id="spin-btn" class="spin-button">
+                        <img src="images/spin_btn.png" alt="SPIN">
+                    </button>
                 </div>
-                
-                <button id="spin-btn" class="spin-button">
-                    <img src="images/spin_btn.png" alt="Girar">
-                </button>
-
-                <div class="auto-spin">
-                    <button id="auto-btn" class="btn-secondary">AUTO</button>
-                </div>
+                <button id="plus-btn" class="control-btn">+</button>
             </div>
         </footer>
     </div>

@@ -1,169 +1,164 @@
-
 /**
- * @fileOverview Motor do Fortune Tiger - Sincronizado com assets oficiais.
+ * Fortune Tiger - Engine Profissional Sincronizada
  */
 
 const SYMBOLS = [
-    { id: 'bull', img: 'images/bull.png' },
-    { id: 'jade', img: 'images/jade.png' },
-    { id: 'red_envelope', img: 'images/red_envelope.png' },
-    { id: 'firecracker', img: 'images/firecracker.png' },
-    { id: 'orange', img: 'images/orange.png' },
-    { id: 'gold_nugget', img: 'images/gold_nugget.png' },
-    { id: 'tiger', img: 'images/tiger.png' } // WILD
+    { id: 1, name: 'bull', image: 'images/bull.png', value: 10 },
+    { id: 2, name: 'orange', image: 'images/orange.png', value: 5 },
+    { id: 3, name: 'firecracker', image: 'images/firecracker.png', value: 3 },
+    { id: 4, name: 'envelope', image: 'images/envelope.png', value: 2 },
+    { id: 5, name: 'gold', image: 'images/gold.png', value: 50 },
+    { id: 6, name: 'jade', image: 'images/jade.png', value: 15 },
+    { id: 7, name: 'tiger', image: 'images/tiger.png', value: 100, isWild: true }
 ];
 
-const ASSETS_TO_LOAD = [
+const ASSETS_TO_PRELOAD = [
     'images/bg.png',
     'images/reel_bg.png',
     'images/tiger.png',
     'images/spin_btn.png',
     'images/logo.png',
-    ...SYMBOLS.map(s => s.img),
-    'media/spin.mp3',
-    'media/win.mp3',
-    'media/click.mp3',
-    'media/background.mp3'
+    ...SYMBOLS.map(s => s.image)
 ];
 
 let balance = 0;
 let currentBet = 1.00;
 let isSpinning = false;
 
-const audio = {
-    spin: new Audio('media/spin.mp3'),
-    win: new Audio('media/win.mp3'),
-    click: new Audio('media/click.mp3'),
-    bg: new Audio('media/background.mp3')
+// DOM Elements
+const elements = {
+    loader: document.getElementById('loader'),
+    gameContainer: document.getElementById('game-container'),
+    balanceDisplay: document.getElementById('balance-display'),
+    betDisplay: document.getElementById('bet-display'),
+    winDisplay: document.getElementById('win-display'),
+    spinBtn: document.getElementById('spin-btn'),
+    reelsContainer: document.getElementById('reels-container'),
+    plusBtn: document.getElementById('plus-btn'),
+    minusBtn: document.getElementById('minus-btn')
 };
 
-async function init() {
-    console.log('[FT] Inicializando motor...');
-    
-    // Configura áudio de fundo
-    audio.bg.loop = true;
-    audio.bg.volume = 0.3;
-
-    try {
-        await preloadAssets();
-        setupReels();
-        setupEvents();
-        
-        // Revela o jogo
-        document.getElementById('loader').style.display = 'none';
-        document.getElementById('game-container').style.opacity = '1';
-        
-        console.log('[FT] Motor pronto.');
-    } catch (err) {
-        console.error('[FT] Erro fatal no bootstrap:', err);
-        // Fallback: mesmo com erro de asset, tentamos mostrar o jogo
-        document.getElementById('loader-text').innerText = 'ERRO AO CARREGAR. INICIANDO MESMO ASSIM...';
-        setTimeout(() => {
-            document.getElementById('loader').style.display = 'none';
-            document.getElementById('game-container').style.opacity = '1';
-        }, 2000);
-    }
-}
-
+/**
+ * Motor de Preload Resiliente
+ */
 async function preloadAssets() {
-    const promises = ASSETS_TO_LOAD.map(src => {
-        return new Promise((resolve) => {
-            if (src.endsWith('.png') || src.endsWith('.jpg')) {
-                const img = new Image();
-                img.src = src;
-                img.onload = resolve;
-                img.onerror = () => {
-                    console.warn(`[FT] Falha ao carregar imagem: ${src}`);
-                    resolve(); // Resolvemos para não travar o loader
-                };
-            } else {
-                // Audio
-                resolve(); // Audio costuma ser carregado sob demanda ou via stream
-            }
-        });
+    console.log('[FortuneTiger] Iniciando preload...');
+    
+    const loadAsset = (path) => new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => {
+            console.warn(`[FortuneTiger] Falha ao carregar: ${path}`);
+            resolve(false);
+        };
+        img.src = path;
     });
 
-    // Timeout de segurança de 10s
-    await Promise.race([
-        Promise.all(promises),
-        new Promise(res => setTimeout(res, 10000))
-    ]);
+    // Timeout de segurança: 10 segundos
+    const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 10000));
+    const loaders = Promise.all(ASSETS_TO_PRELOAD.map(loadAsset));
+
+    await Promise.race([loaders, timeout]);
+    console.log('[FortuneTiger] Preload finalizado.');
+    startGame();
 }
 
-function setupReels() {
-    const container = document.getElementById('reels-container');
+function startGame() {
+    elements.loader.style.display = 'none';
+    elements.gameContainer.style.opacity = '1';
+    elements.gameContainer.classList.remove('hidden');
+    initReels();
+    updateUI();
+}
+
+function initReels() {
+    elements.reelsContainer.innerHTML = '';
     for (let i = 0; i < 3; i++) {
-        const reel = document.getElementById(`reel-${i}`);
-        reel.innerHTML = '';
+        const reel = document.createElement('div');
+        reel.className = 'reel';
+        reel.id = `reel-${i}`;
+        
         for (let j = 0; j < 3; j++) {
-            const sym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
-            const div = document.createElement('div');
-            div.className = 'symbol';
-            div.innerHTML = `<img src="${sym.img}" alt="${sym.id}">`;
-            reel.appendChild(div);
+            reel.appendChild(createSymbolElement());
         }
+        elements.reelsContainer.appendChild(reel);
     }
 }
 
-function setupEvents() {
-    const spinBtn = document.getElementById('spin-btn');
-    spinBtn.addEventListener('click', () => {
-        if (isSpinning) return;
-        handleSpin();
-    });
-
-    // Comunicação com o sistema principal (saldo)
-    window.addEventListener('message', (event) => {
-        if (event.data.type === 'SYNC_BALANCE') {
-            balance = event.data.balance;
-            updateDisplay();
-        }
-    });
-
-    // Notifica sistema que o jogo está pronto
-    window.parent.postMessage({ type: 'GAME_READY' }, '*');
+function createSymbolElement(symbol = null) {
+    const s = symbol || SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+    const div = document.createElement('div');
+    div.className = 'symbol';
+    div.innerHTML = `<img src="${s.image}" alt="${s.name}">`;
+    return div;
 }
 
-async function handleSpin() {
-    if (balance < currentBet) {
-        window.parent.postMessage({ type: 'INSUFFICIENT_BALANCE' }, '*');
-        return;
-    }
+function updateUI() {
+    elements.balanceDisplay.textContent = `R$ ${balance.toFixed(2).replace('.', ',')}`;
+    elements.betDisplay.textContent = `R$ ${currentBet.toFixed(2).replace('.', ',')}`;
+}
+
+/**
+ * Lógica do Spin
+ */
+async function spin() {
+    if (isSpinning || balance < currentBet) return;
 
     isSpinning = true;
-    audio.click.play().catch(() => {});
-    audio.spin.play().catch(() => {});
-    
-    // Notifica débito
+    elements.spinBtn.disabled = true;
+    elements.winDisplay.textContent = 'R$ 0,00';
+
+    // Notifica o sistema pai para descontar saldo
     window.parent.postMessage({ type: 'SLOT_BET', amount: currentBet }, '*');
-    balance -= currentBet;
-    updateDisplay();
 
-    // Animação de giro simples
-    const reels = [0, 1, 2].map(id => document.getElementById(`reel-${id}`));
-    reels.forEach(r => r.style.transition = 'none');
-    
-    // Simulação de resultado
-    await new Promise(res => setTimeout(res, 1500));
+    // Animação visual de giro
+    const reels = document.querySelectorAll('.reel');
+    reels.forEach(r => r.classList.add('spinning'));
 
-    setupReels(); // Novo resultado aleatório
-    
+    await new Promise(res => setTimeout(res, 2000));
+
+    // Gera resultado
+    const results = [];
+    reels.forEach((reel, i) => {
+        reel.classList.remove('spinning');
+        reel.innerHTML = '';
+        const column = [];
+        for (let j = 0; j < 3; j++) {
+            const sym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+            reel.appendChild(createSymbolElement(sym));
+            column.push(sym);
+        }
+        results.push(column);
+    });
+
+    checkWin(results);
     isSpinning = false;
-    
-    // Simulação de ganho (10% de chance)
-    if (Math.random() < 0.1) {
-        const win = currentBet * 5;
-        balance += win;
-        audio.win.play().catch(() => {});
-        window.parent.postMessage({ type: 'SLOT_WIN', amount: win }, '*');
-        updateDisplay();
+    elements.spinBtn.disabled = false;
+}
+
+function checkWin(results) {
+    // Simulação simplificada de detecção de ganho para o protótipo
+    const isWin = Math.random() > 0.7;
+    if (isWin) {
+        const multiplier = [2, 5, 10, 50][Math.floor(Math.random() * 4)];
+        const winAmount = currentBet * multiplier;
+        elements.winDisplay.textContent = `R$ ${winAmount.toFixed(2).replace('.', ',')}`;
+        window.parent.postMessage({ type: 'SLOT_WIN', amount: winAmount }, '*');
     }
 }
 
-function updateDisplay() {
-    document.getElementById('balance-display').innerText = `R$ ${balance.toFixed(2).replace('.', ',')}`;
-    document.getElementById('bet-display').innerText = `R$ ${currentBet.toFixed(2).replace('.', ',')}`;
-}
+// Listeners
+elements.spinBtn.addEventListener('click', spin);
+elements.plusBtn.addEventListener('click', () => { currentBet += 1; updateUI(); });
+elements.minusBtn.addEventListener('click', () => { currentBet = Math.max(1, currentBet - 1); updateUI(); });
 
-// Inicia
-init();
+// Comunicação com AppContext
+window.addEventListener('message', (event) => {
+    if (event.data.type === 'SYNC_BALANCE') {
+        balance = event.data.balance;
+        updateUI();
+    }
+});
+
+// Bootstrap
+window.addEventListener('DOMContentLoaded', preloadAssets);

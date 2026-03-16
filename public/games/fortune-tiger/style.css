@@ -1,4 +1,3 @@
-
 :root {
     --gold: #ffd700;
     --red: #b30000;
@@ -9,13 +8,12 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
     background-color: #000;
-    color: #fff;
-    font-family: 'Arial', sans-serif;
+    font-family: Arial, sans-serif;
     overflow: hidden;
     height: 100vh;
     width: 100vw;
@@ -27,38 +25,42 @@ body {
 .loader-overlay {
     position: fixed;
     inset: 0;
-    background: #000;
-    z-index: 100;
+    background: radial-gradient(circle, #4a0000 0%, #000 100%);
     display: flex;
     justify-content: center;
     align-items: center;
+    z-index: 1000;
+}
+
+.loader-content {
+    text-align: center;
+    color: var(--gold);
 }
 
 .tiger-spinner {
     width: 60px;
     height: 60px;
-    border: 5px solid rgba(255, 215, 0, 0.2);
-    border-top-color: var(--gold);
+    border: 5px solid rgba(255, 215, 0, 0.1);
+    border-top: 5px solid var(--gold);
     border-radius: 50%;
     animation: spin 1s linear infinite;
-    margin: 0 auto 15px;
+    margin: 0 auto 20px;
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 .game-wrapper {
     width: 100%;
     max-width: 540px;
     height: 100%;
-    background-image: url('images/bg.png');
+    background: url('images/bg.png') no-repeat center center;
     background-size: cover;
-    background-position: center;
     display: flex;
     flex-direction: column;
     position: relative;
-    opacity: 0;
     transition: opacity 0.5s ease;
 }
 
@@ -67,7 +69,6 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 10px;
 }
 
 .game-logo {
@@ -75,32 +76,55 @@ body {
     width: auto;
 }
 
-.reels-section {
+.game-main {
     flex: 1;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     position: relative;
-    padding: 20px;
 }
 
-.reels-container {
-    width: 100%;
+.tiger-mascot-container {
+    height: 30%;
+    z-index: 5;
+}
+
+.tiger-mascot {
+    height: 100%;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.reels-section {
+    width: 90%;
     aspect-ratio: 1/1;
-    background-image: url('images/reel_bg.png');
-    background-size: 100% 100%;
+    background: url('images/reel_bg.png') no-repeat center center;
+    background-size: contain;
+    padding: 5%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.reels-grid {
+    width: 100%;
+    height: 100%;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 5px;
-    padding: 15px;
     overflow: hidden;
 }
 
 .reel {
     height: 100%;
-    position: relative;
     display: flex;
     flex-direction: column;
+    gap: 5px;
 }
 
 .symbol {
@@ -109,108 +133,82 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 5px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
 }
 
 .symbol img {
-    width: 100%;
-    height: 100%;
-    object-contain: contain;
-}
-
-.tiger-mascot {
-    position: absolute;
-    bottom: -10%;
-    right: -5%;
-    width: 40%;
-    z-index: 5;
-    pointer-events: none;
+    width: 85%;
+    height: 85%;
+    object-fit: contain;
 }
 
 .game-footer {
-    background: rgba(0, 0, 0, 0.8);
-    border-top: 2px solid var(--gold);
+    height: 25%;
+    background: rgba(0,0,0,0.6);
+    backdrop-blur: 5px;
     padding: 15px;
     display: flex;
     flex-direction: column;
     gap: 15px;
 }
 
-.stats-row {
+.display-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 10px;
 }
 
-.stat-box {
+.display-item {
     background: #1a1a1a;
-    border: 1px solid var(--gold);
-    border-radius: 8px;
+    border: 1px solid #333;
     padding: 8px;
+    border-radius: 8px;
     text-align: center;
-    display: flex;
-    flex-direction: column;
 }
 
-.stat-box span:first-child {
+.display-item.highlight {
+    border-color: var(--gold);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+}
+
+.display-item .label {
+    display: block;
     font-size: 10px;
-    color: var(--gold);
+    color: #888;
     font-weight: bold;
+    margin-bottom: 2px;
 }
 
-.stat-box span:last-child {
-    font-size: 16px;
+.display-item .value {
     font-weight: 900;
+    color: #fff;
+    font-size: 14px;
 }
 
 .controls-row {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
-    gap: 10px;
+    gap: 30px;
 }
 
-.bet-controls {
-    display: flex;
-    align-items: center;
-    background: #333;
-    border-radius: 25px;
-    padding: 2px;
-}
-
-.btn-adjust {
-    width: 30px;
-    height: 30px;
+.control-btn {
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    border: none;
-    background: var(--gold);
-    color: #000;
+    background: #333;
+    border: 2px solid var(--gold);
+    color: var(--gold);
+    font-size: 24px;
     font-weight: bold;
     cursor: pointer;
-}
-
-.bet-value {
-    padding: 0 10px;
-    text-align: center;
-}
-
-.bet-value .label {
-    display: block;
-    font-size: 8px;
-    color: #aaa;
-}
-
-.bet-value span:last-child {
-    font-size: 12px;
-    font-weight: bold;
 }
 
 .spin-button {
     background: none;
     border: none;
     cursor: pointer;
-    width: 80px;
-    height: 80px;
     transition: transform 0.1s;
 }
 
@@ -219,16 +217,15 @@ body {
 }
 
 .spin-button img {
-    width: 100%;
-    height: 100%;
+    width: 80px;
+    height: 80px;
 }
 
-.btn-secondary {
-    background: #1a1a1a;
-    border: 1px solid #444;
-    color: #fff;
-    padding: 8px 15px;
-    border-radius: 5px;
-    font-size: 12px;
-    font-weight: bold;
+.spinning {
+    animation: blur 0.1s linear infinite;
+}
+
+@keyframes blur {
+    0% { filter: blur(0); }
+    100% { filter: blur(2px); }
 }
