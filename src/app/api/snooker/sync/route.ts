@@ -3,8 +3,9 @@ import * as cheerio from 'cheerio';
 import { isValidYoutubeVideoId, buildYoutubeWatchUrl, isValidYoutubeChannelId } from '@/utils/youtube';
 
 /**
- * @fileOverview Rota de API para sincronização via FEED PÚBLICO (XML/RSS).
- * Corrigida para validar Channel ID e evitar erros 404 por IDs truncados.
+ * @fileOverview Rota de API para sincronização híbrida.
+ * Camada 1: Feed RSS (XML) - Descoberta de vídeos.
+ * Camada 2: Live Page (HTML) - Confirmação de live ativa em tempo real.
  */
 
 export const runtime = 'nodejs';
@@ -22,88 +23,64 @@ export async function GET(request: Request) {
     }, { status: 400 });
   }
 
-  // Validação rigorosa do Channel ID (Deve ter 24 chars e começar com UC)
   if (!isValidYoutubeChannelId(channelId)) {
     return NextResponse.json({ 
       success: false, 
       error: 'INVALID_CHANNEL_ID',
-      message: `ID do canal inválido ou truncado: ${channelId}. Certifique-se de usar o ID completo de 24 caracteres.` 
+      message: `ID do canal inválido: ${channelId}.` 
     }, { status: 400 });
   }
 
   try {
+    // 1. BUSCA FEED PÚBLICO (XML)
     const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-    
-    const response = await fetch(feedUrl, { 
+    const feedResponse = await fetch(feedUrl, { 
       cache: 'no-store',
-      headers: {
-        'Accept': 'application/xml, text/xml',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
+      headers: { 'Accept': 'application/xml, text/xml', 'User-Agent': 'Mozilla/5.0' }
     });
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        return NextResponse.json({
-          success: false,
-          error: 'CHANNEL_NOT_FOUND',
-          message: 'Canal não encontrado no YouTube. Verifique se o Channel ID está correto.'
-        }, { status: 404 });
-      }
-      return NextResponse.json({ 
-        success: false, 
-        error: 'FETCH_ERROR',
-        message: `YouTube retornou status ${response.status}` 
-      }, { status: response.status });
+
+    // 2. BUSCA PÁGINA LIVE DO CANAL (HTML) - Camada de confirmação real
+    const livePageUrl = `https://www.youtube.com/channel/${channelId}/live`;
+    const liveResponse = await fetch(livePageUrl, {
+      cache: 'no-store',
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+    });
+
+    let liveVideoId: string | null = null;
+    let livePageTitle: string | null = null;
+
+    if (liveResponse.ok) {
+      const liveHtml = await liveResponse.text();
+      // Regex robusto para capturar VideoID em tags canônicas, og:url ou scripts
+      const videoIdMatch = liveHtml.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})">/) ||
+                           liveHtml.match(/<meta property="og:url" content="https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})">/) ||
+                           liveHtml.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+      
+      const titleMatch = liveHtml.match(/<title>(.*?)<\/title>/);
+      
+      if (videoIdMatch) liveVideoId = videoIdMatch[1];
+      if (titleMatch) livePageTitle = titleMatch[1].replace(' - YouTube', '');
     }
 
-    const xml = await response.text();
-    // Forçamos o xmlMode para que seletores com namespace funcionem melhor
+    // 3. PARSE DO XML DO FEED
+    const xml = await feedResponse.text();
     const $ = cheerio.load(xml, { xmlMode: true });
-    
     const entries = $('entry');
     const results: any[] = [];
 
     entries.each((_, el) => {
       const entry = $(el);
+      const videoId = entry.find('yt\\:videoId').text().trim() || entry.find('videoId').text().trim();
       
-      // EXTRAÇÃO DO VIDEO ID COM ESCAPE DE NAMESPACE
-      let videoId = entry.find('yt\\:videoId').first().text().trim() || 
-                    entry.find('videoId').first().text().trim();
-      
-      if (!videoId) {
-        const link = entry.find('link[rel="alternate"]').attr('href') || "";
-        if (link.includes('v=')) {
-          videoId = link.split('v=')[1]?.substring(0, 11);
-        }
-      }
-
-      // Validação do Video ID
       if (!isValidYoutubeVideoId(videoId)) return;
 
-      const title = entry.find('title').first().text().trim();
-      const published = entry.find('published').first().text().trim() || 
-                        entry.find('updated').first().text().trim();
-      
-      const description = entry.find('media\\:description').first().text().trim() || 
-                          entry.find('description').first().text().trim() ||
-                          entry.find('media\\:group media\\:description').first().text().trim() || "";
+      const title = entry.find('title').text().trim();
+      const published = entry.find('published').text().trim();
+      const description = entry.find('media\\:group media\\:description').text().trim() || "";
+      const thumb = entry.find('media\\:group media\\:thumbnail').attr('url') || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
-      let thumbnailUrl = entry.find('media\\:thumbnail').attr('url') || 
-                         entry.find('media\\:group media\\:thumbnail').attr('url');
-      
-      if (!thumbnailUrl) {
-        thumbnailUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-      }
-
-      const titleUpper = title.toUpperCase();
-      const isLiveHint = titleUpper.includes('AO VIVO') || 
-                         titleUpper.includes('LIVE') || 
-                         titleUpper.includes('TRANSMISSÃO');
-      
-      const pubDate = new Date(published).getTime();
-      const now = Date.now();
-      const isVeryRecent = (now - pubDate) < (12 * 60 * 60 * 1000);
+      const isTitleLive = title.toUpperCase().includes('AO VIVO') || title.toUpperCase().includes('LIVE');
+      const isActuallyLive = liveVideoId === videoId;
 
       results.push({
         sourceVideoId: videoId,
@@ -113,27 +90,46 @@ export async function GET(request: Request) {
         title,
         description: description.substring(0, 500),
         publishedAt: published,
-        thumbnailUrl,
-        isMock: false,
-        sourceType: (isLiveHint && isVeryRecent) ? 'live' : 'video',
+        thumbnailUrl: thumb,
+        sourceType: isActuallyLive ? 'live' : 'video',
+        statusHint: isActuallyLive ? 'live' : (isTitleLive ? 'live' : 'video'),
+        liveConfidence: isActuallyLive ? 'high' : (isTitleLive ? 'medium' : 'low'),
+        detectionSource: isActuallyLive ? 'combined' : 'feed',
         isEmbeddableCandidate: true,
         videoValidation: { valid: true }
       });
     });
 
+    // 4. SE A LIVE PAGE TEM UM VÍDEO QUE NÃO ESTÁ NO FEED (Live recém iniciada)
+    if (liveVideoId && !results.find(r => r.videoId === liveVideoId)) {
+      results.unshift({
+        sourceVideoId: liveVideoId,
+        videoId: liveVideoId,
+        youtubeUrl: buildYoutubeWatchUrl(liveVideoId),
+        embedId: liveVideoId,
+        title: livePageTitle || 'Transmissão ao Vivo',
+        description: 'Detectado via página de live do canal.',
+        publishedAt: new Date().toISOString(),
+        thumbnailUrl: `https://i.ytimg.com/vi/${liveVideoId}/hqdefault.jpg`,
+        sourceType: 'live',
+        statusHint: 'live',
+        liveConfidence: 'high',
+        detectionSource: 'channel_live_page',
+        isEmbeddableCandidate: true,
+        videoValidation: { valid: true }
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: results,
       count: results.length,
-      source: 'YouTube RSS Feed'
+      liveDetected: !!liveVideoId,
+      source: 'Hybrid Sync (Feed + Scraping)'
     });
 
   } catch (error: any) {
     console.error('[Sync API] Erro crítico:', error.message);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'SERVER_ERROR',
-      message: error.message 
-    }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'SERVER_ERROR', message: error.message }, { status: 500 });
   }
 }

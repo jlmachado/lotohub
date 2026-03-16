@@ -1,6 +1,6 @@
 /**
  * @fileOverview Orquestrador de Sincronização Multicanal Robusto.
- * Atualizado para tratar corretamente scheduledAt e janelas de aposta.
+ * Atualizado para tratar corretamente liveConfidence e detecção híbrida.
  */
 
 import { SnookerYoutubeService } from './snooker-youtube-service';
@@ -41,38 +41,44 @@ export class SnookerSyncService {
 
       rawData.forEach((ytItem: any) => {
         try {
-          const normalized = SnookerYoutubeService.normalizeItem(ytItem);
+          const videoId = ytItem.videoId;
           
-          if (!normalized) {
+          if (!isValidYoutubeVideoId(videoId)) {
             summary.invalidVideos++;
             return;
           }
 
-          const parsed = SnookerParserService.parse(normalized.title, normalized.description, source.parseProfile);
+          const parsed = SnookerParserService.parse(ytItem.title, ytItem.description, source.parseProfile);
           
-          const uniqueId = `yt_${normalized.embedId}`;
+          const uniqueId = `yt_${videoId}`;
           const existingIdx = newChannelsList.findIndex(c => c.id === uniqueId);
 
-          // Determinar horário programado (Prioriza scheduledAt se disponível no feed)
-          const scheduledAt = normalized.scheduledAt || normalized.publishedAt;
+          const scheduledAt = ytItem.publishedAt;
           const eventTime = new Date(scheduledAt);
 
+          // Status baseado na confiança da detecção
           let internalStatus: SnookerChannel['status'] = 'scheduled';
-          if (normalized.status === 'live') internalStatus = 'live';
-          else if (normalized.status === 'upcoming') internalStatus = 'imminent';
-          else if (normalized.status === 'video') internalStatus = 'finished';
+          if (ytItem.liveConfidence === 'high') {
+            internalStatus = 'live';
+          } else if (ytItem.liveConfidence === 'medium') {
+            // Se o título diz live mas a página do canal não confirmou, tratamos como iminente
+            internalStatus = 'imminent';
+          } else if (ytItem.sourceType === 'video') {
+            internalStatus = 'finished';
+          }
 
-          // Janela de Aposta Padrão: Abre 2h antes do início
+          // Janela de Aposta Padrão
           const bettingOpensAt = new Date(eventTime.getTime() - (120 * 60 * 1000)).toISOString();
 
           if (existingIdx >= 0) {
             const existing = newChannelsList[existingIdx];
             
             if (existing.isManualOverride) {
-              if (internalStatus !== existing.status) {
+              // Mesmo em override, atualizamos o status se detectado como live real
+              if (internalStatus === 'live' && existing.status !== 'live') {
                 newChannelsList[existingIdx] = { 
                   ...existing, 
-                  status: internalStatus, 
+                  status: 'live',
                   updatedAt: new Date().toISOString() 
                 };
                 summary.updated++;
@@ -83,25 +89,25 @@ export class SnookerSyncService {
             newChannelsList[existingIdx] = {
               ...existing,
               status: internalStatus,
-              scheduledAt: scheduledAt,
               title: parsed.eventTitle,
               tournamentName: parsed.tournamentName,
-              thumbnailUrl: normalized.thumbnailUrl,
+              thumbnailUrl: ytItem.thumbnailUrl,
               metadataConfidence: parsed.confidence,
               updatedAt: new Date().toISOString(),
               sourceStatus: 'synced',
               enabled: existing.enabled || internalStatus === 'live' || internalStatus === 'imminent',
-              bettingOpensAt: existing.bettingOpensAt || bettingOpensAt
+              liveConfidence: ytItem.liveConfidence,
+              detectionSource: ytItem.detectionSource
             };
             summary.updated++;
           } else if (source.autoCreateChannels) {
             const newChannel: SnookerChannel = {
               id: uniqueId,
               title: parsed.eventTitle,
-              description: normalized.description.substring(0, 200),
-              youtubeUrl: normalized.youtubeUrl,
-              embedId: normalized.embedId,
-              sourceVideoId: normalized.embedId,
+              description: ytItem.description.substring(0, 200),
+              youtubeUrl: ytItem.youtubeUrl,
+              embedId: videoId,
+              sourceVideoId: videoId,
               source: 'youtube',
               sourceName: source.name,
               sourceId: source.id,
@@ -120,13 +126,15 @@ export class SnookerSyncService {
               priority: 10,
               enabled: !source.requireAdminApproval,
               bancaId,
-              thumbnailUrl: normalized.thumbnailUrl,
+              thumbnailUrl: ytItem.thumbnailUrl,
               tournamentName: parsed.tournamentName,
               prizeLabel: parsed.prizeLabel,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               bettingAvailability: 'all',
-              bettingOpensAt: bettingOpensAt
+              bettingOpensAt: bettingOpensAt,
+              liveConfidence: ytItem.liveConfidence,
+              detectionSource: ytItem.detectionSource
             };
             newChannelsList.unshift(newChannel);
             summary.created++;
