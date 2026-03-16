@@ -10,11 +10,12 @@ interface ActivityTickerProps {
 export const ActivityTicker = ({ channelId }: ActivityTickerProps) => {
     const { snookerActivityFeed } = useAppContext();
     
-    const feedItems = useMemo(() =>
-        snookerActivityFeed.filter(f => f.channelId === channelId)
-        .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 20),
-    [snookerActivityFeed, channelId]);
+    const feedItems = useMemo(() => {
+        if (!snookerActivityFeed || !Array.isArray(snookerActivityFeed)) return [];
+        return snookerActivityFeed.filter(f => f.channelId === channelId)
+            .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 20);
+    }, [snookerActivityFeed, channelId]);
 
     if (feedItems.length === 0) {
         return null;

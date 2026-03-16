@@ -10,11 +10,12 @@ interface BetTickerProps {
 export const BetTicker = ({ channelId }: BetTickerProps) => {
     const { snookerBetsFeed } = useAppContext();
     
-    const feedItems = useMemo(() =>
-        snookerBetsFeed.filter(f => f.channelId === channelId)
-        .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 20),
-    [snookerBetsFeed, channelId]);
+    const feedItems = useMemo(() => {
+        if (!snookerBetsFeed || !Array.isArray(snookerBetsFeed)) return [];
+        return snookerBetsFeed.filter(f => f.channelId === channelId)
+            .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 20);
+    }, [snookerBetsFeed, channelId]);
 
     if (feedItems.length === 0) {
         return null; // Don't render if there's no feed
