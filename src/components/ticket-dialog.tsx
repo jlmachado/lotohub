@@ -113,6 +113,8 @@ export function TicketDialog({
     // Dados normalizados para o public/impressao.html
     const ticketData = {
       banca: 'LotoHub',
+      bancaId: user?.bancaId || '10000',
+      perfil: user?.tipoUsuario || 'USUARIO',
       title: 'BILHETE DE APOSTA',
       ticketId: ticketId,
       terminal: terminal || 'Digital',
@@ -123,6 +125,8 @@ export function TicketDialog({
       jogo: getGameLocationInfo(),
       cliente: user?.nome || 'Consumidor',
       vendedor: isAgent ? (user?.nome || 'Agente') : 'LotoHub Digital',
+      statusText: 'AGUARDANDO RESULTADO',
+      idFormatado: (isFootball ? 'FB-SB-' : 'JD-BCH-') + ticketId.substring(0, 12),
       apostas: (ticketItems || []).map((item) => {
         if (isFootball) {
           return {

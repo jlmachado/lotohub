@@ -3,152 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Impressão LotoHub</title>
+    <title>Impressão de Bilhete Profissional</title>
     <style>
         body {
             font-family: 'Courier New', Courier, monospace;
-            font-size: 14px;
-            color: black;
-            background: white;
             margin: 0;
             padding: 10px;
-            width: 300px; /* Largura padrão POS térmica */
+            background: white;
+            color: black;
+            line-height: 1.2;
+            font-size: 12px;
         }
         .ticket {
-            width: 100%;
+            width: 300px;
+            margin: 0 auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
-        .header {
-            text-align: center;
-            font-weight: bold;
-            font-size: 18px;
-            margin-bottom: 5px;
-            text-transform: uppercase;
-        }
-        .divider {
-            border-bottom: 1px dashed #000;
-            margin: 10px 0;
-        }
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 3px;
-        }
-        .label {
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 11px;
-        }
-        .value {
-            text-align: right;
-        }
-        .bet-item {
-            margin-bottom: 10px;
-            padding: 5px;
-            border: 1px solid #eee;
-        }
-        .centered {
-            text-align: center;
-        }
-        .bold {
-            font-weight: bold;
-        }
-        .footer {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 10px;
-        }
-        .poule {
-            font-size: 16px;
-            font-weight: bold;
-            margin: 10px 0;
-            display: block;
-            word-break: break-all;
-        }
+        .text-center { text-align: center; }
+        .bold { font-weight: bold; }
+        .title { font-size: 16px; font-weight: 900; }
+        
         @media print {
+            body { padding: 0; }
+            .ticket { width: 100%; max-width: 300px; }
             .no-print { display: none; }
-            body { padding: 0; margin: 0; }
         }
     </style>
 </head>
 <body>
-    <div id="print-container">
-        <p class="centered">Carregando bilhete...</p>
-    </div>
+    <div id="ticket-container" class="ticket">Preparando bilhete...</div>
 
     <script>
-        function render() {
-            const container = document.getElementById('print-container');
+        window.onload = function() {
             const rawData = localStorage.getItem('PRINT_TICKET_DATA');
-            
             if (!rawData) {
-                container.innerHTML = '<p class="centered">Erro: Dados do bilhete não encontrados.</p>';
+                document.getElementById('ticket-container').innerHTML = "ERRO: DADOS NÃO ENCONTRADOS";
                 return;
             }
 
             try {
                 const data = JSON.parse(rawData);
-                
-                let html = `
-                    <div class="ticket">
-                        <div class="header">${data.banca || 'LOTOHUB'}</div>
-                        <div class="centered bold">${data.title || 'COMPROVANTE'}</div>
-                        <div class="divider"></div>
-                        
-                        <div class="info-row"><span class="label">Pule:</span></div>
-                        <div class="poule centered">${data.ticketId}</div>
-                        
-                        <div class="info-row"><span class="label">Data:</span><span class="value">${data.datetime}</span></div>
-                        <div class="info-row"><span class="label">Estado:</span><span class="value">${data.estado || data.jogo.split('-')[0] || 'Nacional'}</span></div>
-                        <div class="info-row"><span class="label">Loteria:</span><span class="value">${data.loteria || data.jogo.split('-')[1] || 'Geral'}</span></div>
-                        <div class="info-row"><span class="label">Horário:</span><span class="value">${data.horario || '--:--'}</span></div>
-                        
-                        <div class="divider"></div>
-                        <div class="centered bold">APOSTAS</div>
-                        <div class="divider"></div>
-                `;
+                const container = document.getElementById('ticket-container');
 
-                data.apostas.forEach(aposta => {
-                    html += `
-                        <div class="bet-item">
-                            <div class="info-row"><span class="label">${aposta.modalidade}</span></div>
-                            <div class="bold" style="margin: 5px 0;">${aposta.numero}</div>
-                            <div class="info-row"><span>Valor:</span><span class="bold">R$ ${aposta.valor}</span></div>
-                        </div>
-                    `;
+                // Utilitários de Formatação para Monospace (32 colunas)
+                const line = "================================";
+                const sep  = "--------------------------------";
+                
+                const center = (str) => {
+                    const spaces = Math.max(0, Math.floor((32 - str.length) / 2));
+                    return " ".repeat(spaces) + str;
+                };
+
+                const justify = (left, right) => {
+                    const dots = Math.max(1, 32 - left.length - right.length);
+                    return left + " ".repeat(dots) + right;
+                };
+
+                const fmtVal = (val) => {
+                    return "R$ " + String(val).replace('.', ',');
+                };
+
+                let content = "";
+
+                // Cabeçalho
+                content += center(data.banca.toUpperCase()) + "\n";
+                content += center("COMPROVANTE DE APOSTA") + "\n";
+                content += line + "\n";
+                content += "Tipo: " + (data.loteriaLabel || data.loteria || "Jogo do Bicho") + "\n\n";
+
+                // Dados do Bilhete
+                content += "Bilhete:  " + (data.ticketId || "N/A") + "\n";
+                content += "Banca:    " + (data.bancaId || "10000") + "\n";
+                content += "Terminal: " + (data.terminal || "N/A") + "\n\n";
+                
+                content += "Emitido em:\n";
+                content += (data.datetime || "") + "\n\n";
+                
+                content += "Usuário: " + (data.cliente || "Consumidor") + "\n";
+                content += "Perfil:  " + (data.perfil || "USUARIO") + "\n";
+                content += sep + "\n";
+
+                // Dados da Extração
+                content += "DADOS DA EXTRAÇÃO\n\n";
+                content += "Estado:  " + (data.estado || "") + "\n";
+                content += "Loteria: " + (data.loteria || "") + "\n";
+                content += "Horário: " + (data.horario || "") + "\n\n";
+                
+                const uniqueMods = [...new Set(data.apostas.map(a => a.modalidade))];
+                content += "Modalidades:\n";
+                content += uniqueMods.join(' / ') + "\n";
+                content += sep + "\n";
+
+                // Itens Apostados (Formato Tabela)
+                content += "ITENS APOSTADOS\n\n";
+                content += "SEQ MODALID. | NUMERO | VALOR\n";
+                
+                data.apostas.forEach((ap, i) => {
+                    const seq = String(i + 1).padStart(2, '0');
+                    const mod = ap.modalidade.substring(0, 8).padEnd(8, ' ');
+                    const num = String(ap.numero).substring(0, 6).padEnd(6, ' ');
+                    const val = fmtVal(ap.valor).padStart(9, ' ');
+                    content += `[${seq}] ${mod} | ${num} |${val}\n`;
                 });
 
-                html += `
-                        <div class="divider"></div>
-                        <div class="info-row"><span class="label">TOTAL APOSTADO:</span><span class="bold">${data.total}</span></div>
-                        ${data.possivelRetorno && data.possivelRetorno !== '0,00' ? 
-                            `<div class="info-row"><span class="label">RETORNO POSSÍVEL:</span><span class="bold">R$ ${data.possivelRetorno}</span></div>` : ''}
-                        
-                        <div class="divider"></div>
-                        <div class="info-row"><span class="label">Terminal:</span><span class="value">${data.terminal}</span></div>
-                        <div class="info-row"><span class="label">Vendedor:</span><span class="value">${data.vendedor}</span></div>
-                        
-                        <div class="footer">
-                            <p>Consulte a validade deste bilhete em: <br><strong>lotohub.com</strong></p>
-                            <p>Boa Sorte!</p>
-                        </div>
-                    </div>
-                `;
+                content += sep + "\n";
 
-                container.innerHTML = html;
+                // Resumo Financeiro
+                content += "RESUMO FINANCEIRO\n\n";
+                content += justify("Subtotal:", data.total) + "\n";
+                content += justify("Desconto:", "R$ 0,00") + "\n";
+                content += justify("TOTAL FINAL:", data.total) + "\n\n";
 
-                // Delay seguro para o Android renderizar o conteúdo antes do preview
+                if (data.possivelRetorno && data.possivelRetorno !== '---') {
+                    content += "Possível retorno:\n";
+                    content += "R$ " + data.possivelRetorno + "\n";
+                }
+                
+                content += sep + "\n";
+
+                // Status e Auditoria
+                content += "STATUS\n\n";
+                content += "Situação:\n";
+                content += (data.statusText || "AGUARDANDO RESULTADO") + "\n\n";
+                content += "Código:\n";
+                content += (data.idFormatado || ("JD-BCH-" + data.ticketId)) + "\n\n";
+                content += "Validador:\n";
+                content += (data.ticketId + "-" + data.terminal).substring(0, 32) + "\n";
+                
+                content += sep + "\n";
+                content += center("Este comprovante confirma o") + "\n";
+                content += center("registro da aposta.") + "\n";
+                content += center("Guarde para conferência.") + "\n";
+                content += line;
+
+                container.innerHTML = content;
+
+                // Disparar impressão após render estável
                 setTimeout(() => {
                     window.print();
-                    // window.close(); // Opcional
                 }, 800);
 
             } catch (e) {
-                container.innerHTML = '<p class="centered">Erro ao processar dados de impressão.</p>';
-                console.error(e);
+                console.error("Erro no processamento do bilhete:", e);
+                document.getElementById('ticket-container').innerHTML = "ERRO AO GERAR DOCUMENTO";
             }
-        }
-
-        window.onload = render;
+        };
     </script>
 </body>
 </html>
