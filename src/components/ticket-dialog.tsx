@@ -1,6 +1,5 @@
-
 /**
- * @fileOverview Modal de sucesso pós-aposta redesenhado para layout textual.
+ * @fileOverview Modal de sucesso pós-aposta redesenhado para layout textual e impressão robusta.
  */
 
 'use client';
@@ -51,7 +50,6 @@ export function TicketDialog({
 
   const isAgent = user?.tipoUsuario === 'CAMBISTA' || user?.tipoUsuario === 'PROMOTOR' || user?.tipoUsuario === 'ADMIN' || user?.tipoUsuario === 'SUPER_ADMIN';
 
-  // Helper para formatar a localização do jogo no bilhete
   const getGameLocationInfo = () => {
     if (lotteryName === 'Futebol') return 'Sportsbook Global';
     const firstItem = ticketItems[0];
@@ -109,20 +107,27 @@ export function TicketDialog({
   const handlePrint = () => {
     if (!ticketId) return;
 
+    const firstItem = ticketItems[0] || {};
     const isFootball = lotteryName === 'Futebol';
+    
+    // Dados normalizados para o public/impressao.html
     const ticketData = {
       banca: 'LotoHub',
+      title: 'BILHETE DE APOSTA',
       ticketId: ticketId,
-      terminal: terminal || '',
+      terminal: terminal || 'Digital',
       datetime: generationTime || new Date().toLocaleString('pt-BR'),
+      estado: firstItem.estadoLabel || (isFootball ? 'Global' : 'Nacional'),
+      loteria: firstItem.loteriaLabel || lotteryName,
+      horario: firstItem.horario || (isFootball ? 'Live' : '--:--'),
       jogo: getGameLocationInfo(),
-      cliente: user?.nome || 'Cliente Final',
-      vendedor: isAgent ? user.nome : 'LotoHub Digital',
+      cliente: user?.nome || 'Consumidor',
+      vendedor: isAgent ? (user?.nome || 'Agente') : 'LotoHub Digital',
       apostas: (ticketItems || []).map((item) => {
         if (isFootball) {
           return {
             modalidade: item.matchName || 'Sportsbook',
-            numero: `Vencedor: ${item.pickLabel} (@${item.odd?.toFixed(2)})`,
+            numero: `Pick: ${item.pickLabel} (@${item.odd?.toFixed(2)})`,
             valor: (item.value || totalValue).toFixed(2),
           };
         }
@@ -137,7 +142,12 @@ export function TicketDialog({
     };
 
     localStorage.setItem('PRINT_TICKET_DATA', JSON.stringify(ticketData));
-    window.open('/impressao.html', 'ImpressaoLotoHub', 'width=400,height=600');
+    
+    // Abrir em nova aba para garantir estabilidade no Android
+    const printWindow = window.open('/impressao.html', '_blank');
+    if (!printWindow) {
+      toast({ variant: 'destructive', title: 'Erro na Impressão', description: 'Bloqueador de popup ativado. Libere para imprimir.' });
+    }
   };
 
   if (!ticketId || !generationTime) return null;

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Header } from '@/components/header';
@@ -62,12 +61,16 @@ export default function ResultadosPublicPage() {
   const handlePrint = (result: any) => {
     const ticketData = {
       banca: 'LOTOHUB',
-      ticketId: 'RESULTADO OFICIAL',
+      title: 'RESULTADO OFICIAL',
+      ticketId: 'RES-' + result.id.split('-').pop(),
       terminal: 'SINC QUADRO',
-      datetime: `${new Date(result.date + 'T12:00:00').toLocaleDateString('pt-BR')} - ${result.time}`,
+      datetime: `${new Date(result.date + 'T12:00:00').toLocaleDateString('pt-BR')} ${result.time}`,
+      estado: result.stateName,
+      loteria: result.extractionName,
+      horario: result.time,
       jogo: `${result.stateName} - ${result.extractionName}`,
       cliente: 'Público',
-      vendedor: 'Sistema',
+      vendedor: 'Sistema LotoHub',
       apostas: result.prizes.map((p: any) => ({
         modalidade: `${p.position}º PRÊMIO`,
         numero: `${p.milhar} - ${p.animal.toUpperCase()}`,
@@ -78,7 +81,10 @@ export default function ResultadosPublicPage() {
     };
 
     localStorage.setItem('PRINT_TICKET_DATA', JSON.stringify(ticketData));
-    window.open('/impressao.html', 'ImpressaoLotoHub', 'width=400,height=600');
+    const printWindow = window.open('/impressao.html', '_blank');
+    if (!printWindow) {
+      toast({ variant: 'destructive', title: 'Erro na Impressão', description: 'Libere popups para imprimir.' });
+    }
   };
 
   const handleShare = async (result: any) => {

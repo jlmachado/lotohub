@@ -1,7 +1,6 @@
-
 /**
  * @fileOverview Gerador de bilhetes em imagem (PNG) usando Canvas API.
- * Versão V3: Layout 100% textual, sem QR Code, otimizado para clareza total.
+ * Versão V4: Otimizado para compartilhamento, removido QR Code.
  */
 
 export interface TicketImageData {
@@ -20,9 +19,9 @@ export async function generateTicketImage(ticket: TicketImageData): Promise<stri
   
   if (!ctx) throw new Error('Não foi possível obter o contexto do canvas');
 
-  // Largura fixa para mobile/compartilhamento, altura reduzida sem QR Code
+  // Largura fixa para mobile/compartilhamento
   const width = 450;
-  const height = 650;
+  const height = 600;
   canvas.width = width;
   canvas.height = height;
 
@@ -37,7 +36,7 @@ export async function generateTicketImage(ticket: TicketImageData): Promise<stri
 
   // Cabeçalho - Marca
   ctx.fillStyle = '#FBBF24';
-  ctx.font = 'black 32px Arial';
+  ctx.font = '900 32px Arial';
   ctx.textAlign = 'center';
   ctx.fillText('LOTOHUB PREMIUM', width / 2, 70);
 
@@ -62,7 +61,7 @@ export async function generateTicketImage(ticket: TicketImageData): Promise<stri
     ctx.fillText(label, 50, y);
     
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = isHighlight ? 'black 22px Courier New' : 'bold 16px Courier New';
+    ctx.font = isHighlight ? '900 22px Courier New' : 'bold 16px Courier New';
     
     // Suporte a multiline para detalhes longos
     if (value.length > 35) {
@@ -88,24 +87,21 @@ export async function generateTicketImage(ticket: TicketImageData): Promise<stri
 
   let currentY = 160;
   currentY = drawField('POULE / IDENTIFICADOR', ticket.poule, currentY);
-  currentY = drawField('ESTADO / BANCA / HORÁRIO', ticket.jogo, currentY + 15, true);
+  currentY = drawField('EXTRAÇÃO / HORÁRIO', ticket.jogo, currentY + 15, true);
   currentY = drawField('DETALHES DA APOSTA', ticket.aposta, currentY + 15);
   currentY = drawField('VALOR APOSTADO', `R$ ${ticket.valor.toFixed(2).replace('.', ',')}`, currentY + 15);
-  currentY = drawField('DATA E HORA DO REGISTRO', ticket.data, currentY + 15);
-  currentY = drawField('TERMINAL DE ORIGEM', ticket.terminal, currentY + 15);
+  currentY = drawField('DATA DO REGISTRO', ticket.data, currentY + 15);
+  currentY = drawField('TERMINAL', ticket.terminal, currentY + 15);
 
-  // Rodapé de Segurança
-  ctx.fillStyle = 'rgba(255,215,0,0.1)';
-  ctx.fillRect(40, height - 100, width - 80, 60);
-  
+  // Rodapé
   ctx.textAlign = 'center';
   ctx.fillStyle = '#FBBF24';
   ctx.font = 'bold 12px Arial';
-  ctx.fillText(ticket.status === 'PENDENTE' ? 'AGUARDANDO SORTEIO' : ticket.status, width / 2, height - 75);
+  ctx.fillText(ticket.status === 'PENDENTE' ? 'AGUARDANDO SORTEIO' : ticket.status, width / 2, height - 60);
   
   ctx.fillStyle = '#64748B';
   ctx.font = 'italic 10px Arial';
-  ctx.fillText('Acesse lotohub.com para consultar a validade desta poule.', width / 2, height - 55);
+  ctx.fillText('Acesse lotohub.com para validar esta poule.', width / 2, height - 40);
 
   return canvas.toDataURL('image/png');
 }

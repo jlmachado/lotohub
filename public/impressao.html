@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -8,101 +7,148 @@
     <style>
         body {
             font-family: 'Courier New', Courier, monospace;
-            background: white;
+            font-size: 14px;
             color: black;
+            background: white;
             margin: 0;
             padding: 10px;
-            width: 300px; /* Largura padrão para papel térmico 80mm */
+            width: 300px; /* Largura padrão POS térmica */
         }
-        .header { text-align: center; border-bottom: 1px dashed black; padding-bottom: 10px; margin-bottom: 10px; }
-        .banca { font-size: 20px; font-weight: bold; margin: 0; }
-        .info { font-size: 14px; margin: 5px 0; }
-        .highlight { font-weight: bold; text-transform: uppercase; font-size: 16px; margin: 10px 0; display: block; }
-        .divider { border-top: 1px dashed black; margin: 10px 0; }
-        .section-title { font-size: 12px; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; color: #333; }
-        
-        table { width: 100%; border-collapse: collapse; }
-        td { padding: 4px 0; font-size: 14px; }
-        .col-pos { width: 40px; }
-        .col-val { font-weight: bold; }
-        .col-price { text-align: right; }
-
-        .footer { text-align: center; margin-top: 20px; font-size: 11px; font-style: italic; border-top: 1px dashed black; padding-top: 10px; }
-        
+        .ticket {
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        .divider {
+            border-bottom: 1px dashed #000;
+            margin: 10px 0;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+        }
+        .label {
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+        .value {
+            text-align: right;
+        }
+        .bet-item {
+            margin-bottom: 10px;
+            padding: 5px;
+            border: 1px solid #eee;
+        }
+        .centered {
+            text-align: center;
+        }
+        .bold {
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 10px;
+        }
+        .poule {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 10px 0;
+            display: block;
+            word-break: break-all;
+        }
         @media print {
-            @page { margin: 0; }
-            body { padding: 5px; }
+            .no-print { display: none; }
+            body { padding: 0; margin: 0; }
         }
     </style>
 </head>
 <body>
-    <div id="printContent">Carregando dados para impressão...</div>
+    <div id="print-container">
+        <p class="centered">Carregando bilhete...</p>
+    </div>
 
     <script>
-        window.onload = function() {
+        function render() {
+            const container = document.getElementById('print-container');
             const rawData = localStorage.getItem('PRINT_TICKET_DATA');
+            
             if (!rawData) {
-                document.getElementById('printContent').innerHTML = 'Erro: Nenhum dado encontrado para imprimir.';
+                container.innerHTML = '<p class="centered">Erro: Dados do bilhete não encontrados.</p>';
                 return;
             }
 
-            const data = JSON.parse(rawData);
-            let html = `
-                <div class="header">
-                    <p class="banca">${data.banca || 'LOTOHUB'}</p>
-                    <div class="info">PULE: <b>${data.ticketId}</b></div>
-                    <div class="info">${data.datetime}</div>
-                </div>
-
-                <div class="section-title">Localização da Extração</div>
-                <span class="highlight">${data.jogo}</span>
-
-                <div class="divider"></div>
-
-                <div class="section-title">Palpites Confirmados</div>
-                <table>
-            `;
-
-            data.apostas.forEach(aposta => {
-                html += `
-                    <tr>
-                        <td class="col-pos">${aposta.modalidade}</td>
-                        <td class="col-val">${aposta.numero}</td>
-                        <td class="col-price">R$ ${aposta.valor}</td>
-                    </tr>
+            try {
+                const data = JSON.parse(rawData);
+                
+                let html = `
+                    <div class="ticket">
+                        <div class="header">${data.banca || 'LOTOHUB'}</div>
+                        <div class="centered bold">${data.title || 'COMPROVANTE'}</div>
+                        <div class="divider"></div>
+                        
+                        <div class="info-row"><span class="label">Pule:</span></div>
+                        <div class="poule centered">${data.ticketId}</div>
+                        
+                        <div class="info-row"><span class="label">Data:</span><span class="value">${data.datetime}</span></div>
+                        <div class="info-row"><span class="label">Estado:</span><span class="value">${data.estado || data.jogo.split('-')[0] || 'Nacional'}</span></div>
+                        <div class="info-row"><span class="label">Loteria:</span><span class="value">${data.loteria || data.jogo.split('-')[1] || 'Geral'}</span></div>
+                        <div class="info-row"><span class="label">Horário:</span><span class="value">${data.horario || '--:--'}</span></div>
+                        
+                        <div class="divider"></div>
+                        <div class="centered bold">APOSTAS</div>
+                        <div class="divider"></div>
                 `;
-            });
 
-            html += `
-                </table>
+                data.apostas.forEach(aposta => {
+                    html += `
+                        <div class="bet-item">
+                            <div class="info-row"><span class="label">${aposta.modalidade}</span></div>
+                            <div class="bold" style="margin: 5px 0;">${aposta.numero}</div>
+                            <div class="info-row"><span>Valor:</span><span class="bold">R$ ${aposta.valor}</span></div>
+                        </div>
+                    `;
+                });
 
-                <div class="divider"></div>
+                html += `
+                        <div class="divider"></div>
+                        <div class="info-row"><span class="label">TOTAL APOSTADO:</span><span class="bold">${data.total}</span></div>
+                        ${data.possivelRetorno && data.possivelRetorno !== '0,00' ? 
+                            `<div class="info-row"><span class="label">RETORNO POSSÍVEL:</span><span class="bold">R$ ${data.possivelRetorno}</span></div>` : ''}
+                        
+                        <div class="divider"></div>
+                        <div class="info-row"><span class="label">Terminal:</span><span class="value">${data.terminal}</span></div>
+                        <div class="info-row"><span class="label">Vendedor:</span><span class="value">${data.vendedor}</span></div>
+                        
+                        <div class="footer">
+                            <p>Consulte a validade deste bilhete em: <br><strong>lotohub.com</strong></p>
+                            <p>Boa Sorte!</p>
+                        </div>
+                    </div>
+                `;
 
-                <div style="text-align: right; font-size: 16px; font-weight: bold;">
-                    TOTAL: ${data.total}
-                </div>
-                <div style="text-align: right; font-size: 14px; font-weight: bold; color: #333; margin-top: 5px;">
-                    RETORNO POTENCIAL: R$ ${data.possivelRetorno}
-                </div>
+                container.innerHTML = html;
 
-                <div class="divider"></div>
-                <div class="info">Terminal: ${data.terminal}</div>
-                <div class="info">Vendedor: ${data.vendedor}</div>
+                // Delay seguro para o Android renderizar o conteúdo antes do preview
+                setTimeout(() => {
+                    window.print();
+                    // window.close(); // Opcional
+                }, 800);
 
-                <div class="footer">
-                    Comprovante válido apenas para conferência oficial.<br>
-                    Boa sorte e jogue com responsabilidade.
-                </div>
-            `;
+            } catch (e) {
+                container.innerHTML = '<p class="centered">Erro ao processar dados de impressão.</p>';
+                console.error(e);
+            }
+        }
 
-            document.getElementById('printContent').innerHTML = html;
-            
-            // Dispara impressão automaticamente e fecha janela
-            setTimeout(() => {
-                window.print();
-                setTimeout(() => window.close(), 500);
-            }, 500);
-        };
+        window.onload = render;
     </script>
 </body>
 </html>
