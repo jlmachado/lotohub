@@ -7,6 +7,7 @@ import { PopupDialog } from '@/components/popup-dialog';
 import { NewsTicker } from '@/components/NewsTicker';
 import { HomeCards } from '@/components/HomeCards';
 import { StatusBar } from '@/components/StatusBar';
+import { SnookerHomeSection } from '@/components/sinuca/SnookerHomeSection';
 
 
 export default function Home() {
@@ -57,6 +58,9 @@ export default function Home() {
       <NewsTicker />
       
       <HomeCards />
+
+      {/* Destaques de Sinuca ao Vivo e Próximos Jogos */}
+      <SnookerHomeSection />
 
       {user && (
         <PopupDialog 

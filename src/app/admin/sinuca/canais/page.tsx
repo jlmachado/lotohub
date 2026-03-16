@@ -1,11 +1,10 @@
-
 'use client';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   ChevronLeft, PlusCircle, Edit, Trash2, Zap, RefreshCw, 
   History, Info, ExternalLink, Copy, Check, X, Filter, 
-  Video, MonitorPlay, ShieldAlert, AlertTriangle, CheckCircle2, Star, BarChart3, Clock
+  Video, MonitorPlay, ShieldAlert, AlertTriangle, CheckCircle2, Star, BarChart3, Clock, Lock, Unlock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { isValidYoutubeVideoId, extractYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
+import { getSnookerMarketState } from '@/utils/snooker-rules';
 
 type FormState = Omit<SnookerChannel, 'id' | 'createdAt' | 'updatedAt' | 'bancaId' | 'status' | 'odds' | 'scoreA' | 'scoreB' | 'visibilityStatus' | 'isExpired' | 'isUpcoming' | 'isLiveNow'>;
 
@@ -37,7 +37,10 @@ const initialFormState: FormState = {
   priority: 10,
   enabled: true,
   isManualOverride: false,
-  scheduledAt: ''
+  scheduledAt: '',
+  bettingAvailability: 'all',
+  bettingOpensAt: '',
+  bettingClosesAt: ''
 };
 
 export default function AdminSinucaCanaisPage() {
@@ -56,7 +59,6 @@ export default function AdminSinucaCanaisPage() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     
-    // Filtros
     const [filterType, setFilterType] = useState<'all' | 'live' | 'upcoming' | 'expired'>('all');
 
     const filteredChannels = useMemo(() => {
@@ -137,7 +139,7 @@ export default function AdminSinucaCanaisPage() {
                         <TableRow className="border-white/5 h-10">
                             <TableHead className="text-[9px] uppercase font-black px-4">Jogo / Torneio</TableHead>
                             <TableHead className="text-[9px] uppercase font-black">Visibilidade</TableHead>
-                            <TableHead className="text-[9px] uppercase font-black">Apostas</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black">Mercado</TableHead>
                             <TableHead className="text-[9px] uppercase font-black text-center">Ativo</TableHead>
                             <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
                         </TableRow>
@@ -147,9 +149,9 @@ export default function AdminSinucaCanaisPage() {
                             <TableRow><TableCell colSpan={5} className="text-center py-24 text-muted-foreground italic">Nenhum canal encontrado.</TableCell></TableRow>
                         ) : (
                             filteredChannels.map(channel => {
-                                const isVideoValid = isValidYoutubeVideoId(channel.embedId);
                                 const isPrimary = channel.id === snookerPrimaryChannelId;
                                 const isForced = channel.id === snookerAutomationSettings.manualPrimaryChannelId;
+                                const market = getSnookerMarketState(channel);
                                 
                                 return (
                                     <TableRow key={channel.id} className={cn("border-white/5 hover:bg-white/5 transition-colors", isPrimary && "bg-primary/5")}>
@@ -173,12 +175,17 @@ export default function AdminSinucaCanaisPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge className={cn(
-                                                "text-[7px] font-black h-4 uppercase",
-                                                channel.visibilityStatus === 'expired' ? "bg-slate-800 text-slate-500" : "bg-green-600/20 text-green-500"
-                                            )}>
-                                                {channel.visibilityStatus === 'expired' ? 'FECHADO' : 'ABERTO'}
-                                            </Badge>
+                                            <div className="flex flex-col gap-1">
+                                                <Badge className={cn(
+                                                    "text-[7px] font-black h-4 uppercase w-fit",
+                                                    market.isBettable ? "bg-green-600/20 text-green-500 border-green-500/30" : "bg-slate-800 text-slate-500"
+                                                )}>
+                                                    {market.label}
+                                                </Badge>
+                                                {market.isBettable && (
+                                                    <span className="text-[7px] text-green-500 uppercase font-bold italic">LIBERADO P/ APOSTA</span>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-center">
                                             <Switch checked={channel.enabled} onCheckedChange={(v) => updateSnookerChannel({...channel, enabled: v})} className="scale-75" />
@@ -197,7 +204,7 @@ export default function AdminSinucaCanaisPage() {
             </Card>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-xl bg-[#0f172a] border-white/10 text-white">
+                <DialogContent className="sm:max-w-xl bg-[#0f172a] border-white/10 text-white overflow-y-auto max-h-[90vh]">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-black uppercase italic tracking-tighter">
                             {editingId ? 'Editar Canal' : 'Novo Canal'}
@@ -218,6 +225,41 @@ export default function AdminSinucaCanaisPage() {
                             <div className="space-y-2">
                                 <Label className="text-[10px] uppercase font-bold text-slate-400">Início Agendado</Label>
                                 <Input type="datetime-local" value={currentChannel.scheduledAt} onChange={(e) => setCurrentChannel({ ...currentChannel, scheduledAt: e.target.value })} className="h-11 bg-black/20 border-white/10" />
+                            </div>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 space-y-4">
+                            <h4 className="text-xs font-black uppercase text-primary italic">Configurações de Mercado</h4>
+                            
+                            <div className="grid gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-[9px] uppercase font-bold">Disponibilidade de Aposta</Label>
+                                    <Select 
+                                        value={currentChannel.bettingAvailability} 
+                                        onValueChange={(v: any) => setCurrentChannel({...currentChannel, bettingAvailability: v})}
+                                    >
+                                        <SelectTrigger className="bg-black/20 border-white/10 h-10">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Pré-Jogo e Ao Vivo (Full)</SelectItem>
+                                            <SelectItem value="prelive">Somente Pré-Jogo</SelectItem>
+                                            <SelectItem value="live_only">Somente Ao Vivo</SelectItem>
+                                            <SelectItem value="disabled">Mercado Desativado</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-[9px] uppercase font-bold">Abre Apostas em:</Label>
+                                        <Input type="datetime-local" value={currentChannel.bettingOpensAt} onChange={(e) => setCurrentChannel({...currentChannel, bettingOpensAt: e.target.value})} className="h-10 bg-black/20 border-white/10" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-[9px] uppercase font-bold">Fecha Apostas em:</Label>
+                                        <Input type="datetime-local" value={currentChannel.bettingClosesAt} onChange={(e) => setCurrentChannel({...currentChannel, bettingClosesAt: e.target.value})} className="h-10 bg-black/20 border-white/10" />
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

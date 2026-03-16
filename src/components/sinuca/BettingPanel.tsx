@@ -1,6 +1,5 @@
-
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,17 +7,20 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAppContext } from "@/context/AppContext";
 import { useToast } from "@/hooks/use-toast";
-import { Minus, Plus, Clock, AlertTriangle, CheckCircle2, Lock } from 'lucide-react';
+import { Minus, Plus, CheckCircle2, Lock, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getSnookerMarketState } from '@/utils/snooker-rules';
 
 interface BettingPanelProps {
     channelId: string;
 }
 
 export const BettingPanel = ({ channelId }: BettingPanelProps) => {
-    const { snookerLiveConfig, snookerChannels, snookerAutomationSettings, placeSnookerBet, user, balance } = useAppContext();
+    const { snookerLiveConfig, snookerChannels, placeSnookerBet, user, balance } = useAppContext();
     const { toast } = useToast();
+    
     const channel = snookerChannels.find(c => c.id === channelId);
+    const market = useMemo(() => getSnookerMarketState(channel), [channel]);
     
     const [amount, setAmount] = useState(snookerLiveConfig?.minBet || 5);
     const [selectedBet, setSelectedBet] = useState<'A' | 'B' | 'EMPATE' | null>(null);
@@ -57,6 +59,11 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
             return;
         }
 
+        if (!market.isBettable) {
+            toast({ variant: 'destructive', title: 'Mercado Fechado', description: market.reason || '' });
+            return;
+        }
+
         if (amount > (user.tipoUsuario === 'CAMBISTA' ? 999999 : balance)) {
             toast({ variant: 'destructive', title: 'Saldo Insuficiente' });
             return;
@@ -79,30 +86,8 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
         }
         setIsProcessing(false);
     };
-    
-    const getMarketState = () => {
-        if (!user) return { text: 'FAÇA LOGIN PARA APOSTAR', disabled: true, label: 'Bloqueado' };
-        if (!snookerLiveConfig?.betsEnabled || !channel?.enabled) return { text: 'MERCADO DESABILITADO', disabled: true, label: 'Fechado' };
-        if (!channel) return { text: 'CARREGANDO...', disabled: true, label: '...' };
 
-        const isLive = channel.visibilityStatus === 'live';
-        const isUpcoming = channel.visibilityStatus === 'upcoming';
-        const isExpired = channel.visibilityStatus === 'expired' || channel.status === 'finished' || channel.status === 'cancelled';
-
-        if (isExpired) return { text: 'MERCADO ENCERRADO', disabled: true, label: 'Finalizado' };
-
-        if (isUpcoming) {
-            return { text: isProcessing ? '...' : 'CONFIRMAR PRÉ-JOGO', disabled: !selectedBet, label: 'Apostas Abertas' };
-        }
-
-        if (isLive) {
-            return { text: isProcessing ? '...' : 'CONFIRMAR APOSTA LIVE', disabled: !selectedBet, label: 'AO VIVO' };
-        }
-
-        return { text: 'MERCADO INDISPONÍVEL', disabled: true, label: 'Fechado' };
-    };
-
-    const market = getMarketState();
+    const isLockedByProfile = !user;
 
     return (
         <Card className="casino-card border-primary/10">
@@ -110,14 +95,28 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
                 <CardTitle className="text-lg text-white font-black uppercase italic tracking-tighter">
                     Painel de Apostas
                 </CardTitle>
-                <Badge className={cn(
-                    "text-[9px] uppercase font-black px-2 h-5",
-                    market.label === 'AO VIVO' ? "bg-red-600 animate-pulse" : "bg-blue-600"
-                )}>
-                    {market.label}
-                </Badge>
+                <div className="flex items-center gap-2">
+                    {market.isBettable && (
+                        <div className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    )}
+                    <Badge className={cn(
+                        "text-[9px] uppercase font-black px-2 h-5",
+                        market.isBettable ? "bg-green-600" : "bg-slate-800"
+                    )}>
+                        {market.label}
+                    </Badge>
+                </div>
             </CardHeader>
             <CardContent className="space-y-5">
+                {!market.isBettable && !isLockedByProfile && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
+                        <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                        <p className="text-[10px] text-amber-200/70 font-bold uppercase tracking-wide leading-relaxed">
+                            {market.reason}
+                        </p>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-3 gap-2">
                     <BetButton 
                         label={channel?.playerA.name || 'Mandante'} 
@@ -125,7 +124,7 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
                         active={selectedBet === 'A'} 
                         updated={updatedOdd === 'A'}
                         onClick={() => setSelectedBet('A')}
-                        disabled={market.disabled && !selectedBet}
+                        disabled={!market.isBettable && !selectedBet}
                     />
                     <BetButton 
                         label="Empate" 
@@ -133,7 +132,7 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
                         active={selectedBet === 'EMPATE'} 
                         updated={updatedOdd === 'D'}
                         onClick={() => setSelectedBet('EMPATE')}
-                        disabled={market.disabled && !selectedBet}
+                        disabled={!market.isBettable && !selectedBet}
                     />
                     <BetButton 
                         label={channel?.playerB.name || 'Visitante'} 
@@ -141,37 +140,38 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
                         active={selectedBet === 'B'} 
                         updated={updatedOdd === 'B'}
                         onClick={() => setSelectedBet('B')}
-                        disabled={market.disabled && !selectedBet}
+                        disabled={!market.isBettable && !selectedBet}
                     />
                 </div>
 
                 <div className="space-y-2">
                     <Label className="text-white/70 text-[10px] uppercase font-bold tracking-widest ml-1">Valor da Aposta (R$)</Label>
                     <div className="flex items-center gap-3">
-                        <Button variant="outline" size="icon" className="h-12 w-12 border-white/10 rounded-xl" onClick={() => handleAmountChange(-5)}><Minus/></Button>
+                        <Button variant="outline" size="icon" className="h-12 w-12 border-white/10 rounded-xl" onClick={() => handleAmountChange(-5)} disabled={!market.isBettable}><Minus/></Button>
                         <Input 
                             type="number"
                             value={amount}
                             onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
                             className="casino-input text-center font-black text-2xl h-12 rounded-xl"
+                            disabled={!market.isBettable}
                         />
-                         <Button variant="outline" size="icon" className="h-12 w-12 border-white/10 rounded-xl" onClick={() => handleAmountChange(5)}><Plus/></Button>
+                         <Button variant="outline" size="icon" className="h-12 w-12 border-white/10 rounded-xl" onClick={() => handleAmountChange(5)} disabled={!market.isBettable}><Plus/></Button>
                     </div>
                 </div>
 
                 <Button 
                     className={cn(
                         "w-full h-16 text-lg font-black uppercase italic rounded-xl shadow-xl transition-all active:scale-95",
-                        market.disabled ? "bg-gray-800 text-gray-500 border-white/5" : "casino-gold-button lux-shine"
+                        !market.isBettable || isLockedByProfile ? "bg-gray-800 text-gray-500 border-white/5" : "casino-gold-button lux-shine"
                     )}
                     onClick={handlePlaceBet}
-                    disabled={market.disabled}
+                    disabled={!market.isBettable || isLockedByProfile || isProcessing}
                 >
-                    {market.text}
+                    {isProcessing ? 'PROCESSANDO...' : isLockedByProfile ? 'FAÇA LOGIN PARA APOSTAR' : market.isBettable ? (channel?.status === 'live' ? 'CONFIRMAR APOSTA AO VIVO' : 'CONFIRMAR PRÉ-JOGO') : market.label}
                 </Button>
 
-                {selectedBet && channel && (
-                    <div className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between">
+                {selectedBet && channel && market.isBettable && (
+                    <div className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between animate-in zoom-in-95">
                         <div className="flex items-center gap-2">
                             <CheckCircle2 className="text-primary h-4 w-4" />
                             <span className="text-xs font-bold text-white uppercase">Retorno Potencial:</span>
@@ -192,7 +192,8 @@ function BetButton({ label, odd, active, updated, onClick, disabled }: any) {
             variant={active ? 'default' : 'outline'}
             className={cn(
                 "flex-col h-20 border-white/10 transition-all rounded-xl",
-                active && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                active && "ring-2 ring-primary ring-offset-2 ring-offset-background bg-primary/20",
+                !active && "hover:bg-white/5"
             )}
             onClick={onClick}
             disabled={disabled}

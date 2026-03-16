@@ -1,9 +1,8 @@
-
 'use client';
 
 /**
  * @fileOverview AppContext - Orquestrador Central de Estado e Sincronização.
- * Atualizado com lógica de visibilidade temporal (Live/Upcoming/Expired).
+ * Atualizado com lógica de visibilidade temporal e regras de mercado unificadas.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -27,6 +26,7 @@ import { useResultsAutoSync } from '@/hooks/use-results-auto-sync';
 import { SnookerSyncService } from '@/services/snooker-sync-service';
 import { SnookerPriorityService } from '@/services/snooker-priority-service';
 import { isValidYoutubeVideoId, isValidYoutubeChannelId } from '@/utils/youtube';
+import { getSnookerMarketState } from '@/utils/snooker-rules';
 
 // --- INTERFACES ---
 export interface Banner { id: string; title: string; content: string; imageUrl: string; active: boolean; position: number; linkUrl?: string; startAt?: string; endAt?: string; imageMeta?: any; }
@@ -59,11 +59,14 @@ export interface SnookerChannel {
   isPrimaryCandidate?: boolean; priorityScore?: number; primaryReason?: string; 
   isArchived?: boolean; prizeLabel?: string; phase?: string; contentType?: string; 
   originPriority?: number;
-  // Campos de visibilidade novos
   visibilityStatus?: 'live' | 'upcoming' | 'expired' | 'hidden';
   isExpired?: boolean;
   isUpcoming?: boolean;
   isLiveNow?: boolean;
+  // Campos de aposta
+  bettingAvailability?: 'all' | 'prelive' | 'live_only' | 'disabled';
+  bettingOpensAt?: string;
+  bettingClosesAt?: string;
 }
 
 export interface SnookerAutomationSource { 
@@ -106,20 +109,17 @@ const DEFAULT_SOURCES: SnookerAutomationSource[] = [
 const DEFAULT_SNOOKER_AUTOMATION: SnookerAutomationSettings = { enabled: true, sources: DEFAULT_SOURCES, syncIntervalSeconds: 300, manualPrimaryChannelId: null };
 
 /**
- * Utilitário de visibilidade temporal
+ * Utilitário de visibilidade temporal expandido para considerar regras de aposta
  */
 const computeChannelVisibility = (channel: SnookerChannel): Partial<SnookerChannel> => {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   
-  // Resolve data do evento: Agendamento tem prioridade, senão criação
   const eventDate = new Date(channel.scheduledAt || channel.createdAt);
   const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
 
   const isLive = channel.status === 'live';
   const isFinished = channel.status === 'finished' || channel.status === 'cancelled';
-  
-  // Regra: Se o dia do evento for anterior a hoje, está expirado
   const isExpired = eventDay < today;
   
   let visibilityStatus: SnookerChannel['visibilityStatus'] = 'upcoming';
@@ -129,15 +129,20 @@ const computeChannelVisibility = (channel: SnookerChannel): Partial<SnookerChann
   } else if (isExpired) {
     visibilityStatus = 'expired';
   } else if (isFinished) {
-    // Se acabou hoje, deixamos oculto da lista de "Próximos/Live" mas mantemos no banco
     visibilityStatus = 'hidden';
   }
+
+  // Se não tiver regras de aposta, inicializa com padrão aberto
+  const bettingAvailability = channel.bettingAvailability || 'all';
+  const bettingOpensAt = channel.bettingOpensAt || new Date(eventDate.getTime() - (120 * 60 * 1000)).toISOString();
 
   return {
     visibilityStatus,
     isExpired,
     isUpcoming: visibilityStatus === 'upcoming',
-    isLiveNow: isLive
+    isLiveNow: isLive,
+    bettingAvailability,
+    bettingOpensAt
   };
 };
 
@@ -182,7 +187,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [snookerSyncState, setSnookerSyncState] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
 
   const snookerPrimaryChannelId = useMemo(() => {
-    // Apenas canais não expirados e habilitados participam da seleção automática
     const eligible = snookerChannels.filter(c => c.visibilityStatus !== 'expired' && c.visibilityStatus !== 'hidden' && c.enabled);
     return SnookerPriorityService.choosePrimary(eligible, snookerAutomationSettings.manualPrimaryChannelId);
   }, [snookerChannels, snookerAutomationSettings.manualPrimaryChannelId]);
@@ -201,7 +205,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     setLedger(LedgerService.getEntries()); setBanners(getStorageItem('app:banners:v1', [])); setPopups(getStorageItem('app:popups:v1', [])); setNews(getStorageItem('news_messages', [])); setApostas(getStorageItem('app:apostas:v1', [])); setPostedResults(getStorageItem('app:posted_results:v1', [])); setJdbResults(getStorageItem('app:jdb_results:v1', [])); setFootballBets(getStorageItem('app:football_bets:v1', [])); setJdbLoterias(getStorageItem('app:jdb_loterias:v1', INITIAL_JDB_LOTERIAS)); setGenericLotteryConfigs(getStorageItem('app:generic_loterias:v1', INITIAL_GENERIC_LOTTERIES)); setCasinoSettings(getStorageItem('app:casino_settings:v1', DEFAULT_CASINO_SETTINGS)); setBingoSettings(getStorageItem('app:bingo_settings:v1', DEFAULT_BINGO_SETTINGS)); setBingoDraws(getStorageItem('app:bingo_draws:v1', [])); setBingoTickets(getStorageItem('app:bingo_tickets:v1', [])); setBingoPayouts(getStorageItem('app:bingo_payouts:v1', [])); 
     
-    // Snooker Channels com atualização de visibilidade
     const savedChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
     const updatedChannels = savedChannels.map(c => ({ ...c, ...computeChannelVisibility(c) }));
     setSnookerChannels(updatedChannels);
@@ -235,13 +238,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       let currentChannels = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
-      let allLogs: SnookerSyncLog[] = getStorageItem<SnookerSyncLog[]>('app:snooker_sync_logs:v1', []);
 
       for (const source of sourcesToSync) {
         if (!isValidYoutubeChannelId(source.channelId)) continue;
 
         try {
-          const { updatedChannels, summary } = await SnookerSyncService.sync(currentChannels, user?.bancaId || 'default', source, settings);
+          const { updatedChannels } = await SnookerSyncService.sync(currentChannels, user?.bancaId || 'default', source, settings);
           currentChannels = updatedChannels;
           source.lastSyncAt = new Date().toISOString();
           source.lastSyncStatus = 'success';
@@ -250,7 +252,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Aplica visibilidade temporal a todos após o sync
       const finalizedChannels = currentChannels.map(c => ({ ...c, ...computeChannelVisibility(c) }));
 
       setStorageItem('app:snooker_channels:v1', finalizedChannels);
