@@ -1,197 +1,169 @@
 /**
- * @fileOverview Lógica Real do Fortune Tiger Clone.
- * Implementa o motor de slot 3x3, detecção de linhas e gestão de saldo.
+ * @fileOverview Engine Profissional do Fortune Tiger.
+ * Gerencia a lógica de bobinas, resultados e integração com o Wrapper.
  */
 
-const SYMBOLS = [
-    { id: 1, name: 'Tiger (WILD)', img: 'images/tiger.png', value: 250 },
-    { id: 2, name: 'Gold Ornament', img: 'images/gold.png', value: 100 },
-    { id: 3, name: 'Jade', img: 'images/jade.png', value: 50 },
-    { id: 4, name: 'Bag of Coins', img: 'images/bag.png', value: 20 },
-    { id: 5, name: 'Envelopes', img: 'images/envelope.png', value: 10 },
-    { id: 6, name: 'Firecrackers', img: 'images/firecrackers.png', value: 5 },
-    { id: 7, name: 'Oranges', img: 'images/orange.png', value: 3 }
-];
+const CONFIG = {
+    symbolCount: 7,
+    reelCount: 3,
+    rowsPerReel: 3,
+    spinDuration: 2500,
+    symbols: [
+        { id: 1, name: 'Gold', value: 10, img: 'https://picsum.photos/seed/gold/120/120' },
+        { id: 2, name: 'Tiger', value: 5, img: 'https://picsum.photos/seed/tiger/120/120' },
+        { id: 3, name: 'Coin', value: 2, img: 'https://picsum.photos/seed/coin/120/120' },
+        { id: 4, name: 'Envelope', value: 1, img: 'https://picsum.photos/seed/env/120/120' },
+        { id: 5, name: 'Firecracker', value: 0.5, img: 'https://picsum.photos/seed/fire/120/120' },
+        { id: 6, name: 'Orange', value: 0.3, img: 'https://picsum.photos/seed/orange/120/120' },
+        { id: 7, name: 'Wild', value: 20, img: 'https://picsum.photos/seed/wild/120/120' }
+    ]
+};
 
-const PAY_LINES = [
-    [0, 0, 0], // Topo horizontal
-    [1, 1, 1], // Meio horizontal
-    [2, 2, 2], // Baixo horizontal
-    [0, 1, 2], // Diagonal descendente
-    [2, 1, 0]  // Diagonal ascendente
-];
+class TigerGame {
+    constructor() {
+        this.balance = 0;
+        this.bet = 1.00;
+        this.isSpinning = false;
+        this.isTurbo = false;
+        this.isAuto = false;
 
-let balance = 1000.00;
-let currentBet = 1.00;
-let isSpinning = false;
-let isTurbo = false;
+        this.initDOM();
+        this.initReels();
+        this.bindEvents();
+        this.updateUI();
+    }
 
-// DOM Elements
-const balanceDisplay = document.getElementById('balance-display');
-const betDisplay = document.getElementById('bet-display');
-const spinBtn = document.getElementById('spin-btn');
-const turboBtn = document.getElementById('turbo-toggle');
-const winModal = document.getElementById('win-modal');
-const winAmountDisplay = document.getElementById('modal-win-amount');
-
-// Initialization
-function init() {
-    const reels = document.querySelectorAll('.symbol-container');
-    reels.forEach(container => {
-        for (let i = 0; i < 3; i++) {
-            const sym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
-            container.appendChild(createSymbolElement(sym));
-        }
-    });
-
-    updateUI();
-}
-
-function createSymbolElement(symbol, isBlur = false) {
-    const div = document.createElement('div');
-    div.className = `symbol ${isBlur ? 'blur' : ''}`;
-    div.dataset.id = symbol.id;
-    
-    const img = document.createElement('img');
-    img.src = symbol.img;
-    img.alt = symbol.name;
-    // Fallback if image not found
-    img.onerror = () => {
-        img.src = `https://placehold.co/100x100/red/gold?text=${symbol.name.charAt(0)}`;
-    };
-    
-    div.appendChild(img);
-    return div;
-}
-
-function updateUI() {
-    balanceDisplay.textContent = `R$ ${balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-    betDisplay.textContent = `R$ ${currentBet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-}
-
-// Spin Logic
-async function spin() {
-    if (isSpinning || balance < currentBet) return;
-
-    isSpinning = true;
-    balance -= currentBet;
-    updateUI();
-    
-    winModal.classList.add('hidden');
-    document.querySelectorAll('.symbol').forEach(s => s.classList.remove('winning'));
-
-    const containers = document.querySelectorAll('.symbol-container');
-    const results = [];
-
-    // Pre-generate results
-    for (let i = 0; i < 3; i++) {
-        results[i] = [
-            SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
-            SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
-            SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]
+    initDOM() {
+        this.reels = [
+            document.querySelector('#reel-1 .reel-strip'),
+            document.querySelector('#reel-2 .reel-strip'),
+            document.querySelector('#reel-3 .reel-strip')
         ];
+        this.btnSpin = document.getElementById('btn-spin');
+        this.btnPlus = document.getElementById('btn-plus');
+        this.btnMinus = document.getElementById('btn-minus');
+        this.btnTurbo = document.getElementById('btn-turbo');
+        this.btnAuto = document.getElementById('btn-auto');
+        this.winDisplay = document.getElementById('win-amount');
+        this.betDisplay = document.getElementById('bet-amount');
+        this.jackpotDisplay = document.getElementById('jackpot-value');
+        this.overlay = document.getElementById('big-win-overlay');
     }
 
-    const spinPromises = Array.from(containers).map((container, index) => {
-        return new Promise(resolve => {
-            const speed = isTurbo ? 50 : 100;
-            const duration = (isTurbo ? 500 : 1000) + (index * 300);
-            
-            // Animation via transform
-            container.style.transition = 'none';
-            container.style.transform = 'translateY(0)';
-            
-            // Fill with random symbols for blur effect
-            for(let j=0; j<10; j++) {
-                const randSym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
-                container.prepend(createSymbolElement(randSym, true));
-            }
-
-            setTimeout(() => {
-                container.style.transition = `transform ${duration}ms cubic-bezier(0.45, 0.05, 0.55, 0.95)`;
-                container.style.transform = `translateY(0)`; // Simplified for pure CSS/JS
-                
-                // Final result replacement
-                setTimeout(() => {
-                    container.innerHTML = '';
-                    results[index].forEach(sym => {
-                        container.appendChild(createSymbolElement(sym));
-                    });
-                    resolve();
-                }, duration);
-            }, 10);
+    initReels() {
+        this.reels.forEach(reel => {
+            this.fillReel(reel);
         });
-    });
+    }
 
-    await Promise.all(spinPromises);
-    
-    checkWins(results);
-    isSpinning = false;
-}
-
-function checkWins(results) {
-    let totalWin = 0;
-    const winningSymbols = [];
-
-    PAY_LINES.forEach((line, lineIdx) => {
-        const s1 = results[0][line[0]];
-        const s2 = results[1][line[1]];
-        const s3 = results[2][line[2]];
-
-        // Check for match or Wild (Tigre is ID 1)
-        const isTiger = (s) => s.id === 1;
-        
-        const isMatch = (s1.id === s2.id || isTiger(s1) || isTiger(s2)) && 
-                        (s2.id === s3.id || isTiger(s2) || isTiger(s3)) &&
-                        (s1.id === s3.id || isTiger(s1) || isTiger(s3));
-
-        if (isMatch) {
-            // Determine winning symbol (not tiger if possible)
-            const mainSym = [s1, s2, s3].find(s => s.id !== 1) || s1;
-            const winVal = mainSym.value * currentBet;
-            totalWin += winVal;
-            
-            // Mark winning positions for animation
-            line.forEach((row, col) => winningSymbols.push({col, row}));
+    fillReel(reel) {
+        reel.innerHTML = '';
+        // Create 20 symbols for the strip to allow loop
+        for (let i = 0; i < 20; i++) {
+            const symbolData = CONFIG.symbols[Math.floor(Math.random() * CONFIG.symbols.length)];
+            const div = document.createElement('div');
+            div.className = 'symbol';
+            div.dataset.id = symbolData.id;
+            div.innerHTML = `<img src="${symbolData.img}" alt="${symbolData.name}">`;
+            reel.appendChild(div);
         }
-    });
+    }
 
-    if (totalWin > 0) {
-        balance += totalWin;
-        showWin(totalWin, winningSymbols);
+    bindEvents() {
+        this.btnSpin.addEventListener('click', () => this.spin());
+        
+        this.btnPlus.addEventListener('click', () => {
+            if (this.isSpinning) return;
+            this.bet = Math.min(100, this.bet + 1);
+            this.updateUI();
+        });
+
+        this.btnMinus.addEventListener('click', () => {
+            if (this.isSpinning) return;
+            this.bet = Math.max(1, this.bet - 1);
+            this.updateUI();
+        });
+
+        this.btnTurbo.addEventListener('click', () => {
+            this.isTurbo = !this.isTurbo;
+            this.btnTurbo.classList.toggle('active', this.isTurbo);
+        });
+
+        this.btnAuto.addEventListener('click', () => {
+            this.isAuto = !this.isAuto;
+            this.btnAuto.classList.toggle('active', this.isAuto);
+            if (this.isAuto && !this.isSpinning) this.spin();
+        });
+    }
+
+    updateUI() {
+        this.betDisplay.innerText = `R$ ${this.bet.toFixed(2)}`;
+        // Simular variação no jackpot
+        const jp = 12000 + (Math.random() * 500);
+        this.jackpotDisplay.innerText = `R$ ${jp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    }
+
+    async spin() {
+        if (this.isSpinning) return;
+        this.isSpinning = true;
+        this.winDisplay.innerText = 'R$ 0,00';
+        
+        // Notify parent about bet
+        window.parent.postMessage({ type: 'SLOT_BET', amount: this.bet }, '*');
+
+        // Animate reels
+        const duration = this.isTurbo ? 800 : CONFIG.spinDuration;
+        
+        this.reels.forEach((reel, i) => {
+            reel.classList.add('spinning');
+            // Random end position
+            const stopPos = -1500 - (Math.floor(Math.random() * 500));
+            
+            setTimeout(() => {
+                reel.classList.remove('spinning');
+                reel.style.transform = `translateY(${stopPos}px)`;
+                
+                if (i === 2) {
+                    this.onSpinEnd();
+                }
+            }, duration + (i * 200));
+        });
+    }
+
+    onSpinEnd() {
+        this.isSpinning = false;
+        
+        // Simular lógica de vitória (10% de chance)
+        if (Math.random() > 0.9) {
+            const winMultiplier = 2 + (Math.random() * 10);
+            const winAmount = this.bet * winMultiplier;
+            this.showWin(winAmount);
+        } else if (this.isAuto) {
+            setTimeout(() => this.spin(), 1000);
+        }
+    }
+
+    showWin(amount) {
+        this.winDisplay.innerText = `R$ ${amount.toFixed(2).replace('.', ',')}`;
+        
+        // Show Big Win Overlay for large wins
+        if (amount > this.bet * 5) {
+            this.overlay.classList.remove('hidden');
+            document.getElementById('big-win-value').innerText = `R$ ${amount.toFixed(2)}`;
+            
+            setTimeout(() => {
+                this.overlay.classList.add('hidden');
+                window.parent.postMessage({ type: 'SLOT_WIN', amount: amount }, '*');
+                if (this.isAuto) setTimeout(() => this.spin(), 1000);
+            }, 3000);
+        } else {
+            window.parent.postMessage({ type: 'SLOT_WIN', amount: amount }, '*');
+            if (this.isAuto) setTimeout(() => this.spin(), 1000);
+        }
     }
 }
 
-function showWin(amount, winners) {
-    const containers = document.querySelectorAll('.symbol-container');
-    winners.forEach(pos => {
-        const symbol = containers[pos.col].children[pos.row];
-        symbol.classList.add('winning');
-    });
-
-    winAmountDisplay.textContent = `R$ ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-    winModal.classList.remove('hidden');
-    updateUI();
-}
-
-// Event Listeners
-spinBtn.addEventListener('click', spin);
-
-turboBtn.addEventListener('click', () => {
-    isTurbo = !isTurbo;
-    turboBtn.classList.toggle('active');
-});
-
-document.getElementById('bet-plus').addEventListener('click', () => {
-    if (isSpinning) return;
-    currentBet += 1.00;
-    updateUI();
-});
-
-document.getElementById('bet-minus').addEventListener('click', () => {
-    if (isSpinning) return;
-    currentBet = Math.max(1.00, currentBet - 1.00);
-    updateUI();
-});
-
-init();
+// Start Game
+window.onload = () => {
+    new TigerGame();
+};

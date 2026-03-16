@@ -1,271 +1,256 @@
+:root {
+    --primary-gold: #ffcc00;
+    --dark-red: #8b0000;
+    --bright-red: #ff0000;
+    --tiger-orange: #ff6600;
+    --ui-bg: rgba(0, 0, 0, 0.8);
+}
+
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    font-family: 'Montserrat', sans-serif;
     user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
     background-color: #000;
     color: #fff;
+    font-family: 'Roboto', sans-serif;
     overflow: hidden;
     height: 100vh;
     width: 100vw;
-    display: flex;
-    justify-content: center;
-    align-items: center;
 }
 
 #game-wrapper {
-    background: radial-gradient(circle, #b30000 0%, #4d0000 100%);
+    position: relative;
     width: 100%;
     height: 100%;
-    max-width: 500px;
+    max-width: 540px;
+    margin: 0 auto;
+    background: radial-gradient(circle, #4a0000 0%, #000 100%);
+    display: flex;
+    flex-col: column;
+    overflow: hidden;
+}
+
+/* Header */
+#game-header {
+    padding: 15px;
+    text-align: center;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+}
+
+.logo-container h1 {
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--primary-gold);
+    text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+    font-style: italic;
+    letter-spacing: -1px;
+}
+
+/* Jackpot */
+#jackpot-container {
+    background: url('https://picsum.photos/seed/gold/400/100') center/cover;
+    margin: 10px 20px;
+    padding: 10px;
+    border-radius: 15px;
+    border: 2px solid var(--primary-gold);
     display: flex;
     flex-direction: column;
-    position: relative;
-    box-shadow: 0 0 50px rgba(0,0,0,0.8);
-}
-
-.header-game {
-    height: 15%;
-    display: flex;
-    justify-content: center;
     align-items: center;
-    padding: 10px;
+    box-shadow: 0 0 20px rgba(255, 204, 0, 0.2);
 }
 
-.game-logo {
-    max-height: 80%;
-    object-contain: contain;
+#jackpot-container .label {
+    font-size: 10px;
+    font-weight: bold;
+    color: #fff;
 }
 
-.slots-container {
+#jackpot-value {
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff;
+}
+
+/* Reels */
+#reels-wrapper {
     flex: 1;
     display: flex;
     justify-content: center;
-    align-items: center;
-    position: relative;
-    padding: 10px;
-}
-
-.slots-grid {
-    width: 100%;
-    aspect-ratio: 1/1;
-    background: #ffd700;
-    border: 8px solid #8b0000;
-    border-radius: 20px;
-    display: flex;
-    gap: 4px;
-    padding: 4px;
+    gap: 8px;
+    padding: 15px;
+    perspective: 1000px;
     overflow: hidden;
-    box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.5);
+    position: relative;
 }
 
 .reel {
     flex: 1;
-    background: #fff;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
+    border: 1px solid rgba(255, 204, 0, 0.2);
     overflow: hidden;
     position: relative;
 }
 
-.symbol-container {
-    display: flex;
-    flex-direction: column;
+.reel-strip {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    transition: transform 0.1s linear;
+    transition: transform 3s cubic-bezier(0.45, 0.05, 0.55, 0.95);
 }
 
 .symbol {
     width: 100%;
     aspect-ratio: 1/1;
     display: flex;
-    justify-content: center;
     align-items: center;
+    justify-content: center;
     padding: 10px;
 }
 
 .symbol img {
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
 }
 
-.symbol.blur {
-    filter: blur(4px);
-    opacity: 0.7;
+/* Controls */
+#game-controls {
+    padding: 20px;
+    background: rgba(0,0,0,0.8);
+    border-top: 2px solid rgba(255, 204, 0, 0.3);
 }
 
-.symbol.winning {
-    animation: pulse 0.5s infinite alternate;
-    background: rgba(255, 215, 0, 0.3);
-    z-index: 5;
-}
-
-@keyframes pulse {
-    from { transform: scale(1); }
-    to { transform: scale(1.1); }
-}
-
-.game-footer {
-    height: 35%;
-    background: #1a1a1a;
-    border-top: 4px solid #ffd700;
-    display: flex;
-    flex-direction: column;
-    padding: 15px;
-    gap: 15px;
-}
-
-.balance-container {
-    background: #000;
-    border: 1px solid #ffd700;
-    border-radius: 10px;
-    padding: 8px 15px;
+.stats-bar {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    margin-bottom: 15px;
 }
 
-.label {
+.stat-item {
+    text-align: center;
+}
+
+.stat-label {
+    display: block;
     font-size: 10px;
-    color: #ffd700;
+    font-weight: bold;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 2px;
+}
+
+.stat-item span:last-child {
+    font-size: 16px;
     font-weight: 900;
-    letter-spacing: 1px;
+    color: var(--primary-gold);
 }
 
-.value {
-    font-weight: 900;
-    font-size: 18px;
-    color: #fff;
-}
-
-.controls-wrapper {
+.main-buttons {
     display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.bet-controls {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    background: #333;
-    border-radius: 50px;
-    padding: 5px;
+    justify-content: center;
+    gap: 20px;
 }
 
 .control-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    background: #ffd700;
-    border: none;
-    color: #000;
-    font-weight: 900;
+    border: 2px solid var(--primary-gold);
+    background: #000;
+    color: var(--primary-gold);
     font-size: 24px;
+    font-weight: bold;
     cursor: pointer;
 }
 
-.bet-info {
-    text-align: center;
-}
-
-.bet-info .value {
-    font-size: 16px;
-}
-
-.spin-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.spin-button {
+.spin-btn {
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: radial-gradient(circle, #ffd700 0%, #ff8c00 100%);
     border: 4px solid #fff;
-    box-shadow: 0 0 20px rgba(255, 140, 0, 0.5);
+    background: radial-gradient(circle, var(--bright-red) 0%, var(--dark-red) 100%);
+    color: #fff;
+    font-size: 18px;
+    font-weight: 900;
+    box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
     cursor: pointer;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     transition: transform 0.1s;
 }
 
-.spin-button:active {
+.spin-btn:active {
     transform: scale(0.9);
 }
 
-.spin-button img {
-    width: 60%;
-}
-
-.turbo-btn, .auto-btn {
-    background: #333;
-    padding: 10px 15px;
-    border-radius: 10px;
-    font-size: 10px;
-    font-weight: 900;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.turbo-btn.active {
-    background: #ffd700;
-    color: #000;
-}
-
-.modal-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.8);
-    z-index: 100;
+.auto-turbo-bar {
     display: flex;
     justify-content: center;
-    align-items: center;
-    transition: opacity 0.3s;
+    gap: 10px;
+    margin-top: 15px;
 }
 
-.modal-overlay.hidden {
-    opacity: 0;
-    pointer-events: none;
-}
-
-.modal-content {
-    background: radial-gradient(circle, #ffd700 0%, #ff8c00 100%);
-    padding: 40px;
+.toggle-btn {
+    padding: 5px 15px;
     border-radius: 20px;
-    border: 5px solid #fff;
-    text-align: center;
-    animation: winPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-@keyframes winPop {
-    from { transform: scale(0); }
-    to { transform: scale(1); }
-}
-
-.win-title {
-    color: #8b0000;
-    font-size: 40px;
-    font-weight: 900;
-    margin-bottom: 10px;
-    text-shadow: 2px 2px 0 #fff;
-}
-
-.win-amount {
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.05);
     color: #fff;
+    font-size: 10px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.toggle-btn.active {
+    background: var(--primary-gold);
+    color: #000;
+    border-color: var(--primary-gold);
+}
+
+/* Animations */
+@keyframes spin {
+    from { transform: translateY(0); }
+    to { transform: translateY(-80%); }
+}
+
+.spinning {
+    animation: reel-loop 0.2s linear infinite;
+}
+
+@keyframes reel-loop {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-100px); }
+}
+
+/* Overlays */
+.overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.9);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hidden { display: none; }
+
+.win-content h2 {
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--primary-gold);
+    text-shadow: 0 0 20px var(--primary-gold);
+    font-style: italic;
+}
+
+.win-content p {
     font-size: 32px;
     font-weight: 900;
-    text-shadow: 2px 2px 0 #000;
+    text-align: center;
 }
