@@ -214,14 +214,14 @@ export const INITIAL_GENERIC_LOTTERIES: GenericLotteryConfig[] = [
       { modalidade: 'SENINHA 15D', multiplicador: '3500' },
       { modalidade: 'SENINHA 16D', multiplicador: '2000' },
       { modalidade: 'SENINHA 17D', multiplicador: '1500' },
-      { modalability: 'SENINHA 18D', multiplicador: '850' },
-      { modalability: 'SENINHA 19D', multiplicador: '650' },
-      { modalability: 'SENINHA 20D', multiplicador: '500' },
-      { modalability: 'SENINHA 25D', multiplicador: '110' },
-      { modalability: 'SENINHA 30D', multiplicador: '28' },
-      { modalability: 'SENINHA 35D', multiplicador: '8' },
-      { modalability: 'SENINHA 40D', multiplicador: '5' }
-    ] as any
+      { modalidade: 'SENINHA 18D', multiplicador: '850' },
+      { modalidade: 'SENINHA 19D', multiplicador: '650' },
+      { modalidade: 'SENINHA 20D', multiplicador: '500' },
+      { modalidade: 'SENINHA 25D', multiplicador: '110' },
+      { modalidade: 'SENINHA 30D', multiplicador: '28' },
+      { modalidade: 'SENINHA 35D', multiplicador: '8' },
+      { modalidade: 'SENINHA 40D', multiplicador: '5' }
+    ]
   },
   {
     id: 'quininha',

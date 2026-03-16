@@ -42,12 +42,15 @@ export default function SeninhaPage() {
 
   // Busca multiplicadores do contexto (Admin)
   const config = useMemo(() => (genericLotteryConfigs || []).find(c => c.id === 'seninha'), [genericLotteryConfigs]);
-  const modalidades = useMemo(() => config?.multiplicadores.map(m => ({
-    id: m.modalidade.toLowerCase().replace(/\s+/g, '-'),
-    nome: m.modalidade,
-    multiplicador: m.multiplicador,
-    dezenas: parseInt(m.modalidade.match(/\d+/)?.[0] || '14')
-  })) || [], [config]);
+  const modalidades = useMemo(() => config?.multiplicadores.map(m => {
+    const nomeModalidade = m.modalidade || (m as any).modalability || 'Modalidade';
+    return {
+      id: nomeModalidade.toLowerCase().replace(/\s+/g, '-'),
+      nome: nomeModalidade,
+      multiplicador: m.multiplicador,
+      dezenas: parseInt(nomeModalidade.match(/\d+/)?.[0] || '14')
+    };
+  }) || [], [config]);
 
   useEffect(() => {
     if (apostaData === 'amanha') { setApostasAbertas(true); return; }
