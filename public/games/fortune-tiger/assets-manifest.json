@@ -1,32 +1,22 @@
 {
-  "name": "Fortune Tiger Official Clone",
-  "version": "2.0.0",
-  "engine": "HTML5 Canvas/DOM",
-  "assets": {
-    "images": [
-      "images/bg.png",
-      "images/reel_bg.png",
-      "images/tiger.png",
-      "images/spin_btn.png",
-      "images/logo.png",
-      "images/bull.png",
-      "images/jade.png",
-      "images/red_envelope.png",
-      "images/firecracker.png",
-      "images/orange.png",
-      "images/gold_nugget.png"
-    ],
-    "media": [
-      "media/spin.mp3",
-      "media/win.mp3",
-      "media/click.mp3",
-      "media/background.mp3"
-    ]
-  },
-  "selectors": {
-    "container": "#game-container",
-    "spin_button": "#spin-btn",
-    "balance": "#balance-display",
-    "reels": "#reels-container"
-  }
+  "name": "Fortune Tiger Clone Official Assets",
+  "version": "1.0.0",
+  "root": "/games/fortune-tiger/",
+  "assets": [
+    { "file": "images/bg.png", "type": "image", "critical": true },
+    { "file": "images/reel_bg.png", "type": "image", "critical": true },
+    { "file": "images/tiger.png", "type": "image", "critical": true },
+    { "file": "images/logo.png", "type": "image", "critical": true },
+    { "file": "images/spin_btn.png", "type": "image", "critical": true },
+    { "file": "images/bull.png", "type": "image", "critical": true },
+    { "file": "images/jade.png", "type": "image", "critical": true },
+    { "file": "images/red_envelope.png", "type": "image", "critical": true },
+    { "file": "images/firecracker.png", "type": "image", "critical": true },
+    { "file": "images/orange.png", "type": "image", "critical": true },
+    { "file": "images/gold_nugget.png", "type": "image", "critical": true },
+    { "file": "media/spin.mp3", "type": "audio", "critical": false },
+    { "file": "media/win.mp3", "type": "audio", "critical": false },
+    { "file": "media/click.mp3", "type": "audio", "critical": false },
+    { "file": "media/background.mp3", "type": "audio", "critical": false }
+  ]
 }

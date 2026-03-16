@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fortune Tiger - Engine</title>
+    <title>Fortune Tiger - Oficial</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,13 +16,18 @@
     </div>
 
     <!-- Container Principal do Jogo -->
-    <div id="game-container" class="game-container hidden" style="opacity: 0;">
+    <div id="game-container" style="opacity: 0;">
         <header class="game-header">
-            <img src="images/logo.png" alt="Fortune Tiger" class="game-logo">
+            <div class="logo-area">
+                <img src="images/logo.png" alt="Fortune Tiger Logo" class="game-logo">
+            </div>
+            <div class="tiger-mascot">
+                <img src="images/tiger.png" alt="Tiger" class="tiger-img">
+            </div>
         </header>
 
-        <main class="reels-section">
-            <div class="reels-wrapper">
+        <main class="game-viewport">
+            <div class="reels-frame">
                 <div id="reels-container" class="reels-container">
                     <!-- Bobinas geradas via JS -->
                 </div>
@@ -33,24 +38,36 @@
             <div class="info-bar">
                 <div class="info-item">
                     <span>SALDO</span>
-                    <span id="balance-display">R$ 0,00</span>
+                    <p id="balance-display">R$ 0,00</p>
                 </div>
                 <div class="info-item">
                     <span>APOSTA</span>
-                    <span id="bet-display">R$ 1,00</span>
+                    <p id="bet-display">R$ 1,00</p>
+                </div>
+                <div class="info-item">
+                    <span>GANHO</span>
+                    <p id="win-display">R$ 0,00</p>
                 </div>
             </div>
 
-            <div class="controls-row">
+            <div class="controls-area">
                 <button id="minus-btn" class="control-btn">-</button>
-                <div id="spin-btn-wrapper">
+                <div id="spin-wrapper">
                     <button id="spin-btn" class="spin-button">
-                        <img src="images/spin_btn.png" alt="SPIN">
+                        <img src="images/spin_btn.png" alt="Girar">
                     </button>
                 </div>
                 <button id="plus-btn" class="control-btn">+</button>
             </div>
-        </footer >
+        </footer>
+    </div>
+
+    <!-- Overlay de Vitória -->
+    <div id="win-overlay" class="win-overlay hidden">
+        <div class="win-content">
+            <h2 id="win-title">BIG WIN!</h2>
+            <p id="win-amount">R$ 0,00</p>
+        </div>
     </div>
 
     <script src="script.js"></script>
