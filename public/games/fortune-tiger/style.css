@@ -1,179 +1,217 @@
-/**
- * @fileOverview Estilos do Fortune Tiger Clone
- */
-
- :root {
-    --gold: #ffd700;
-    --red: #b30000;
-    --dark-red: #800000;
+:root {
+    --primary-gold: #ffd700;
+    --dark-red: #8b0000;
+    --bright-red: #ff0000;
 }
 
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent;
+    user-select: none;
 }
 
 body {
     background-color: #000;
-    font-family: 'Inter', sans-serif;
-    color: white;
+    font-family: Arial, sans-serif;
+    overflow: hidden;
     height: 100vh;
+    width: 100vw;
     display: flex;
     justify-content: center;
     align-items: center;
-    overflow: hidden;
 }
 
-/* Loader Resiliente */
-.loader {
+/* Loader */
+.loader-overlay {
     position: fixed;
     inset: 0;
-    background: radial-gradient(circle, #4a0000 0%, #000 100%);
+    background: #000;
+    z-index: 100;
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    z-index: 1000;
+    align-items: center;
+    transition: opacity 0.5s ease;
 }
 
-.tiger-loading {
-    width: 80px;
-    height: 80px;
-    border: 5px solid rgba(255, 215, 0, 0.1);
-    border-top: 5px solid var(--gold);
+.loader-content {
+    text-align: center;
+    color: var(--primary-gold);
+}
+
+.tiger-spinner {
+    width: 60px;
+    height: 60px;
+    border: 5px solid rgba(255, 215, 0, 0.2);
+    border-top-color: var(--primary-gold);
     border-radius: 50%;
     animation: spin 1s linear infinite;
-    margin-bottom: 20px;
+    margin: 0 auto 20px;
 }
 
-.loader p {
-    font-weight: 900;
-    font-style: italic;
-    letter-spacing: 2px;
-    color: var(--gold);
-    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
 
-#game-container {
+/* Game Layout */
+.game-container {
     width: 100%;
     max-width: 540px;
     height: 100%;
     background: url('images/bg.png') no-repeat center center;
     background-size: cover;
-    position: relative;
     display: flex;
     flex-direction: column;
+    transition: opacity 0.8s ease;
 }
 
-.hidden { display: none !important; }
+.hidden {
+    display: none !important;
+}
 
-/* Slot Area */
-.slot-machine {
+.game-header {
+    height: 20%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.game-logo {
+    max-height: 80%;
+    filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+}
+
+.reels-section {
     flex: 1;
     display: flex;
-    flex-direction: column;
-    padding: 20px;
-    padding-top: 80px;
-}
-
-.logo-area {
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-.logo-area img {
-    height: 60px;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
 }
 
 .reels-wrapper {
-    background: rgba(0,0,0,0.5);
-    border: 4px solid var(--gold);
-    border-radius: 20px;
-    padding: 10px;
+    width: 100%;
+    aspect-ratio: 1/1;
+    background: url('images/reel_bg.png') no-repeat center center;
+    background-size: 100% 100%;
+    padding: 12px;
+    display: flex;
+    justify-content: center;
+}
+
+.reels-container {
     display: flex;
     gap: 10px;
-    height: 200px;
-    box-shadow: 0 0 30px rgba(0,0,0,0.8), inset 0 0 20px rgba(255,215,0,0.2);
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
 }
 
 .reel {
     flex: 1;
-    background: #222;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.symbol {
+    width: 100%;
+    aspect-ratio: 1/1;
+    background: rgba(255,255,255,0.05);
     border-radius: 10px;
     display: flex;
-    align-items: center;
     justify-content: center;
-    overflow: hidden;
-    position: relative;
+    align-items: center;
+    padding: 5px;
 }
 
-.reel img {
-    width: 80%;
-    transition: transform 0.1s;
+.symbol img {
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
 }
 
-/* HUD / Controls */
-.game-hud {
-    background: linear-gradient(to top, #000, transparent);
+/* Footer & Controls */
+.game-footer {
+    height: 30%;
     padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 20px;
+    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
 }
 
 .info-bar {
     display: flex;
     justify-content: space-between;
+    gap: 15px;
+}
+
+.info-item {
+    flex: 1;
     background: rgba(0,0,0,0.6);
-    padding: 10px 20px;
-    border-radius: 100px;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid var(--primary-gold);
+    border-radius: 8px;
+    padding: 8px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
 }
 
-.balance-box label {
+.info-item span:first-child {
     font-size: 10px;
-    text-transform: uppercase;
-    color: var(--gold);
-    display: block;
+    color: var(--primary-gold);
+    font-weight: bold;
 }
 
-.balance-box span {
-    font-weight: 900;
+.info-item span:last-child {
     font-size: 18px;
+    color: #fff;
+    font-weight: 900;
 }
 
-.controls {
+.controls-row {
     display: flex;
     justify-content: center;
     align-items: center;
+    gap: 20px;
 }
 
-#spin-btn {
-    width: 100px;
-    height: 100px;
-    background: url('images/spin_btn.png') no-repeat center center;
-    background-size: contain;
+.control-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid var(--primary-gold);
+    background: var(--dark-red);
+    color: #fff;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.spin-button {
+    width: 80px;
+    height: 80px;
     border: none;
+    background: transparent;
     cursor: pointer;
     transition: transform 0.1s;
 }
 
-#spin-btn:active {
+.spin-button:active {
     transform: scale(0.9);
 }
 
-/* Animations */
-@keyframes spin {
-    to { transform: rotate(360deg); }
+.spin-button img {
+    width: 100%;
 }
 
-.spinning img {
-    animation: blur-spin 0.1s infinite linear;
+.spinning {
+    animation: button-glow 1s infinite alternate;
 }
 
-@keyframes blur-spin {
-    0% { transform: translateY(-10px); filter: blur(2px); }
-    100% { transform: translateY(10px); filter: blur(2px); }
+@keyframes button-glow {
+    from { filter: brightness(1); }
+    to { filter: brightness(1.5) drop-shadow(0 0 10px var(--primary-gold)); }
 }
