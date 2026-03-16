@@ -41,24 +41,26 @@ const CountdownTimer = ({ scheduledAt }: { scheduledAt: string }) => {
     return <span className="font-mono text-primary">{timeLeft}</span>;
 };
 
-const getStatusVariant = (status: SnookerChannel['status']) => {
-    switch(status) {
-        case 'live': return 'destructive';
-        case 'imminent': return 'default';
-        case 'scheduled': return 'secondary';
-        case 'finished': return 'outline';
-        default: return 'outline';
-    }
+const getStatusBadgeConfig = (channel: SnookerChannel) => {
+    if (channel.visibilityStatus === 'live') return { label: 'AO VIVO', variant: 'destructive' as const };
+    if (channel.visibilityStatus === 'upcoming') return { label: 'PRÓXIMO', variant: 'default' as const };
+    return { label: 'ENCERRADO', variant: 'outline' as const };
 };
 
 export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSelectorProps) => {
     const { snookerChannels, snookerPrimaryChannelId } = useAppContext();
 
     const availableChannels = useMemo(() => {
-        // Sort by priorityScore (highest first)
+        // Filtra apenas canais visíveis (Live ou Próximos de hoje/futuro)
         return (snookerChannels || [])
-            .filter(c => c.enabled && !c.isArchived)
-            .sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0));
+            .filter(c => c.enabled && !c.isArchived && c.visibilityStatus !== 'expired' && c.visibilityStatus !== 'hidden')
+            .sort((a, b) => {
+                // Prioridade 1: Live primeiro
+                if (a.visibilityStatus === 'live' && b.visibilityStatus !== 'live') return -1;
+                if (a.visibilityStatus !== 'live' && b.visibilityStatus === 'live') return 1;
+                // Prioridade 2: Score de prioridade
+                return (b.priorityScore || 0) - (a.priorityScore || 0);
+            });
     }, [snookerChannels]);
 
     const activeChannel = useMemo(() => 
@@ -69,7 +71,7 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
         <div className="flex flex-col md:flex-row md:items-center gap-3">
             <div className="flex items-center gap-2 text-white/60 font-black uppercase italic text-[10px] tracking-widest shrink-0">
                 <Video size={14} className="text-primary" />
-                Selecione a Transmissão
+                Mesa em Destaque
             </div>
              <Select value={activeChannelId} onValueChange={onChannelChange}>
                 <SelectTrigger className="w-full md:min-w-[400px] h-12 bg-black/40 border-white/10 text-white rounded-xl shadow-xl hover:border-primary/30 transition-all">
@@ -85,57 +87,54 @@ export const ChannelSelector = ({ activeChannelId, onChannelChange }: ChannelSel
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Badge variant={getStatusVariant(activeChannel.status)} className="h-5 text-[8px] uppercase font-black italic">
-                                        {activeChannel.status}
+                                    <Badge variant={getStatusBadgeConfig(activeChannel).variant} className="h-5 text-[8px] uppercase font-black italic">
+                                        {getStatusBadgeConfig(activeChannel).label}
                                     </Badge>
                                 </div>
                             </div>
-                        ) : "Escolha um jogo..."}
+                        ) : "Nenhuma transmissão ativa"}
                     </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-slate-900 border-white/10 text-white">
                     {availableChannels.length === 0 ? (
-                        <div className="p-4 text-center text-xs text-muted-foreground italic">Nenhum jogo disponível no momento.</div>
+                        <div className="p-4 text-center text-xs text-muted-foreground italic">Nenhum jogo ao vivo ou próximo jogo disponível.</div>
                     ) : (
-                        availableChannels.map(channel => (
-                            <SelectItem key={channel.id} value={channel.id} className="hover:bg-white/5 cursor-pointer p-3 border-b border-white/5 last:border-0">
-                                <div className="flex flex-col gap-1 w-full min-w-[300px]">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-black text-sm uppercase italic">
-                                              {channel.playerA.name} <span className="text-primary/50">vs</span> {channel.playerB.name}
-                                          </span>
-                                          {channel.id === snookerPrimaryChannelId && (
-                                            <Badge className="bg-primary text-black text-[7px] font-black h-3.5 px-1 uppercase italic">Principal</Badge>
-                                          )}
-                                          {channel.metadataConfidence && channel.metadataConfidence > 0.8 && (
-                                            <ShieldCheck size={10} className="text-green-500" title="Alta Confiança" />
-                                          )}
+                        availableChannels.map(channel => {
+                            const badge = getStatusBadgeConfig(channel);
+                            return (
+                                <SelectItem key={channel.id} value={channel.id} className="hover:bg-white/5 cursor-pointer p-3 border-b border-white/5 last:border-0">
+                                    <div className="flex flex-col gap-1 w-full min-w-[300px]">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-black text-sm uppercase italic">
+                                                  {channel.playerA.name} <span className="text-primary/50">vs</span> {channel.playerB.name}
+                                              </span>
+                                              {channel.id === snookerPrimaryChannelId && (
+                                                <Badge className="bg-primary text-black text-[7px] font-black h-3.5 px-1 uppercase italic">Principal</Badge>
+                                              )}
+                                            </div>
+                                            <Badge variant={badge.variant} className="h-4 text-[7px] uppercase font-black">
+                                                {badge.label}
+                                            </Badge>
                                         </div>
-                                        <Badge variant={getStatusVariant(channel.status)} className="h-4 text-[7px] uppercase font-black">
-                                            {channel.status}
-                                        </Badge>
-                                    </div>
-                                    <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
-                                        <div className="flex items-center gap-1.5">
-                                            <Calendar size={10} />
-                                            {new Date(channel.scheduledAt).toLocaleDateString('pt-BR')} • {new Date(channel.scheduledAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            {channel.prizeLabel && (
-                                              <span className="text-green-500 font-black italic">{channel.prizeLabel}</span>
-                                            )}
-                                            {channel.status === 'imminent' && (
-                                                <div className="flex items-center gap-1 text-primary">
-                                                    <Clock size={10} />
-                                                    <CountdownTimer scheduledAt={channel.scheduledAt} />
-                                                </div>
-                                            )}
+                                        <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                                            <div className="flex items-center gap-1.5">
+                                                <Calendar size={10} />
+                                                {new Date(channel.scheduledAt).toLocaleDateString('pt-BR')} • {new Date(channel.scheduledAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                {channel.visibilityStatus === 'upcoming' && (
+                                                    <div className="flex items-center gap-1 text-primary">
+                                                        <Clock size={10} />
+                                                        <CountdownTimer scheduledAt={channel.scheduledAt} />
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </SelectItem>
-                        ))
+                                </SelectItem>
+                            );
+                        })
                     )}
                 </SelectContent>
             </Select>

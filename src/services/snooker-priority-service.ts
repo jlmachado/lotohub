@@ -1,5 +1,7 @@
+
 /**
  * @fileOverview Serviço de Priorização e Ranking de Transmissões de Sinuca.
+ * Atualizado para ignorar canais expirados ou ocultos na seleção principal.
  */
 
 import { SnookerChannel } from "@/context/AppContext";
@@ -27,6 +29,13 @@ export class SnookerPriorityService {
       isCandidate = false;
       exclusions.push("ID de vídeo inválido ou inexistente");
       score -= 5000;
+    }
+
+    // Fator de exclusão temporal: Canais expirados ou ocultos
+    if (item.visibilityStatus === 'expired' || item.visibilityStatus === 'hidden') {
+      isCandidate = false;
+      exclusions.push("Evento fora da janela temporal ativa (Expirado)");
+      score -= 10000;
     }
 
     if (item.isArchived) {
@@ -99,13 +108,19 @@ export class SnookerPriorityService {
     // 1. Prioridade absoluta para fixação manual válida
     if (manualId) {
       const manual = items.find(i => i.id === manualId);
-      if (manual && manual.enabled && !manual.isArchived && isValidYoutubeVideoId(manual.embedId)) {
+      if (manual && manual.enabled && !manual.isArchived && isValidYoutubeVideoId(manual.embedId) && manual.visibilityStatus !== 'expired') {
         return manualId;
       }
     }
 
-    // 2. Escolha por ranking entre canais habilitados e válidos
-    const ranked = this.rankItems(items.filter(i => i.enabled && !i.isArchived && isValidYoutubeVideoId(i.embedId)));
+    // 2. Escolha por ranking entre canais habilitados, válidos e visíveis
+    const ranked = this.rankItems(items.filter(i => 
+      i.enabled && 
+      !i.isArchived && 
+      isValidYoutubeVideoId(i.embedId) && 
+      i.visibilityStatus !== 'expired' &&
+      i.visibilityStatus !== 'hidden'
+    ));
     
     return ranked.length > 0 ? ranked[0].id : null;
   }

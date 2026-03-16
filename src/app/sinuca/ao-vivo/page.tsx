@@ -13,7 +13,7 @@ import { ReactionsPanel } from "@/components/sinuca/ReactionsPanel";
 import { BettingPanel } from "@/components/sinuca/BettingPanel";
 import { ActivityTicker } from "@/components/sinuca/ActivityTicker";
 import { MySnookerBets } from "@/components/sinuca/MySnookerBets";
-import { isValidYoutubeVideoId } from "@/utils/youtube";
+import { VideoOff } from "lucide-react";
 
 export default function SinucaAoVivoPage() {
     const { snookerLiveConfig, snookerChannels, snookerPrimaryChannelId, joinChannel, leaveChannel, celebrationTrigger, clearCelebration, user } = useAppContext();
@@ -24,28 +24,33 @@ export default function SinucaAoVivoPage() {
         setIsClient(true);
     }, []);
     
-    // Auto-select best channel based on Priority Score logic from Context
-    useEffect(() => {
-        if (!isClient || !snookerChannels || snookerChannels.length === 0) return;
+    // Lista apenas canais visíveis (Ao vivo ou Próximos)
+    const visibleChannels = useMemo(() => 
+        (snookerChannels || []).filter(c => 
+            c.enabled && 
+            !c.isArchived && 
+            (c.visibilityStatus === 'live' || c.visibilityStatus === 'upcoming')
+        ),
+    [snookerChannels]);
 
-        // If we have an elected primary channel and haven't manually changed it in this session yet
-        if (snookerPrimaryChannelId && !activeChannelId) {
-            setActiveChannelId(snookerPrimaryChannelId);
+    // Sincroniza canal ativo com o sugerido pelo sistema ou pelo admin
+    useEffect(() => {
+        if (!isClient || visibleChannels.length === 0) return;
+
+        // Se o canal atual não está na lista de visíveis (ficou expirado por exemplo), troca
+        if (activeChannelId && !visibleChannels.some(c => c.id === activeChannelId)) {
+            setActiveChannelId(snookerPrimaryChannelId || visibleChannels[0].id);
             return;
         }
 
-        // Fallback fallback: if primary is gone but we have channels, pick first enabled
         if (!activeChannelId) {
-            const fallback = snookerChannels.find(c => c.enabled && !c.isArchived);
-            if (fallback) setActiveChannelId(fallback.id);
+            setActiveChannelId(snookerPrimaryChannelId || visibleChannels[0].id);
         }
-    }, [isClient, snookerChannels, snookerPrimaryChannelId, activeChannelId]);
+    }, [isClient, visibleChannels, snookerPrimaryChannelId, activeChannelId]);
 
     useEffect(() => {
         if (!activeChannelId || !user) return;
-
         joinChannel(activeChannelId, user.id);
-
         return () => {
             leaveChannel(activeChannelId, user.id);
         };
@@ -53,12 +58,19 @@ export default function SinucaAoVivoPage() {
 
     if (!isClient) return null;
 
-    if (!activeChannelId && (!snookerChannels || snookerChannels.length === 0)) {
+    if (visibleChannels.length === 0) {
         return (
             <CasinoLayout>
-                <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-                    <div className="w-16 h-16 rounded-full border-2 border-white/5 border-t-primary animate-spin" />
-                    <p className="text-white/40 font-bold uppercase tracking-widest text-xs italic">Aguardando transmissões...</p>
+                <div className="flex flex-col items-center justify-center h-[60vh] gap-6 text-center px-4">
+                    <div className="w-20 h-20 rounded-full bg-slate-900 border border-white/5 flex items-center justify-center">
+                        <VideoOff className="h-10 w-10 text-slate-700" />
+                    </div>
+                    <div className="space-y-2">
+                        <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">Nenhuma Transmissão Ativa</h2>
+                        <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] max-w-xs mx-auto">
+                            Aguardando o início de novos jogos ao vivo ou próximos eventos agendados.
+                        </p>
+                    </div>
                 </div>
             </CasinoLayout>
         );

@@ -26,7 +26,6 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
     const [updatedOdd, setUpdatedOdd] = useState<'A' | 'B' | 'D' | null>(null);
     const prevOdds = useRef(channel?.odds);
 
-    // Monitora atualização visual de odds
     useEffect(() => {
         if (channel && prevOdds.current) {
             let updated: 'A' | 'B' | 'D' | null = null;
@@ -86,25 +85,18 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
         if (!snookerLiveConfig?.betsEnabled || !channel?.enabled) return { text: 'MERCADO DESABILITADO', disabled: true, label: 'Fechado' };
         if (!channel) return { text: 'CARREGANDO...', disabled: true, label: '...' };
 
-        const isLive = channel.status === 'live';
-        const isScheduled = channel.status === 'scheduled' || channel.status === 'imminent';
-        const isFinished = channel.status === 'finished' || channel.status === 'cancelled';
+        const isLive = channel.visibilityStatus === 'live';
+        const isUpcoming = channel.visibilityStatus === 'upcoming';
+        const isExpired = channel.visibilityStatus === 'expired' || channel.status === 'finished' || channel.status === 'cancelled';
 
-        if (isFinished) return { text: 'JOGO ENCERRADO', disabled: true, label: 'Finalizado' };
+        if (isExpired) return { text: 'MERCADO ENCERRADO', disabled: true, label: 'Finalizado' };
 
-        // Regra de Apostas Pré-Live
-        if (isScheduled) {
-            if (!snookerAutomationSettings.allowPreMatchBetting) {
-                return { text: 'APOSTAS SOMENTE AO VIVO', disabled: true, label: 'Pré-jogo' };
-            }
-            return { text: isProcessing ? '...' : 'CONFIRMAR PRÉ-JOGO', disabled: !selectedBet, label: 'Pré-jogo' };
+        if (isUpcoming) {
+            return { text: isProcessing ? '...' : 'CONFIRMAR PRÉ-JOGO', disabled: !selectedBet, label: 'Apostas Abertas' };
         }
 
         if (isLive) {
-            if (!snookerAutomationSettings.allowLiveBetting) {
-                return { text: 'MERCADO LIVE FECHADO', disabled: true, label: 'Ao vivo' };
-            }
-            return { text: isProcessing ? '...' : 'CONFIRMAR APOSTA LIVE', disabled: !selectedBet, label: 'Ao vivo' };
+            return { text: isProcessing ? '...' : 'CONFIRMAR APOSTA LIVE', disabled: !selectedBet, label: 'AO VIVO' };
         }
 
         return { text: 'MERCADO INDISPONÍVEL', disabled: true, label: 'Fechado' };
@@ -120,7 +112,7 @@ export const BettingPanel = ({ channelId }: BettingPanelProps) => {
                 </CardTitle>
                 <Badge className={cn(
                     "text-[9px] uppercase font-black px-2 h-5",
-                    market.label === 'Ao vivo' ? "bg-red-600 animate-pulse" : "bg-blue-600"
+                    market.label === 'AO VIVO' ? "bg-red-600 animate-pulse" : "bg-blue-600"
                 )}>
                     {market.label}
                 </Badge>

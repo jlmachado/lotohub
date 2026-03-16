@@ -1,10 +1,11 @@
+
 'use client';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   ChevronLeft, PlusCircle, Edit, Trash2, Zap, RefreshCw, 
   History, Info, ExternalLink, Copy, Check, X, Filter, 
-  Video, MonitorPlay, ShieldAlert, AlertTriangle, CheckCircle2, Star, BarChart3
+  Video, MonitorPlay, ShieldAlert, AlertTriangle, CheckCircle2, Star, BarChart3, Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,28 +22,29 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { cn } from '@/lib/utils';
 import { isValidYoutubeVideoId, extractYoutubeVideoId, buildYoutubeWatchUrl } from '@/utils/youtube';
 
-type FormState = Omit<SnookerChannel, 'id' | 'createdAt' | 'updatedAt' | 'bancaId' | 'status' | 'odds' | 'scoreA' | 'scoreB'>;
+type FormState = Omit<SnookerChannel, 'id' | 'createdAt' | 'updatedAt' | 'bancaId' | 'status' | 'odds' | 'scoreA' | 'scoreB' | 'visibilityStatus' | 'isExpired' | 'isUpcoming' | 'isLiveNow'>;
 
 const initialFormState: FormState = {
   title: '',
   description: '',
   youtubeUrl: '',
   embedId: '',
-  scheduledAt: '',
+  sourceVideoId: '',
   playerA: { name: '', level: 5 },
   playerB: { name: '', level: 5 },
   houseMargin: 8,
   bestOf: 9,
   priority: 10,
   enabled: true,
-  isManualOverride: false
+  isManualOverride: false,
+  scheduledAt: ''
 };
 
 export default function AdminSinucaCanaisPage() {
     const { 
         snookerChannels, addSnookerChannel, updateSnookerChannel, 
         deleteSnookerChannel, syncSnookerFromYoutube, snookerSyncState,
-        approveAutoSnookerChannel, snookerPrimaryChannelId, setManualPrimarySnookerChannel,
+        snookerPrimaryChannelId, setManualPrimarySnookerChannel,
         snookerAutomationSettings
     } = useAppContext();
     
@@ -53,21 +55,18 @@ export default function AdminSinucaCanaisPage() {
     const [currentChannel, setCurrentChannel] = useState<FormState>(initialFormState);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [isSyncing, setIsSyncing] = useState(false);
     
     // Filtros
-    const [filterType, setFilterType] = useState<'all' | 'manual' | 'youtube' | 'live' | 'pending' | 'invalid'>('all');
+    const [filterType, setFilterType] = useState<'all' | 'live' | 'upcoming' | 'expired'>('all');
 
     const filteredChannels = useMemo(() => {
         let items = [...snookerChannels].filter(c => !c.isArchived);
         
-        if (filterType === 'manual') items = items.filter(c => c.source === 'manual' || !c.source);
-        if (filterType === 'youtube') items = items.filter(c => c.source === 'youtube');
-        if (filterType === 'live') items = items.filter(c => c.status === 'live');
-        if (filterType === 'pending') items = items.filter(c => c.sourceStatus === 'detected');
-        if (filterType === 'invalid') items = items.filter(c => !isValidYoutubeVideoId(c.embedId));
+        if (filterType === 'live') items = items.filter(c => c.visibilityStatus === 'live');
+        if (filterType === 'upcoming') items = items.filter(c => c.visibilityStatus === 'upcoming');
+        if (filterType === 'expired') items = items.filter(c => c.visibilityStatus === 'expired');
         
-        return items.sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0));
+        return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [snookerChannels, filterType]);
 
     const handleAddNew = () => {
@@ -78,7 +77,7 @@ export default function AdminSinucaCanaisPage() {
 
     const handleEdit = (channel: SnookerChannel) => {
         setEditingId(channel.id);
-        const { status, odds, scoreA, scoreB, bancaId, createdAt, updatedAt, ...editableData } = channel;
+        const { status, odds, scoreA, scoreB, bancaId, createdAt, updatedAt, visibilityStatus, isExpired, isUpcoming, isLiveNow, ...editableData } = channel;
         setCurrentChannel({ ...editableData, isManualOverride: channel.isManualOverride || false });
         setIsDialogOpen(true);
     };
@@ -113,13 +112,13 @@ export default function AdminSinucaCanaisPage() {
                     <Link href="/admin/sinuca"><Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button></Link>
                     <div>
                         <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Canais Sinuca</h1>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Gestão de Transmissões Profissionais</p>
+                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Gestão de Visibilidade e Apostas</p>
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" disabled={isSyncing || snookerSyncState === 'syncing'} onClick={() => syncSnookerFromYoutube(true)} className="h-11 rounded-xl font-bold border-white/10 bg-white/5">
-                        {(isSyncing || snookerSyncState === 'syncing') ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-                        Sync YouTube
+                    <Button variant="outline" disabled={snookerSyncState === 'syncing'} onClick={() => syncSnookerFromYoutube(true)} className="h-11 rounded-xl font-bold border-white/10 bg-white/5">
+                        {snookerSyncState === 'syncing' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+                        Sincronizar Agora
                     </Button>
                     <Button onClick={handleAddNew} className="lux-shine font-black uppercase rounded-xl h-11 px-6"><PlusCircle className="mr-2 h-4 w-4" /> Novo Canal</Button>
                 </div>
@@ -128,8 +127,8 @@ export default function AdminSinucaCanaisPage() {
             <div className="flex flex-wrap items-center gap-2 bg-slate-900/50 p-2 rounded-xl border border-white/5">
                 <FilterBtn active={filterType === 'all'} onClick={() => setFilterType('all')} label="Todos" />
                 <FilterBtn active={filterType === 'live'} onClick={() => setFilterType('live')} label="Ao Vivo" color="text-red-500" />
-                <FilterBtn active={filterType === 'pending'} onClick={() => setFilterType('pending')} label="Pendentes" color="text-amber-500" />
-                <FilterBtn active={filterType === 'manual'} onClick={() => setFilterType('manual')} label="Manual" />
+                <FilterBtn active={filterType === 'upcoming'} onClick={() => setFilterType('upcoming')} label="Próximos" color="text-blue-400" />
+                <FilterBtn active={filterType === 'expired'} onClick={() => setFilterType('expired')} label="Expirados" color="text-slate-500" />
             </div>
 
             <Card className="border-white/5 bg-card/50 overflow-hidden shadow-2xl">
@@ -137,8 +136,8 @@ export default function AdminSinucaCanaisPage() {
                     <TableHeader className="bg-slate-950/50">
                         <TableRow className="border-white/5 h-10">
                             <TableHead className="text-[9px] uppercase font-black px-4">Jogo / Torneio</TableHead>
-                            <TableHead className="text-[9px] uppercase font-black">Score / Rank</TableHead>
-                            <TableHead className="text-[9px] uppercase font-black">Saúde / Origem</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black">Visibilidade</TableHead>
+                            <TableHead className="text-[9px] uppercase font-black">Apostas</TableHead>
                             <TableHead className="text-[9px] uppercase font-black text-center">Ativo</TableHead>
                             <TableHead className="text-[9px] uppercase font-black text-right px-4">Ações</TableHead>
                         </TableRow>
@@ -151,6 +150,7 @@ export default function AdminSinucaCanaisPage() {
                                 const isVideoValid = isValidYoutubeVideoId(channel.embedId);
                                 const isPrimary = channel.id === snookerPrimaryChannelId;
                                 const isForced = channel.id === snookerAutomationSettings.manualPrimaryChannelId;
+                                
                                 return (
                                     <TableRow key={channel.id} className={cn("border-white/5 hover:bg-white/5 transition-colors", isPrimary && "bg-primary/5")}>
                                         <TableCell className="px-4 py-3">
@@ -163,20 +163,22 @@ export default function AdminSinucaCanaisPage() {
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <div className="flex items-center gap-2">
-                                              <Badge variant="outline" className="text-[10px] font-black tabular-nums border-white/10">{channel.priorityScore || 0}</Badge>
-                                              <span className="text-[8px] text-slate-500 uppercase font-bold">{channel.contentType || 'match'}</span>
-                                            </div>
+                                            <Badge variant="outline" className={cn(
+                                                "text-[8px] h-4 uppercase font-black",
+                                                channel.visibilityStatus === 'live' ? "border-red-500/30 text-red-500" :
+                                                channel.visibilityStatus === 'upcoming' ? "border-blue-500/30 text-blue-400" :
+                                                "border-white/10 text-slate-500"
+                                            )}>
+                                                {channel.visibilityStatus || 'unknown'}
+                                            </Badge>
                                         </TableCell>
                                         <TableCell>
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <Badge variant="outline" className="text-[8px] h-4 uppercase opacity-60">{channel.sourceName || 'Manual'}</Badge>
-                                                    <Badge className={cn("text-[7px] font-black h-4 uppercase", isVideoValid ? "bg-green-600/20 text-green-500" : "bg-red-600/20 text-red-500")}>
-                                                        {isVideoValid ? 'VÁLIDO' : 'ERRO VÍDEO'}
-                                                    </Badge>
-                                                </div>
-                                            </div>
+                                            <Badge className={cn(
+                                                "text-[7px] font-black h-4 uppercase",
+                                                channel.visibilityStatus === 'expired' ? "bg-slate-800 text-slate-500" : "bg-green-600/20 text-green-500"
+                                            )}>
+                                                {channel.visibilityStatus === 'expired' ? 'FECHADO' : 'ABERTO'}
+                                            </Badge>
                                         </TableCell>
                                         <TableCell className="text-center">
                                             <Switch checked={channel.enabled} onCheckedChange={(v) => updateSnookerChannel({...channel, enabled: v})} className="scale-75" />
