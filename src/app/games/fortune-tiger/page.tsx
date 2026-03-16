@@ -1,14 +1,14 @@
 'use client';
 
 /**
- * @fileOverview Wrapper Next.js Profissional para o Fortune Tiger.
- * Gerencia a integração do jogo HTML5 com o saldo real do sistema e AppContext.
+ * @fileOverview Wrapper Next.js Profissional para o Fortune Tiger Oficial.
+ * Atua como ponte entre o AppContext (Saldo Real) e o Motor do Jogo (Iframe).
  */
 
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, Maximize2, RotateCcw, Wallet, Info } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
@@ -19,33 +19,52 @@ export default function FortuneTigerGamePage() {
   const { toast } = useToast();
   const [mounted, setMounted] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   /**
-   * Escuta mensagens do jogo (giros, ganhos, etc)
-   * Preparado para integração financeira real.
+   * Comunica o saldo atual para o iframe quando solicitado
+   */
+  const syncBalanceWithIframe = useCallback(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'SYNC_BALANCE',
+        balance: balance
+      }, '*');
+    }
+  }, [balance]);
+
+  /**
+   * Trata eventos financeiros vindos do motor do jogo
    */
   const handleGameMessage = useCallback((event: MessageEvent) => {
-    // Segurança: Validar origem se necessário
     const data = event.data;
     
-    if (data.type === 'SNOOKER_BET_PLACED' || data.type === 'SLOT_BET') {
-      console.log('Aposta detectada no slot:', data.amount);
-      // Aqui entrará a integração com BetService no futuro
+    if (data.type === 'GAME_READY') {
+      setLoading(false);
+      syncBalanceWithIframe();
+    }
+
+    if (data.type === 'SLOT_BET') {
+      // Aqui integrará com o serviço de aposta real no futuro.
+      // Por enquanto apenas logamos para depuração.
+      console.log(`[SLOT_BET] Valor: R$ ${data.amount}`);
     }
 
     if (data.type === 'SLOT_WIN') {
       toast({
-        title: "GRANDE GANHO!",
+        title: "VITÓRIA!",
         description: `Você ganhou R$ ${data.amount.toFixed(2)}!`,
-        className: "bg-yellow-500 text-black font-bold"
+        className: "bg-yellow-500 text-black font-black"
       });
-      refreshData();
+      // Força atualização do contexto para refletir novo saldo
+      setTimeout(refreshData, 500);
     }
-  }, [toast, refreshData]);
+  }, [toast, refreshData, syncBalanceWithIframe]);
 
   useEffect(() => {
     window.addEventListener('message', handleGameMessage);
@@ -54,26 +73,25 @@ export default function FortuneTigerGamePage() {
 
   const toggleFullScreen = () => {
     const elem = document.getElementById('game-container');
-    if (elem?.requestFullscreen) {
-      elem.requestFullscreen();
-    }
+    if (elem?.requestFullscreen) elem.requestFullscreen();
   };
 
   const reloadGame = () => {
+    setLoading(true);
     setIframeKey(prev => prev + 1);
   };
 
   if (!mounted) return null;
 
   return (
-    <div className="bg-[#0a0a0a] min-h-screen flex flex-col items-center overflow-hidden">
-        {/* Top Navigation Bar - Integrada com Saldo Real */}
-        <div className="w-full h-14 bg-[#1a1a1a] border-b border-yellow-600/30 px-4 flex items-center justify-between z-50 shadow-lg">
+    <div className="bg-[#0a0a0a] min-h-screen flex flex-col items-center overflow-hidden font-sans">
+        {/* Top Header - Integrado */}
+        <div className="w-full h-14 bg-[#1a1a1a] border-b border-yellow-600/30 px-4 flex items-center justify-between z-50 shadow-2xl">
             <div className="flex items-center gap-2">
               <Button 
                 variant="ghost" 
                 size="sm"
-                className="text-white hover:bg-white/10 gap-1 font-bold"
+                className="text-white hover:bg-white/10 gap-1 font-bold rounded-lg"
                 onClick={() => router.push('/cassino')}
               >
                   <ChevronLeft className="h-4 w-4" />
@@ -89,57 +107,57 @@ export default function FortuneTigerGamePage() {
             
             <div className="flex flex-col items-center">
               <span className="text-xs font-black text-yellow-500 uppercase italic tracking-tighter">Fortune Tiger</span>
-              <Badge className="bg-green-600/20 text-green-500 border-0 h-3 px-1 text-[8px] animate-pulse">SERVIDOR ATIVO</Badge>
+              <Badge className="bg-green-600/20 text-green-500 border-0 h-3 px-1 text-[8px] animate-pulse">SERVIDOR SEGURO</Badge>
             </div>
 
             <div className="flex items-center gap-1">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="text-white/50 hover:text-white h-8 w-8"
-                  onClick={reloadGame}
-                  title="Reiniciar Jogo"
-                >
+                <Button variant="ghost" size="icon" className="text-white/50 hover:text-white" onClick={reloadGame}>
                     <RotateCcw className="h-4 w-4" />
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="text-white/50 hover:text-white h-8 w-8"
-                  onClick={toggleFullScreen}
-                  title="Tela Cheia"
-                >
+                <Button variant="ghost" size="icon" className="text-white/50 hover:text-white" onClick={toggleFullScreen}>
                     <Maximize2 className="h-4 w-4" />
                 </Button>
             </div>
         </div>
 
-        {/* Game Area (Optimized for Portrait View) */}
-        <div id="game-container" className="flex-1 w-full max-w-[540px] relative bg-black shadow-[0_0_50px_rgba(0,0,0,0.8)] border-x border-white/5">
+        {/* Iframe Game Container */}
+        <div id="game-container" className="flex-1 w-full max-w-[540px] relative bg-black shadow-[0_0_100px_rgba(0,0,0,0.9)] border-x border-white/5">
+            {loading && (
+              <div className="absolute inset-0 z-50 bg-[#0a0a0a] flex flex-col items-center justify-center gap-4">
+                <div className="w-16 h-16 border-4 border-yellow-500/20 border-t-yellow-500 rounded-full animate-spin"></div>
+                <p className="text-yellow-500 font-black uppercase italic tracking-widest text-xs animate-pulse">Carregando Engine...</p>
+              </div>
+            )}
             <iframe
+                ref={iframeRef}
                 key={iframeKey}
                 src="/games/fortune-tiger/index.html"
                 className="w-full h-full border-0"
                 allow="autoplay; fullscreen"
-                loading="lazy"
-                title="Fortune Tiger Game Engine"
+                title="Fortune Tiger Engine"
             ></iframe>
             
-            {/* Overlay de Segurança para Mobile */}
+            {/* Login Guard */}
             {!user && (
-              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-[60] flex flex-col items-center justify-center p-8 text-center space-y-4">
-                <Info className="h-12 w-12 text-yellow-500" />
-                <h2 className="text-white font-black text-xl uppercase italic">Acesso Restrito</h2>
-                <p className="text-gray-400 text-sm">Faça login para utilizar seu saldo real e ganhar prêmios em dinheiro.</p>
-                <Button onClick={() => router.push('/login')} className="bg-yellow-500 text-black font-black uppercase">Entrar Agora</Button>
+              <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-[60] flex flex-col items-center justify-center p-8 text-center space-y-6">
+                <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center border border-yellow-500/20">
+                  <Info className="h-10 w-10 text-yellow-500" />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-white font-black text-2xl uppercase italic tracking-tighter">Aposta Real Desativada</h2>
+                  <p className="text-slate-400 text-sm leading-relaxed">Faça login para utilizar seu saldo e concorrer a prêmios em dinheiro real.</p>
+                </div>
+                <Button onClick={() => router.push('/login')} className="w-full h-14 bg-yellow-500 hover:bg-yellow-600 text-black font-black uppercase italic rounded-xl lux-shine">
+                  Entrar Agora
+                </Button>
               </div>
             )}
         </div>
         
-        {/* Bottom Status Bar */}
-        <div className="w-full py-1.5 bg-[#0a0a0a] text-center border-t border-white/5">
-          <p className="text-[8px] text-white/30 uppercase font-black tracking-[5px]">
-            LOTOHUB CASINO • CERTIFIED RNG • 18+
+        {/* Bottom Banner */}
+        <div className="w-full py-2 bg-[#0a0a0a] text-center border-t border-white/5">
+          <p className="text-[8px] text-white/20 uppercase font-black tracking-[6px]">
+            LOTOHUB PREMIUM GAMING • RATED 18+
           </p>
         </div>
     </div>

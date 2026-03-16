@@ -1,81 +1,77 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fortune Tiger Engine</title>
+    <title>Fortune Tiger - Engine</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 <body>
     <div id="game-wrapper">
-        <!-- Background Decor -->
-        <div class="bg-decoration"></div>
-
-        <!-- Main Header -->
-        <header id="game-header">
-            <div class="logo-container">
-                <div class="tiger-head"></div>
-                <h1>FORTUNE TIGER</h1>
-            </div>
-        </header>
-
-        <!-- Jackpot Display -->
-        <div id="jackpot-container">
-            <span class="label">JACKPOT</span>
-            <span id="jackpot-value">R$ 12.450,00</span>
+        <!-- Background e Logo -->
+        <div class="game-bg"></div>
+        <div class="game-header">
+            <div class="tiger-logo"></div>
         </div>
 
         <!-- Reels Container -->
-        <div id="reels-wrapper">
-            <div class="reel" id="reel-1">
-                <div class="reel-strip"></div>
+        <div class="slot-machine">
+            <div class="reels-container">
+                <div class="reel" id="reel-0"></div>
+                <div class="reel" id="reel-1"></div>
+                <div class="reel" id="reel-2"></div>
+                <!-- Win Line Overlays -->
+                <div class="win-lines" id="win-lines"></div>
             </div>
-            <div class="reel" id="reel-2">
-                <div class="reel-strip"></div>
-            </div>
-            <div class="reel" id="reel-3">
-                <div class="reel-strip"></div>
-            </div>
-            <!-- Winning Lines Overlay -->
-            <div id="win-lines"></div>
         </div>
 
-        <!-- Game Controls -->
-        <footer id="game-controls">
-            <div class="stats-bar">
-                <div class="stat-item">
-                    <span class="stat-label">GANHO</span>
-                    <span id="win-amount">R$ 0,00</span>
+        <!-- HUD & Controls -->
+        <div class="game-footer">
+            <div class="info-bar">
+                <div class="info-item">
+                    <span>SALDO</span>
+                    <p id="balance-display">R$ 0,00</p>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-label">APOSTA</span>
-                    <span id="bet-amount">R$ 1,00</span>
+                <div class="info-item">
+                    <span>GANHO</span>
+                    <p id="win-display">R$ 0,00</p>
                 </div>
             </div>
 
-            <div class="main-buttons">
-                <button id="btn-minus" class="control-btn">-</button>
-                <div class="spin-btn-wrapper">
-                    <button id="btn-spin" class="spin-btn">SPIN</button>
+            <div class="controls">
+                <div class="bet-control">
+                    <button id="btn-minus" class="ctrl-btn">-</button>
+                    <div class="bet-value">
+                        <span>APOSTA</span>
+                        <p id="bet-display">R$ 1,00</p>
+                    </div>
+                    <button id="btn-plus" class="ctrl-btn">+</button>
                 </div>
-                <button id="btn-plus" class="control-btn">+</button>
-            </div>
 
-            <div class="auto-turbo-bar">
-                <button id="btn-auto" class="toggle-btn">AUTO</button>
-                <button id="btn-turbo" class="toggle-btn">TURBO</button>
-            </div>
-        </footer>
+                <button id="spin-btn" class="spin-btn">
+                    <div class="spin-icon"></div>
+                </button>
 
-        <!-- Win Overlays -->
+                <div class="auto-turbo">
+                    <button id="turbo-btn" class="sub-btn">TURBO</button>
+                    <button id="auto-btn" class="sub-btn">AUTO</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Popups -->
         <div id="big-win-overlay" class="overlay hidden">
-            <div class="win-content">
-                <h2 class="animate-pulse">BIG WIN!</h2>
+            <div class="big-win-content">
+                <h2 class="animate-bounce">BIG WIN!</h2>
                 <p id="big-win-value">R$ 0,00</p>
             </div>
         </div>
     </div>
+
+    <!-- Audio (Preload) -->
+    <audio id="audio-spin" src="media/spin.mp3" preload="auto"></audio>
+    <audio id="audio-win" src="media/win.mp3" preload="auto"></audio>
+    <audio id="audio-bg" src="media/bg.mp3" loop preload="auto"></audio>
 
     <script src="script.js"></script>
 </body>
