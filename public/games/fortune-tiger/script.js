@@ -1,168 +1,202 @@
-
 /**
- * @fileOverview Motor de Jogo Fortune Tiger V2 - Edição Resiliente
- * Foco: Estabilidade no Preload e Prevenção de Travamentos.
+ * @fileOverview Motor de Slot Fortune Tiger - Versão Resiliente V2
+ * Foco: Correção de Loading Infinito e Tratamento de Erros de Assets.
  */
 
-// --- CONFIGURAÇÃO DE ASSETS ---
-const ASSETS_PATH = {
-    images: 'images/',
-    media: 'media/'
+const ASSETS = {
+    images: {
+        bg: 'images/bg.png',
+        reel: 'images/reel_bg.png',
+        tiger: 'images/tiger.png',
+        spin: 'images/spin_btn.png',
+        logo: 'images/logo.png',
+        bull: 'images/bull.png',
+        jade: 'images/jade.png',
+        envelope: 'images/red_envelope.png',
+        firecracker: 'images/firecracker.png',
+        orange: 'images/orange.png',
+        gold: 'images/gold_nugget.png'
+    },
+    sounds: {
+        spin: 'media/spin.mp3',
+        win: 'media/win.mp3',
+        click: 'media/click.mp3',
+        bg: 'media/background.mp3'
+    }
 };
 
-const MANDATORY_IMAGES = [
-    { id: 'tiger', file: 'tiger.png' },
-    { id: 'bull', file: 'bull.png' },
-    { id: 'orange', file: 'orange.png' },
-    { id: 'firecracker', file: 'firecracker.png' },
-    { id: 'red_envelope', file: 'red_envelope.png' },
-    { id: 'gold_nugget', file: 'gold_nugget.png' },
-    { id: 'jade', file: 'jade.png' },
-    { id: 'bg', file: 'bg.png' },
-    { id: 'logo', file: 'logo.png' }
-];
+const SYMBOLS = ['bull', 'jade', 'envelope', 'firecracker', 'orange', 'gold', 'tiger'];
+let gameActive = false;
+let userBalance = 0;
+let currentBet = 1.00;
 
-const OPTIONAL_MEDIA = [
-    { id: 'spin', file: 'spin.mp3' },
-    { id: 'win', file: 'win.mp3' },
-    { id: 'click', file: 'click.mp3' },
-    { id: 'bg_music', file: 'background.mp3' }
-];
-
-// --- ESTADO GLOBAL ---
-const gameData = {
-    balance: 0,
-    bet: 1.00,
-    isSpinning: false,
-    loadedAssets: new Map(),
-    audioCtx: null
-};
-
-// --- MOTOR DE PRELOAD ---
-class AssetLoader {
-    constructor() {
-        this.total = MANDATORY_IMAGES.length + OPTIONAL_MEDIA.length;
-        this.loaded = 0;
-        this.hasFinished = false;
-    }
-
-    updateProgress() {
-        this.loaded++;
-        const percent = Math.round((this.loaded / this.total) * 100);
-        const loaderText = document.getElementById('loading-text');
-        if (loaderText) {
-            loaderText.innerText = `CARREGANDO ${percent}%...`;
-        }
-        console.log(`[AssetLoader] Progresso: ${percent}% (${this.loaded}/${this.total})`);
-    }
-
-    async loadAll() {
-        console.log('[AssetLoader] Iniciando carregamento de recursos...');
-        
-        // Timeout de segurança: 10 segundos para não travar o usuário
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('TIMEOUT_EXCEEDED')), 10000)
-        );
-
-        const loadTask = async () => {
-            // 1. Carregar Imagens Obrigatórias
-            const imgPromises = MANDATORY_IMAGES.map(asset => this.loadImage(asset));
-            
-            // 2. Carregar Áudios Opcionais (não bloqueantes no erro)
-            const audioPromises = OPTIONAL_MEDIA.map(asset => this.loadAudio(asset));
-
-            await Promise.allSettled([...imgPromises, ...audioPromises]);
-            console.log('[AssetLoader] Todas as promessas de assets foram resolvidas/rejeitadas.');
-        };
-
-        try {
-            await Promise.race([loadTask(), timeoutPromise]);
-        } catch (err) {
-            console.warn('[AssetLoader] Inicialização forçada por timeout ou erro crítico:', err.message);
-        } finally {
-            this.finish();
-        }
-    }
-
-    loadImage(asset) {
-        return new Promise((resolve) => {
+// Helper para carregar um único asset com tratamento de erro
+async function loadAsset(type, key, src) {
+    return new Promise((resolve) => {
+        if (type === 'image') {
             const img = new Image();
+            img.src = src;
             img.onload = () => {
-                gameData.loadedAssets.set(asset.id, img);
-                this.updateProgress();
-                resolve();
+                console.log(`[Asset] Imagem carregada: ${key}`);
+                resolve({ key, status: 'ok' });
             };
             img.onerror = () => {
-                console.error(`[AssetLoader] Falha ao carregar imagem obrigatória: ${asset.file}`);
-                // Fallback: criar um canvas vazio para não quebrar o motor de renderização
-                const canvas = document.createElement('canvas');
-                canvas.width = 100; canvas.height = 100;
-                gameData.loadedAssets.set(asset.id, canvas);
-                this.updateProgress();
-                resolve();
+                console.warn(`[Asset] Falha na imagem: ${key} (${src})`);
+                resolve({ key, status: 'error' });
             };
-            img.src = ASSETS_PATH.images + asset.file;
-        });
-    }
-
-    loadAudio(asset) {
-        return new Promise((resolve) => {
+        } else {
             const audio = new Audio();
-            audio.oncanplaythrough = () => {
-                gameData.loadedAssets.set(asset.id, audio);
-                this.updateProgress();
-                resolve();
+            audio.src = src;
+            audio.onloadedmetadata = () => {
+                console.log(`[Asset] Áudio carregado: ${key}`);
+                resolve({ key, status: 'ok' });
             };
             audio.onerror = () => {
-                console.warn(`[AssetLoader] Falha ao carregar áudio opcional: ${asset.file}`);
-                this.updateProgress();
-                resolve(); // Resolve para não travar o Promise.all
+                console.warn(`[Asset] Falha no áudio: ${key} (${src})`);
+                resolve({ key, status: 'error' });
             };
-            audio.src = ASSETS_PATH.media + asset.file;
-            audio.load();
+            // Timeout para áudio (2s) para não travar o carregamento
+            setTimeout(() => resolve({ key, status: 'timeout' }), 2000);
+        }
+    });
+}
+
+async function startPreload() {
+    const loader = document.getElementById('loader');
+    const game = document.getElementById('game-container');
+    
+    console.log("Iniciando Preload...");
+
+    // Timeout Global de Segurança (8 segundos)
+    const safetyTimeout = new Promise(resolve => 
+        setTimeout(() => {
+            console.warn("Preload atingiu timeout de segurança. Forçando início.");
+            resolve('timeout');
+        }, 8000)
+    );
+
+    const assetPromises = [
+        ...Object.entries(ASSETS.images).map(([k, s]) => loadAsset('image', k, s)),
+        ...Object.entries(ASSETS.sounds).map(([k, s]) => loadAsset('audio', k, s))
+    ];
+
+    // Espera todos os assets ou o timeout
+    await Promise.race([
+        Promise.all(assetPromises),
+        safetyTimeout
+    ]);
+
+    console.log("Preload finalizado.");
+    
+    // Transição visual
+    if (loader) loader.style.display = 'none';
+    if (game) game.classList.remove('hidden');
+    
+    initGame();
+}
+
+function initGame() {
+    console.log("Inicializando interface do jogo...");
+    gameActive = true;
+    
+    // Solicita saldo inicial ao wrapper
+    window.parent.postMessage({ type: 'GAME_READY' }, '*');
+    
+    setupEventListeners();
+    renderInitialReels();
+}
+
+function setupEventListeners() {
+    const spinBtn = document.getElementById('spin-btn');
+    if (spinBtn) {
+        spinBtn.addEventListener('click', () => {
+            if (gameActive) handleSpin();
         });
     }
 
-    finish() {
-        if (this.hasFinished) return;
-        this.hasFinished = true;
-        
-        console.log('[AssetLoader] Finalizando bootstrap...');
-        const loader = document.getElementById('loader');
-        const game = document.getElementById('game-container');
-        
-        if (loader) loader.style.display = 'none';
-        if (game) game.style.opacity = '1';
-        
-        // Notifica o wrapper que o jogo está pronto
-        window.parent.postMessage({ type: 'GAME_READY' }, '*');
-        
-        this.initGameLoop();
+    // Listener para mensagens do sistema (Saldo)
+    window.addEventListener('message', (event) => {
+        if (event.data.type === 'SYNC_BALANCE') {
+            userBalance = event.data.balance;
+            updateUI();
+        }
+    });
+}
+
+function handleSpin() {
+    if (userBalance < currentBet) {
+        alert("Saldo Insuficiente");
+        return;
     }
 
-    initGameLoop() {
-        console.log('[FortuneTiger] Jogo iniciado com sucesso.');
-        // Lógica de renderização inicial dos reels
-        updateUI();
+    playSound('click');
+    gameActive = false;
+    
+    // Avisa o sistema para descontar aposta
+    window.parent.postMessage({ type: 'SLOT_BET', amount: currentBet }, '*');
+
+    // Inicia animação visual
+    const reels = document.querySelectorAll('.reel');
+    reels.forEach(r => r.classList.add('spinning'));
+
+    playSound('spin');
+
+    // Simulação de resultado (No futuro viria do servidor)
+    setTimeout(() => {
+        stopSpin();
+    }, 2000);
+}
+
+function stopSpin() {
+    const reels = document.querySelectorAll('.reel');
+    reels.forEach(r => {
+        r.classList.remove('spinning');
+        const randomSym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+        const img = r.querySelector('img');
+        if (img) img.src = ASSETS.images[randomSym] || ASSETS.images.tiger;
+    });
+
+    gameActive = true;
+    checkWin();
+}
+
+function checkWin() {
+    // Lógica simplificada de vitória para o protótipo (10% de chance)
+    if (Math.random() > 0.9) {
+        const winAmount = currentBet * 5;
+        playSound('win');
+        window.parent.postMessage({ type: 'SLOT_WIN', amount: winAmount }, '*');
     }
 }
 
-// --- LÓGICA DE INTERFACE ---
+function playSound(key) {
+    const src = ASSETS.sounds[key];
+    if (src) {
+        const audio = new Audio(src);
+        audio.volume = 0.5;
+        audio.play().catch(() => console.log("Autoplay bloqueado pelo browser"));
+    }
+}
+
 function updateUI() {
-    const balEl = document.getElementById('balance-value');
-    if (balEl) balEl.innerText = gameData.balance.toFixed(2).replace('.', ',');
+    const balEl = document.getElementById('balance-display');
+    if (balEl) balEl.innerText = `R$ ${userBalance.toFixed(2)}`;
 }
 
-// --- COMUNICAÇÃO COM O SISTEMA ---
-window.addEventListener('message', (event) => {
-    if (event.data.type === 'SYNC_BALANCE') {
-        gameData.balance = event.data.balance;
-        updateUI();
+function renderInitialReels() {
+    const container = document.getElementById('reels-container');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    for (let i = 0; i < 3; i++) {
+        const reel = document.createElement('div');
+        reel.className = 'reel';
+        const img = document.createElement('img');
+        img.src = ASSETS.images.tiger;
+        reel.appendChild(img);
+        container.appendChild(reel);
     }
-});
+}
 
-// --- INICIALIZAÇÃO ---
-document.addEventListener('DOMContentLoaded', () => {
-    const loader = new AssetLoader();
-    loader.loadAll();
-});
+// Inicia o processo ao carregar o DOM
+document.addEventListener('DOMContentLoaded', startPreload);
