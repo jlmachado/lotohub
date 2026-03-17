@@ -4,11 +4,11 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { AppProvider } from '@/context/AppContext';
 import { GlobalMiniPlayer } from '@/components/GlobalMiniPlayer';
-import { useEffect } from 'react';
+import { FirebaseClientProvider } from '@/firebase';
 
 /**
- * @fileOverview Root Layout restaurado para funcionamento local.
- * Removidas sementes e migrações do Firebase do fluxo de inicialização.
+ * @fileOverview Root Layout configurado com provedores de contexto.
+ * Adicionado FirebaseClientProvider para suportar sincronização cloud.
  */
 
 export default function RootLayout({
@@ -22,11 +22,13 @@ export default function RootLayout({
       <head>
       </head>
       <body>
-        <AppProvider>
-          <GlobalMiniPlayer />
-          <div className="flex-grow">{children}</div>
-          <Toaster />
-        </AppProvider>
+        <FirebaseClientProvider>
+          <AppProvider>
+            <GlobalMiniPlayer />
+            <div className="flex-grow">{children}</div>
+            <Toaster />
+          </AppProvider>
+        </FirebaseClientProvider>
       </body>
     </html>
   );

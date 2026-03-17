@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @fileOverview Classe base para repositórios Firestore com Tipagem Forte.
+ * @fileOverview Classe base para repositórios Firestore com Tipagem Forte e escrita não-bloqueante.
  */
 
 import { 
@@ -15,15 +15,17 @@ import {
   query, 
   QueryConstraint,
   CollectionReference,
-  DocumentData
+  DocumentData,
+  Firestore
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export class BaseRepository<T extends { id: string }> {
-  constructor(protected collectionName: string) {}
+  constructor(protected db: Firestore, protected collectionName: string) {}
 
   protected getCollection(): CollectionReference<DocumentData> {
-    return collection(db, this.collectionName);
+    return collection(this.db, this.collectionName);
   }
 
   async getAll(constraints: QueryConstraint[] = []): Promise<T[]> {
@@ -34,30 +36,42 @@ export class BaseRepository<T extends { id: string }> {
 
   async getById(id: string): Promise<T | null> {
     if (!id) return null;
-    const docRef = doc(db, this.collectionName, id);
+    const docRef = doc(this.db, this.collectionName, id);
     const docSnap = await getDoc(docRef);
     return docSnap.exists() ? ({ ...docSnap.data(), id: docSnap.id } as T) : null;
   }
 
-  async save(data: T): Promise<void> {
+  /**
+   * Salva dados de forma não-bloqueante (Padrão Firebase Studio).
+   */
+  save(data: T): void {
     const now = new Date().toISOString();
+    const docRef = doc(this.db, this.collectionName, data.id);
     const docData = {
       ...data,
       updatedAt: now,
       createdAt: (data as any).createdAt || now
     };
-    await setDoc(doc(db, this.collectionName, data.id), docData);
-  }
 
-  async update(id: string, data: Partial<T>): Promise<void> {
-    const docRef = doc(db, this.collectionName, id);
-    await updateDoc(docRef, {
-      ...data,
-      updatedAt: new Date().toISOString()
-    });
+    setDoc(docRef, docData, { merge: true })
+      .catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'write',
+          requestResourceData: docData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
   }
 
   async delete(id: string): Promise<void> {
-    await deleteDoc(doc(db, this.collectionName, id));
+    const docRef = doc(this.db, this.collectionName, id);
+    deleteDoc(docRef).catch(async (serverError) => {
+      const permissionError = new FirestorePermissionError({
+        path: docRef.path,
+        operation: 'delete',
+      });
+      errorEmitter.emit('permission-error', permissionError);
+    });
   }
 }
