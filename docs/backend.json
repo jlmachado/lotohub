@@ -1,158 +1,86 @@
+
 {
   "entities": {
-    "UserProfile": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "UserProfile",
+    "User": {
+      "title": "User",
+      "description": "Perfil de usuário completo com saldo, bônus e permissões por cargo.",
       "type": "object",
-      "description": "Represents a user's profile information, separate from authentication details, linked to an external authentication system. This entity stores core user data needed by the application.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the UserProfile entity."
-        },
-        "email": {
-          "type": "string",
-          "description": "The user's email address, primarily used for identification and communication, linked to an external authentication system. This field has an 'email' format.",
-          "format": "email"
-        },
-        "displayName": {
-          "type": "string",
-          "description": "A user-friendly name displayed within the application, such as in personalized greetings."
-        }
+        "id": { "type": "string" },
+        "terminal": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "nome": { "type": "string" },
+        "tipoUsuario": { "type": "string", "enum": ["USUARIO", "PROMOTOR", "CAMBISTA", "ADMIN", "SUPER_ADMIN"] },
+        "saldo": { "type": "number" },
+        "bonus": { "type": "number" },
+        "bancaId": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "BLOCKED"] }
       },
-      "required": [
-        "id",
-        "email",
-        "displayName"
-      ]
+      "required": ["id", "terminal", "email", "tipoUsuario", "bancaId"]
     },
-    "UserAccount": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "UserAccount",
+    "LedgerEntry": {
+      "title": "LedgerEntry",
+      "description": "Registro imutável de movimentação financeira (Livro Razão).",
       "type": "object",
-      "description": "Stores a user's financial balances, including the main balance ('Saldo') and bonus balance ('Bônus'), which are critical for the application's functionality.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the UserAccount entity."
-        },
-        "userId": {
-          "type": "string",
-          "description": "Reference to the UserProfile associated with this financial account. (Relationship: UserProfile 1:N UserAccount)"
-        },
-        "balance": {
-          "type": "number",
-          "description": "The current main monetary balance available to the user ('Saldo'). This value is persistently stored and updated in real-time."
-        },
-        "bonusBalance": {
-          "type": "number",
-          "description": "The current bonus monetary balance available to the user ('Bônus')."
-        },
-        "terminalId": {
-          "type": "string",
-          "description": "Reference to the Terminal where the account is currently or last accessed. This represents the 'Terminal 1234' concept in the UI. (Relationship: Terminal 1:N UserAccount)"
-        },
-        "lastUpdated": {
-          "type": "string",
-          "description": "Timestamp indicating when the account balances were last updated. This field has a 'date-time' format.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "userId",
-        "balance",
-        "bonusBalance",
-        "terminalId",
-        "lastUpdated"
-      ]
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bancaId": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "balanceAfter": { "type": "number" },
+        "modulo": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     },
-    "Terminal": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Terminal",
+    "ApostaLoteria": {
+      "title": "ApostaLoteria",
+      "description": "Bilhete de loteria (Bicho, Seninha, etc).",
       "type": "object",
-      "description": "Represents a physical or logical terminal through which users interact with the system, such as 'Terminal 1234'.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Terminal entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "A human-readable name for the terminal (e.g., 'Terminal 1234'), displayed in the user interface."
-        },
-        "location": {
-          "type": "string",
-          "description": "Optional description of the terminal's physical or logical location."
-        }
-      },
-      "required": [
-        "id",
-        "name"
-      ]
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bancaId": { "type": "string" },
+        "loteria": { "type": "string" },
+        "valor": { "type": "number" },
+        "status": { "type": "string", "enum": ["aguardando", "premiado", "perdeu"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FootballBet": {
+      "title": "FootballBet",
+      "description": "Aposta esportiva em futebol.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bancaId": { "type": "string" },
+        "stake": { "type": "number" },
+        "potentialWin": { "type": "number" },
+        "status": { "type": "string", "enum": ["OPEN", "WON", "LOST", "VOID"] }
+      }
     }
   },
   "auth": {
-    "providers": [
-      "password",
-      "anonymous"
-    ]
+    "providers": ["password", "anonymous"]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "UserProfile",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Stores individual user profile details. The `userId` parameter matches `request.auth.uid`, ensuring private ownership and simplifying security rules.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user, matching Firebase Authentication's UID."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/users/{userId}/userAccounts/{userAccountId}",
-        "definition": {
-          "entityName": "UserAccount",
-          "schema": {
-            "$ref": "#/backend/entities/UserAccount"
-          },
-          "description": "Stores financial balances (main and bonus) for a specific user. The `userId` in the path ensures direct authorization for the owning user. The document also includes the `userId` field from the schema, acting as denormalized authorization context for redundancy and integrity.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user who owns this account, matching Firebase Authentication's UID."
-            },
-            {
-              "name": "userAccountId",
-              "description": "The unique identifier for the user's specific account document."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/terminals/{terminalId}",
-        "definition": {
-          "entityName": "Terminal",
-          "schema": {
-            "$ref": "#/backend/entities/Terminal"
-          },
-          "description": "Stores details about physical or logical terminals. These are likely globally readable for all authenticated users, with write access restricted to administrators.",
-          "params": [
-            {
-              "name": "terminalId",
-              "description": "The unique identifier for a specific terminal."
-            }
-          ]
-        }
-      }
-    ],
-    "reasoning": "The Firestore data structure for LotoHub prioritizes security, scalability, and debuggability by strictly adhering to the core design principles. The system is designed around user-centric data, ensuring that personal information and financial accounts are securely isolated while shared resources like terminals are globally accessible under controlled permissions. Authorization is primarily driven by path-based ownership and denormalization, eliminating the need for complex and brittle `get()` calls in security rules.\n\n**Authorization Independence (CRITICAL)**: This structure achieves authorization independence by placing user-specific data directly under the authenticated user's ID. For instance, `UserProfile` is stored at `/users/{userId}`, and `UserAccount` data at `/users/{userId}/userAccounts/{userAccountId}`. In both cases, the `{userId}` in the path directly corresponds to `request.auth.uid`. This allows security rules to simply check `request.auth.uid == userId` without needing to fetch any parent documents or even the document itself to determine ownership. For `UserAccount` documents, the `userId` field is also included in the document, effectively serving as a denormalized attribute that reinforces ownership and provides a consistent authorization context within the document itself, even though the path already guarantees it. This ensures atomic operations (transactions/batches) are robust as authorization doesn't depend on potentially outdated parent data.\n\n**Clarity of Intent (Debuggability)**: The path structure clearly delineates data ownership. `/users/{userId}` explicitly states that all data within this subtree belongs to or is managed by the user with that `userId`. This makes security rules simple and highly readable, such as `allow read, write: if request.auth.uid == userId;`.\n\n**DBAC (No Custom Claims)**: All authorization roles or permissions (though not explicitly required for this initial design beyond simple ownership) would be stored as data in Firestore, such as a `/roles_admin/{uid}` collection, rather than relying on Firebase Auth custom claims.\n\n**QAPs (Rules are not Filters)**: The design inherently supports secure `list` operations. For example, a user can securely query their own accounts by listing documents in `/users/{request.auth.uid}/userAccounts`. The rules prevent them from listing accounts belonging to other users. For `Terminal` data, which is likely globally readable, a `list` operation on `/terminals` would return all terminals, which is the intended behavior. There is no mixing of public and private data in a single collection that would necessitate filtering rules on read.\n\n**Structural Segregation**: Each collection or subcollection (`/users`, `/users/{userId}/userAccounts`, `/terminals`) holds documents with a homogeneous security posture. User profiles and accounts are strictly user-owned, while terminals are a shared, likely read-only resource for authenticated users. This simplifies rules significantly.\n\n**Access Modeling**: Path-based ownership (`/users/{userId}`) is used for `UserProfile` and `UserAccount`. `Terminal` is a top-level collection (`/terminals/{terminalId}`) as it's a shared resource that is referenced by `UserAccount` but not owned by a specific user.\n\nOverall, this structure provides a robust foundation for LotoHub, ensuring that user data is secure and accessible only by its rightful owner, while common data is managed appropriately, all contributing to a maintainable and debuggable security ruleset."
+    "/users/{userId}": {
+      "schema": { "$ref": "#/backend/entities/User" },
+      "description": "Coleção principal de usuários e administradores."
+    },
+    "/ledger/{entryId}": {
+      "schema": { "$ref": "#/backend/entities/LedgerEntry" },
+      "description": "Histórico financeiro global para auditoria e extratos."
+    },
+    "/bancas/{bancaId}/apostas/{apostaId}": {
+      "schema": { "$ref": "#/backend/entities/ApostaLoteria" },
+      "description": "Apostas organizadas por banca para facilitar a descarga e conferência."
+    },
+    "/bancas/{bancaId}/football_bets/{betId}": {
+      "schema": { "$ref": "#/backend/entities/FootballBet" },
+      "description": "Bilhetes de futebol para processamento automático de resultados."
+    }
   }
 }
