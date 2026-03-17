@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * LotoHub Security Rules Philosophy
+     * 
+     * Core Philosophy: 
+     * This ruleset enforces a strict user-ownership model. Every piece of user-specific data is 
+     * nested under a path containing the user's unique ID ({userId}), ensuring that users 
+     * can only access and modify their own profiles and financial accounts.
+     * 
+     * Data Structure:
+     * - /users/{userId}: Individual user profiles (UserProfile).
+     * - /users/{userId}/userAccounts/{userAccountId}: Financial balances and account details (UserAccount).
+     * - /terminals/{terminalId}: Shared logical or physical access points (Terminal).
+     * 
+     * Key Security Decisions:
+     * 1. Path-Based Authorization: We rely on the {userId} in the document path matching the 
+     *    authenticated user's UID (request.auth.uid). This is the most performant way to 
+     *    secure data in Firestore.
+     * 2. Denormalization: The 'userId' is stored inside 'UserAccount' documents to ensure 
+     *    relational integrity and provide an internal context for ownership, even though the 
+     *    path already secures it.
+     * 3. Read-Only Terminals: Terminal data is readable by any authenticated user but 
+     *    cannot be modified through the client-side SDK.
+     * 4. Prototyping Flexibility: We do not enforce strict schema types (e.g., "is string") 
+     *    to allow the frontend to evolve quickly, focusing only on ownership and ID integrity.
+     */
+
+    // --- HELPER FUNCTIONS ---
+
+    /** Checks if the request is made by an authenticated user. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** Checks if the provided userId matches the authenticated user's UID. */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** Checks if the user is the owner and the document currently exists. */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    // --- COLLECTION RULES ---
+
+    /**
+     * @description Rules for the UserProfile collection. Users can only read and write their own profile.
+     * @path /users/{userId}
+     * @allow get, list, create, update, delete if (request.auth.uid == userId)
+     * @deny if (request.auth.uid != userId)
+     * @principle Path-based ownership and internal ID integrity validation.
+     */
+    match /users/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+
+      /**
+       * @description Rules for UserAccount sub-collection. Financial data is strictly private to the owner.
+       * @path /users/{userId}/userAccounts/{userAccountId}
+       * @allow get, list, create, update, delete if (request.auth.uid == userId)
+       * @deny if (request.auth.uid != userId)
+       * @principle Ensures financial accounts are only accessible by the specific owner identified in the path.
+       */
+      match /userAccounts/{userAccountId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isExistingOwner(userId);
+      }
+    }
+
+    /**
+     * @description Rules for the Terminal collection. Shared resources accessible by all users.
+     * @path /terminals/{terminalId}
+     * @allow get, list if (isSignedIn())
+     * @deny create, update, delete for all clients (Admin-only in backend).
+     * @principle Global read access for authenticated users with write-protection on shared entities.
+     */
+    match /terminals/{terminalId} {
+      allow get, list: if isSignedIn();
+      allow create: if false; // Admin-only: Client creation is prohibited for security.
+      allow update: if false; // Admin-only: Terminals are managed via backend processes.
+      allow delete: if false; // Admin-only: Critical infrastructure protection.
+    }
+  }
+}
