@@ -26,6 +26,7 @@ interface AppContextType {
   ledger: any[]; banners: Banner[]; popups: Popup[]; news: NewsMessage[];
   apostas: any[]; footballBets: any[]; snookerChannels: any[];
   jdbResults: JDBNormalizedResult[];
+  allUsers: any[];
   refreshData: () => void; logout: () => void;
   handleFinalizarAposta: (aposta: any, valorTotal: number) => Promise<string | null>;
 }
@@ -39,6 +40,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [subdomain, setSubdomain] = useState<string | null>(null);
   const [currentBanca, setCurrentBanca] = useState<any>(null);
 
@@ -60,7 +62,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     const session = getSession();
     if (session) {
-      // Inicia listener de usuário logado
+      // Inicia listener de usuário logado no tenant correto
       const userRef = doc(firestore, 'bancas', banca?.id || 'default', 'usuarios', session.userId);
       const unsubUser = onSnapshot(userRef, (snap) => {
         if (snap.exists()) {
@@ -103,7 +105,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult)))),
 
       onSnapshot(collection(firestore, bancaPath, 'snooker_channels'), (s) => 
-        setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))))
+        setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() })))),
+
+      onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => {
+        const usersList = s.docs.map(d => ({ id: d.id, ...d.data() }));
+        setAllUsers(usersList);
+        // Sincroniza com localStorage para compatibilidade com utilitários legados
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('app:users:v1', JSON.stringify(usersList));
+        }
+      })
     ];
 
     return () => unsubscribers.forEach(unsub => unsub());
@@ -114,7 +125,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const pouleId = generatePoule();
     
-    // Processamento Transacional Enterprise
     const result = await LedgerService.registerMovement({
       userId: user.id,
       terminal: user.terminal,
@@ -127,11 +137,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
 
     if (result.success) {
+      const { setDoc: fbSetDoc } = await import('firebase/firestore');
       const apostaRef = doc(firestore, 'bancas', currentBanca.id, 'apostas', pouleId);
-      await setDoc(apostaRef, {
+      await fbSetDoc(apostaRef, {
         ...aposta,
         id: pouleId,
         userId: user.id,
+        bancaId: currentBanca.id,
         status: 'aguardando',
         createdAt: new Date().toISOString()
       });
@@ -144,11 +156,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const value = {
-    user, isLoading, currentBanca, subdomain,
+    user, allUsers, isLoading, currentBanca, subdomain,
     balance: user?.saldo || 0,
     bonus: user?.bonus || 0,
     ledger, banners, popups, news, apostas, jdbResults, snookerChannels,
-    refreshData: () => {}, // Automático via onSnapshot
+    refreshData: () => {}, 
     logout: authLogout,
     handleFinalizarAposta
   };
@@ -164,10 +176,4 @@ export const useAppContext = () => {
   const context = useContext(AppContext);
   if (!context) throw new Error('useAppContext deve ser usado dentro de AppProvider');
   return context;
-};
-
-// Mock para evitar quebra em arquivos que esperam setDoc (será migrado gradualmente)
-const setDoc = async (ref: any, data: any) => {
-  const { setDoc: fbSetDoc } = await import('firebase/firestore');
-  return fbSetDoc(ref, data, { merge: true });
 };

@@ -13,6 +13,7 @@ import {
 import { initializeFirebase } from '@/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { resolveCurrentBanca } from './bancaContext';
+import { generateNextTerminalForBanca, getDefaultPermissions } from './usersStorage';
 
 const { auth, firestore } = initializeFirebase();
 
@@ -49,6 +50,61 @@ export const login = async (terminal: string, password: string): Promise<{ succe
   } catch (error: any) {
     console.error('[Auth Error]', error.message);
     return { success: false, message: "Acesso negado. Verifique suas credenciais." };
+  }
+};
+
+/**
+ * Registra um novo usuário no Firebase Auth e no Firestore (Multi-Tenant).
+ */
+export const register = async (userData: { nome: string; cpf: string; cidade: string; email: string; password: string }): Promise<{ success: boolean; message: string; terminal?: string }> => {
+  try {
+    const banca = resolveCurrentBanca();
+    if (!banca) throw new Error("Acesse através de um subdomínio válido.");
+
+    const { nome, cpf, cidade, email, password } = userData;
+
+    // 1. Gerar próximo terminal disponível para esta banca
+    const terminal = generateNextTerminalForBanca(banca.id);
+    
+    // Pattern de email para o Firebase Auth vinculado à banca para evitar conflitos globais
+    const systemEmail = `${terminal}@${banca.subdomain}.lotohub.app`;
+
+    // 2. Criar conta no Firebase Auth
+    const userCredential = await createUserWithEmailAndPassword(auth, systemEmail, password);
+    const fbUser = userCredential.user;
+
+    // 3. Salvar perfil detalhado no Firestore dentro da estrutura isolada da banca
+    const userRef = doc(firestore, 'bancas', banca.id, 'usuarios', fbUser.uid);
+    
+    const newUser = {
+      id: fbUser.uid,
+      terminal,
+      nome,
+      cpf,
+      cidade,
+      email, // Email real para contato
+      systemEmail, // Email técnico usado no login
+      status: 'ACTIVE',
+      tipoUsuario: 'USUARIO',
+      permissoes: getDefaultPermissions('USUARIO'),
+      saldo: 0,
+      bonus: 0,
+      bancaId: banca.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    await setDoc(userRef, newUser);
+
+    return { success: true, message: 'Cadastro realizado com sucesso!', terminal };
+  } catch (error: any) {
+    console.error('[Register Error]', error.message);
+    
+    let message = "Falha ao realizar cadastro.";
+    if (error.code === 'auth/email-already-in-use') message = "Terminal já registrado.";
+    if (error.code === 'auth/weak-password') message = "A senha deve ter pelo menos 6 caracteres.";
+    
+    return { success: false, message: error.message || message };
   }
 };
 
