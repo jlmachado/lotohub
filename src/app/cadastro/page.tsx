@@ -33,7 +33,7 @@ export default function RegisterPage() {
     if (getSession()) router.push('/');
   }, [router]);
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.nome || !formData.cpf || !formData.email || !formData.password) {
@@ -48,27 +48,24 @@ export default function RegisterPage() {
 
     setLoading(true);
 
-    // Simular delay para melhor UX
-    setTimeout(() => {
-      const result = register({
-        nome: formData.nome,
-        cpf: formData.cpf,
-        cidade: formData.cidade,
-        email: formData.email,
-        password: formData.password,
-      });
+    const result = await register({
+      nome: formData.nome,
+      cpf: formData.cpf,
+      cidade: formData.cidade,
+      email: formData.email,
+      password: formData.password,
+    });
 
-      if (result.success && result.terminal) {
-        setSuccessData({ terminal: result.terminal });
-        toast({ 
-          title: 'Conta criada!', 
-          description: `Seu terminal é: ${result.terminal}`,
-        });
-      } else {
-        toast({ variant: 'destructive', title: 'Erro no cadastro', description: result.message });
-        setLoading(false);
-      }
-    }, 1200);
+    if (result.success && result.terminal) {
+      setSuccessData({ terminal: result.terminal });
+      toast({ 
+        title: 'Conta criada!', 
+        description: `Seu terminal é: ${result.terminal}`,
+      });
+    } else {
+      toast({ variant: 'destructive', title: 'Erro no cadastro', description: result.message });
+      setLoading(false);
+    }
   };
 
   const copyTerminal = () => {

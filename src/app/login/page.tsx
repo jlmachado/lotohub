@@ -45,7 +45,7 @@ export default function LoginPage() {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!terminal || !password) {
       toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Informe seu terminal e senha.' });
@@ -54,8 +54,8 @@ export default function LoginPage() {
 
     setLoading(true);
     
-    // Processamento imediato síncrono
-    const result = login(terminal, password);
+    // Processamento assíncrono via Firebase Auth
+    const result = await login(terminal, password);
 
     if (result.success && result.user) {
       const user = result.user;
