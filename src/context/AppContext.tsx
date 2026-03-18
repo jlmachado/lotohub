@@ -60,11 +60,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     const session = getSession();
     if (session) {
+      // Busca dados completos do usuário em tempo real
       const activeBancaId = session.bancaId || banca?.id || 'default';
       const userRef = doc(firestore, 'bancas', activeBancaId, 'usuarios', session.userId);
       const unsubUser = onSnapshot(userRef, (snap) => {
         if (snap.exists()) {
-          setUser({ id: snap.id, ...snap.data() });
+          const data = snap.data();
+          setUser({ id: snap.id, ...data });
+          console.log("APP CONTEXT USER SYNCED:", data);
+        } else if (activeBancaId !== 'default') {
+          // Fallback para SuperAdmin em banca master
+          const masterRef = doc(firestore, 'bancas', 'default', 'usuarios', session.userId);
+          onSnapshot(masterRef, (mSnap) => {
+            if (mSnap.exists()) setUser({ id: mSnap.id, ...mSnap.data() });
+          });
         }
         setIsLoading(false);
       });
@@ -75,13 +84,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, [firestore]);
 
   useEffect(() => {
-    // Escuta global de resultados (independente de banca)
     const unsubResults = onSnapshot(query(collection(firestore, 'jdbResults'), orderBy('date', 'desc'), limit(50)), (s) => 
       setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))));
 
-    if (!currentBanca && !user?.tipoUsuario?.includes('ADMIN')) return;
-
     const bancaId = currentBanca?.id || user?.bancaId || 'default';
+    if (bancaId === 'default' && (!user || user.tipoUsuario !== 'SUPER_ADMIN')) {
+      // Se não for superadmin e não houver banca, espera
+      return;
+    }
+
     const bancaPath = `bancas/${bancaId}`;
     
     const unsubscribers = [

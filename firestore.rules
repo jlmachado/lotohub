@@ -3,8 +3,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     // Regra Global SaaS Multi-Banca
-    // Impede que dados vazem entre diferentes bancaId
-    // O acesso é permitido apenas se o bancaId no caminho coincidir com o bancaId do token do usuário
+    // O acesso é permitido se o usuário for SUPER_ADMIN (acesso global)
+    // ou se o bancaId do token coincidir com o bancaId do caminho.
     match /bancas/{bancaId}/{document=**} {
       allow read, write: if request.auth != null 
         && (
@@ -19,12 +19,12 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.token.tipoUsuario == 'SUPER_ADMIN';
     }
     
-    // Configurações públicas do sistema (Banners, Popups ativos)
+    // Configurações públicas do sistema
     match /banners/{bannerId} {
-      allow read: if resource.data.active == true;
+      allow read: if true;
     }
     match /popups/{popupId} {
-      allow read: if resource.data.active == true;
+      allow read: if true;
     }
   }
 }
