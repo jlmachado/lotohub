@@ -3,12 +3,20 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Regra para consultas de grupo (necessário para verificação de superadmin no login)
-    match /{path=**}/usuarios/{userId} {
-      allow read: if request.auth != null;
+    // Regra específica para perfis de usuário
+    match /bancas/{bancaId}/usuarios/{userId} {
+      // Permite a criação do próprio documento se autenticado (essencial para o registro)
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Permite leitura e escrita pelo próprio usuário ou superadmins
+      allow read, write: if request.auth != null && (
+        request.auth.uid == userId || 
+        request.auth.token.role == 'superadmin' ||
+        request.auth.token.tipoUsuario == 'SUPER_ADMIN'
+      );
     }
 
-    // Regra Global SaaS Multi-Banca
+    // Regra Global SaaS Multi-Banca para outros documentos
     match /bancas/{bancaId}/{document=**} {
       allow read: if request.auth != null; 
       
@@ -16,8 +24,7 @@ service cloud.firestore {
         && (
           request.auth.token.role == 'superadmin' ||
           request.auth.token.tipoUsuario == 'SUPER_ADMIN' ||
-          request.auth.token.bancaId == bancaId ||
-          request.auth.uid == document.split('/').last() 
+          request.auth.token.bancaId == bancaId
         );
     }
     
