@@ -1,9 +1,8 @@
-
 'use client';
 
 /**
  * @fileOverview Serviço de processamento de comissões para Cambistas e Promotores.
- * Funciona de forma paralela e independente ao fluxo principal de apostas.
+ * Implementa isolamento multi-banca via caminhos aninhados.
  */
 
 import { initializeFirebase } from '@/firebase';
@@ -16,20 +15,21 @@ export interface CommissionEntry {
   porcentagem: number;
   valorComissao: number;
   bancaId: string;
-  referenceId: string; // ID da aposta
+  referenceId: string; // ID da aposta (Poule)
   createdAt: string;
 }
 
 export class CommissionService {
   /**
-   * Processa a comissão de uma aposta sem interferir no fluxo original.
+   * Processa a comissão de uma aposta de forma segura e isolada por banca.
    */
   static async processarComissao(bancaId: string, userId: string, userType: string, valorAposta: number, apostaId: string) {
+    if (!bancaId) throw new Error("bancaId obrigatório para processar comissão.");
     if (userType !== 'CAMBISTA' && userType !== 'PROMOTOR') return;
 
     const { firestore } = initializeFirebase();
     
-    // Busca configurações da banca ou usa padrão
+    // Busca configurações financeiras da banca ou usa padrões seguros
     const configRef = doc(firestore, 'bancas', bancaId, 'configuracoes', 'financeiro');
     const configSnap = await getDoc(configRef);
     const config = configSnap.exists() ? configSnap.data() : { taxaCambista: 5, taxaPromotor: 2 };
@@ -49,13 +49,13 @@ export class CommissionService {
     };
 
     try {
+      // Grava na subcoleção da banca específica
       const colRef = collection(firestore, 'bancas', bancaId, 'comissoes');
       await addDoc(colRef, entry);
       
-      // Log do evento
-      console.log(`[COMISSAO] Gerada: R$ ${valorComissao} para ${userType} ${userId}`);
+      console.log(`[COMISSAO][BANCA: ${bancaId}] Gerada: R$ ${valorComissao.toFixed(2)} para ${userType} ${userId}`);
     } catch (e) {
-      console.error("Erro ao processar comissão avançada:", e);
+      console.error("[CRITICAL] Falha ao registrar comissão no Firestore:", e);
     }
   }
 }

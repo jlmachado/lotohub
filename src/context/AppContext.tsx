@@ -5,14 +5,15 @@
  * Sincroniza dinamicamente baseado no subdomínio e banca selecionada.
  */
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getSession, logout as authLogout } from '@/utils/auth';
 import { initializeFirebase } from '@/firebase';
-import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, setDoc } from 'firebase/firestore';
 import { resolveCurrentBanca, getSubdomain } from '@/utils/bancaContext';
 import { LedgerService } from '@/services/ledger-service';
+import { CommissionService } from '@/services/advanced/CommissionService';
 import { generatePoule } from '@/utils/generatePoule';
 import { JDBNormalizedResult } from '@/types/result-types';
 
@@ -24,7 +25,7 @@ interface AppContextType {
   user: any; isLoading: boolean; balance: number; bonus: number;
   currentBanca: any; subdomain: string | null;
   ledger: any[]; banners: Banner[]; popups: Popup[]; news: NewsMessage[];
-  apostas: any[]; footballBets: any[]; snookerChannels: any[];
+  apostas: any[]; snookerChannels: any[];
   jdbResults: JDBNormalizedResult[];
   allUsers: any[];
   refreshData: () => void; logout: () => void;
@@ -62,8 +63,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     const session = getSession();
     if (session) {
-      // Inicia listener de usuário logado no tenant correto
-      const userRef = doc(firestore, 'bancas', banca?.id || 'default', 'usuarios', session.userId);
+      const activeBancaId = banca?.id || session.bancaId || 'default';
+      const userRef = doc(firestore, 'bancas', activeBancaId, 'usuarios', session.userId);
       const unsubUser = onSnapshot(userRef, (snap) => {
         if (snap.exists()) {
           setUser({ id: snap.id, ...snap.data() });
@@ -76,14 +77,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [firestore]);
 
-  // 2. Listeners de Tempo Real Isoldados por Tenant
+  // 2. Listeners de Tempo Real Isoldados por Tenant (Nested Collections)
   useEffect(() => {
     if (!currentBanca) return;
 
     const bancaId = currentBanca.id;
     const bancaPath = `bancas/${bancaId}`;
     
-    console.log(`[SaaS] Iniciando sincronização em tempo real para: ${currentBanca.nome}`);
+    console.log(`[SaaS][BANCA: ${bancaId}] Ativando listeners em tempo real.`);
 
     const unsubscribers = [
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), (s) => 
@@ -110,10 +111,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => {
         const usersList = s.docs.map(d => ({ id: d.id, ...d.data() }));
         setAllUsers(usersList);
-        // Sincroniza com localStorage para compatibilidade com utilitários legados
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('app:users:v1', JSON.stringify(usersList));
-        }
       })
     ];
 
@@ -122,9 +119,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const handleFinalizarAposta = async (aposta: any, valorTotal: number) => {
     if (!user) { router.push('/login'); return null; }
+    if (!currentBanca) { toast({ variant: 'destructive', title: "Erro de Contexto", description: "Banca não identificada." }); return null; }
 
     const pouleId = generatePoule();
+    const bancaId = currentBanca.id;
     
+    // 1. Registrar Movimentação Financeira (Atômico via Transação)
     const result = await LedgerService.registerMovement({
       userId: user.id,
       terminal: user.terminal,
@@ -137,20 +137,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
 
     if (result.success) {
-      const { setDoc: fbSetDoc } = await import('firebase/firestore');
-      const apostaRef = doc(firestore, 'bancas', currentBanca.id, 'apostas', pouleId);
-      await fbSetDoc(apostaRef, {
-        ...aposta,
-        id: pouleId,
-        userId: user.id,
-        bancaId: currentBanca.id,
-        status: 'aguardando',
-        createdAt: new Date().toISOString()
-      });
-      toast({ title: "Aposta Confirmada!", description: `Poule: ${pouleId}` });
-      return pouleId;
+      try {
+        // 2. Salvar Bilhete na Subcoleção da Banca
+        const apostaRef = doc(firestore, 'bancas', bancaId, 'apostas', pouleId);
+        await setDoc(apostaRef, {
+          ...aposta,
+          id: pouleId,
+          userId: user.id,
+          bancaId: bancaId,
+          status: 'aguardando',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+
+        // 3. Processar Comissão (Paralelo)
+        await CommissionService.processarComissao(bancaId, user.id, user.tipoUsuario, valorTotal, pouleId);
+
+        toast({ title: "Aposta Confirmada!", description: `Poule: ${pouleId}` });
+        return pouleId;
+      } catch (e: any) {
+        console.error("[BET SAVE ERROR]", e);
+        toast({ variant: 'destructive', title: "Erro ao Salvar", description: "Aposta paga mas não registrada. Contate suporte." });
+        return null;
+      }
     } else {
-      toast({ variant: 'destructive', title: "Erro na Aposta", description: result.message });
+      toast({ variant: 'destructive', title: "Erro Financeiro", description: result.message });
       return null;
     }
   };

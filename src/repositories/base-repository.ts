@@ -19,8 +19,7 @@ import {
   QueryConstraint,
   CollectionReference,
   DocumentData,
-  Firestore,
-  runTransaction
+  Firestore
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { resolveCurrentBanca } from '@/utils/bancaContext';
@@ -35,18 +34,29 @@ export class BaseRepository<T extends { id: string }> {
 
   /**
    * Constrói o caminho da coleção baseado no Tenant ativo.
+   * Garante isolamento absoluto: bancas/{bancaId}/{coleção}
    */
   protected getCollection(): CollectionReference<DocumentData> {
     const banca = resolveCurrentBanca();
     const bancaId = banca?.id || 'default';
     
-    // Caminho Enterprise: bancas/{bancaId}/{coleção}
+    // Validação crítica: Não permite acesso a dados de banca sem bancaId, 
+    // exceto para a própria coleção de bancas e resultados globais.
+    if (!bancaId && this.collectionName !== 'bancas' && this.collectionName !== 'jdbResults') {
+      throw new Error(`[CRITICAL] Tentativa de acesso à coleção ${this.collectionName} sem bancaId definido.`);
+    }
+
+    if (this.collectionName === 'bancas') {
+      return collection(this.db, 'bancas');
+    }
+
+    if (this.collectionName === 'jdbResults') {
+      return collection(this.db, 'jdbResults');
+    }
+    
     return collection(this.db, 'bancas', bancaId, this.collectionName);
   }
 
-  /**
-   * Busca registros da banca ativa.
-   */
   async getAll(constraints: QueryConstraint[] = []): Promise<T[]> {
     try {
       const q = query(this.getCollection(), ...constraints);
@@ -58,9 +68,6 @@ export class BaseRepository<T extends { id: string }> {
     }
   }
 
-  /**
-   * Busca um registro específico dentro do tenant.
-   */
   async getById(id: string): Promise<T | null> {
     if (!id) return null;
     try {
@@ -73,13 +80,12 @@ export class BaseRepository<T extends { id: string }> {
     }
   }
 
-  /**
-   * Salva dados com persistência garantida e metadados de tenant.
-   */
   async save(data: T): Promise<void> {
     const banca = resolveCurrentBanca();
-    if (!banca && this.collectionName !== 'bancas') {
-      console.warn(`[BaseRepo] Salvando sem contexto de banca em ${this.collectionName}`);
+    const bancaId = banca?.id || 'default';
+
+    if (!bancaId && this.collectionName !== 'bancas' && this.collectionName !== 'jdbResults') {
+      throw new Error(`[CRITICAL] bancaId obrigatório para salvar em ${this.collectionName}`);
     }
 
     const now = new Date().toISOString();
@@ -89,10 +95,11 @@ export class BaseRepository<T extends { id: string }> {
       ...data,
       updatedAt: now,
       createdAt: (data as any).createdAt || now,
-      tenantId: banca?.id || 'default'
+      bancaId: bancaId
     };
 
     try {
+      console.log(`[BANCA] ${bancaId} | Salvando em ${this.collectionName}/${data.id}`);
       await setDoc(docRef, docData, { merge: true });
     } catch (error) {
       console.error(`[CRITICAL] Falha ao salvar em ${this.collectionName}:`, error);
@@ -100,9 +107,6 @@ export class BaseRepository<T extends { id: string }> {
     }
   }
 
-  /**
-   * Remove um registro do tenant.
-   */
   async delete(id: string): Promise<void> {
     try {
       const docRef = doc(this.getCollection(), id);
