@@ -1,11 +1,12 @@
+
 'use client';
 
 /**
- * @fileOverview Persistência de Bancas via LocalStorage.
- * Restaurado para funcionamento síncrono local com suporte a Multi-Tenant.
+ * @fileOverview Persistência de Bancas via LocalStorage e Firestore.
  */
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
+import { BaseRepository } from '@/repositories/base-repository';
 
 export interface BancaModulos {
   bingo: boolean;
@@ -54,6 +55,9 @@ export interface BancaContext {
 const BANCAS_KEY = 'app:bancas:v1';
 const CURRENT_BANCA_KEY = 'app:current_banca:v1';
 
+// Repositório Cloud
+const bancasRepo = new BaseRepository<Banca>('bancas');
+
 export const getBancas = (): Banca[] => {
   const bancas = getStorageItem<Banca[]>(BANCAS_KEY, []);
   if (bancas.length === 0) {
@@ -64,7 +68,7 @@ export const getBancas = (): Banca[] => {
       adminLogin: 'admin',
       adminPassword: 'password',
       status: 'ACTIVE',
-      baseTerminal: 10000, // Matriz começa em 10000
+      baseTerminal: 10000, 
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       modulos: {
@@ -81,6 +85,7 @@ export const getBancas = (): Banca[] => {
       descargaConfig: { limitePremio: 10000, ativo: true, updatedAt: Date.now() }
     };
     setStorageItem(BANCAS_KEY, [defaultBanca]);
+    bancasRepo.save(defaultBanca);
     return [defaultBanca];
   }
   return bancas;
@@ -95,14 +100,16 @@ export const upsertBanca = (bancaData: Partial<Banca> & { subdomain: string }) =
   const index = bancas.findIndex(b => b.subdomain === bancaData.subdomain);
   const now = new Date().toISOString();
 
+  let finalBanca: Banca;
+
   if (index >= 0) {
-    bancas[index] = { ...bancas[index], ...bancaData, updatedAt: now };
+    finalBanca = { ...bancas[index], ...bancaData, updatedAt: now };
+    bancas[index] = finalBanca;
   } else {
-    // Definir base terminal para novas bancas (incrementos de 10000)
     const lastBase = bancas.length > 0 ? Math.max(...bancas.map(b => b.baseTerminal)) : 0;
     const newBase = lastBase + 10000;
 
-    const newBanca: Banca = {
+    finalBanca = {
       ...bancaData,
       id: bancaData.id || `banca-${bancaData.subdomain}-${Date.now()}`,
       adminLogin: bancaData.adminLogin || 'admin',
@@ -118,16 +125,16 @@ export const upsertBanca = (bancaData: Partial<Banca> & { subdomain: string }) =
       createdAt: now,
       updatedAt: now
     } as Banca;
-    bancas.push(newBanca);
+    bancas.push(finalBanca);
   }
+  
   saveBancas(bancas);
-  // Notifica o sistema de que as bancas mudaram (importante para o seletor)
+  bancasRepo.save(finalBanca); // PERSISTÊNCIA CLOUD
+  
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('app:data-changed'));
   }
 };
-
-// --- Gestão de Contexto ---
 
 export const getCurrentBancaContext = (): BancaContext | null => {
   return getStorageItem<BancaContext | null>(CURRENT_BANCA_KEY, null);

@@ -1,10 +1,12 @@
+
 'use client';
 
 /**
- * @fileOverview Ledger Service - Funcionamento local via Storage.
+ * @fileOverview Ledger Service - Gerencia o Livro Razão com persistência Cloud.
  */
 
 import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
+import { ledgerRepo } from '@/repositories/ledger-repository';
 
 export type LedgerType = 
   | 'BET_PLACED' 
@@ -54,6 +56,10 @@ export class LedgerService {
 
     entries.unshift(newEntry);
     setStorageItem(LEDGER_KEY, entries.slice(0, 5000));
+    
+    // PERSISTÊNCIA CLOUD IMEDIATA
+    ledgerRepo.save(newEntry);
+    
     return newEntry;
   }
 

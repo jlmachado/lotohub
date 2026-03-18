@@ -3,6 +3,7 @@
 
 /**
  * @fileOverview Repositório Base compatível com Firebase Studio.
+ * Auto-inicializa a conexão com o Firestore.
  */
 
 import { 
@@ -18,9 +19,15 @@ import {
   DocumentData,
   Firestore
 } from 'firebase/firestore';
+import { initializeFirebase } from '@/firebase';
 
 export class BaseRepository<T extends { id: string }> {
-  constructor(protected db: Firestore, protected collectionName: string) {}
+  protected db: Firestore;
+
+  constructor(protected collectionName: string) {
+    const { firestore } = initializeFirebase();
+    this.db = firestore;
+  }
 
   protected getCollection(): CollectionReference<DocumentData> {
     return collection(this.db, this.collectionName);
@@ -50,7 +57,7 @@ export class BaseRepository<T extends { id: string }> {
   }
 
   /**
-   * Salva dados no Firestore usando persistência não-bloqueante.
+   * Salva dados no Firestore usando persistência imediata.
    */
   save(data: T): void {
     const now = new Date().toISOString();
@@ -62,9 +69,10 @@ export class BaseRepository<T extends { id: string }> {
       createdAt: (data as any).createdAt || now
     };
 
-    // Operação assíncrona silenciosa (não bloqueia o frontend)
+    console.log(`[Cloud Save] Gravando em ${this.collectionName}/${data.id}...`);
+
     setDoc(docRef, docData, { merge: true }).catch(error => {
-      console.warn(`[Firestore Save Error] Collection: ${this.collectionName}, ID: ${data.id}`, error);
+      console.error(`[Firestore Save Error] Collection: ${this.collectionName}, ID: ${data.id}`, error);
     });
   }
 

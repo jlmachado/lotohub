@@ -2,12 +2,12 @@
 'use client';
 
 /**
- * @fileOverview Persistência de Usuários via LocalStorage com Seeding Automático Síncrono.
- * Suporta Multi-Banca e todos os perfis de acesso.
+ * @fileOverview Persistência de Usuários via LocalStorage e Firestore.
  */
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
 import { getBancas } from './bancasStorage';
+import { usersRepo } from '@/repositories/users-repository';
 
 export type UserStatus = 'ACTIVE' | 'BLOCKED';
 export type UserType = 'USUARIO' | 'PROMOTOR' | 'CAMBISTA' | 'ADMIN' | 'SUPER_ADMIN';
@@ -62,9 +62,6 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
   }
 };
 
-/**
- * Retorna os usuários padrão do sistema.
- */
 const getDefaultUsers = (): User[] => {
   const now = new Date().toISOString();
   return [
@@ -118,98 +115,39 @@ const getDefaultUsers = (): User[] => {
   ];
 };
 
-const seedInitialUsers = (): User[] => {
-  const defaults = getDefaultUsers();
-  setStorageItem(USERS_KEY, defaults);
-  return defaults;
-};
-
 export const getUsers = (bancaId?: string | null): User[] => {
   let users = getStorageItem<User[]>(USERS_KEY, []);
-  
   if (users.length === 0) {
-    return seedInitialUsers();
+    const defaults = getDefaultUsers();
+    setStorageItem(USERS_KEY, defaults);
+    return defaults;
   }
-
-  // REPARAÇÃO AUTOMÁTICA: Garante que terminais essenciais existam no prototype
-  const defaults = getDefaultUsers();
-  let hasChanges = false;
-
-  defaults.forEach(defUser => {
-    const exists = users.some(u => u.terminal === defUser.terminal);
-    if (!exists) {
-      users.push(defUser);
-      hasChanges = true;
-    }
-  });
-
-  if (hasChanges) {
-    saveUsers(users);
-  }
-  
-  if (bancaId && bancaId !== 'all') {
-    return users.filter(u => u.bancaId === bancaId);
-  }
-  
   return users;
 };
 
-export const generateNextTerminalForBanca = (bancaId: string): string => {
-  const bancas = getBancas();
-  const banca = bancas.find(b => b.id === bancaId || b.subdomain === bancaId);
-  if (!banca) return String(Date.now()).slice(-5);
-
-  const users = getStorageItem<User[]>(USERS_KEY, []);
-  const bancaUsers = users.filter(u => u.bancaId === banca.id);
-  
-  const terminalNumbers = bancaUsers
-    .map(u => parseInt(u.terminal))
-    .filter(n => !isNaN(n) && n >= banca.baseTerminal);
-
-  const highest = terminalNumbers.length > 0 ? Math.max(...terminalNumbers) : banca.baseTerminal;
-  
-  let next = highest + 1;
-  while (users.some(u => u.terminal === String(next))) {
-    next++;
-  }
-
-  return String(next);
-};
-
-export const getUserByTerminal = (terminal: string): User | null => {
-  // Chamamos getUsers() primeiro para garantir que a reparação automática ocorra
-  const users = getUsers();
-  return users.find(u => u.terminal === terminal || u.email === terminal) || null;
-};
-
-export const saveUsers = (users: User[]) => {
-  setStorageItem(USERS_KEY, users);
-};
-
 export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
-  const allUsers = getStorageItem<User[]>(USERS_KEY, []);
+  const allUsers = getUsers();
   const index = allUsers.findIndex(u => u.terminal === userData.terminal);
   const now = new Date().toISOString();
+
+  let finalUser: User;
 
   if (index >= 0) {
     const existing = allUsers[index];
     const newRole = userData.tipoUsuario || existing.tipoUsuario;
-    
-    // Preparação automática de cargos se necessário
     const updates: Partial<User> = { ...userData, updatedAt: now };
     
-    if (newRole === 'PROMOTOR' && !existing.promotorConfig) {
-      updates.promotorConfig = { porcentagemComissao: 10 };
-    }
+    if (newRole === 'PROMOTOR' && !existing.promotorConfig) updates.promotorConfig = { porcentagemComissao: 10 };
     if (newRole === 'CAMBISTA') {
       if (!existing.promotorConfig) updates.promotorConfig = { porcentagemComissao: 10 };
       if (!existing.cambistaConfig) updates.cambistaConfig = { loginFechamento: `caixa${existing.terminal}`, senhaFechamento: '1234' };
     }
 
-    allUsers[index] = { ...existing, ...updates, permissoes: getDefaultPermissions(newRole) };
+    finalUser = { ...existing, ...updates, permissoes: getDefaultPermissions(newRole) };
+    allUsers[index] = finalUser;
   } else {
     const type = userData.tipoUsuario || 'USUARIO';
-    const newUser = {
+    finalUser = {
       ...userData,
       id: userData.id || `u-${userData.terminal}-${Date.now()}`,
       status: userData.status || 'ACTIVE',
@@ -221,54 +159,42 @@ export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
       createdAt: now,
       updatedAt: now
     } as User;
-    allUsers.push(newUser);
+    allUsers.push(finalUser);
   }
-  saveUsers(allUsers);
+
+  setStorageItem(USERS_KEY, allUsers);
+  usersRepo.save(finalUser); // PERSISTÊNCIA CLOUD IMEDIATA
   
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('app:data-changed'));
-  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('app:data-changed'));
 };
 
-export interface AdminLog {
-  id: string;
-  adminUser: string;
-  action: string;
-  terminal: string;
-  delta?: number;
-  reason?: string;
-  at: string;
-  bancaId: string;
-}
-
+export interface AdminLog { id: string; adminUser: string; action: string; terminal: string; delta?: number; reason?: string; at: string; bancaId: string; }
 const AUDIT_KEY = 'app:admin_audit:v1';
 
 export const logAdminAction = (log: Omit<AdminLog, 'id' | 'at'>) => {
   const logs = getStorageItem<AdminLog[]>(AUDIT_KEY, []);
-  logs.unshift({
-    ...log,
-    id: `log-${Date.now()}`,
-    at: new Date().toISOString()
-  });
+  const newLog = { ...log, id: `log-${Date.now()}`, at: new Date().toISOString() };
+  logs.unshift(newLog);
   setStorageItem(AUDIT_KEY, logs.slice(0, 1000));
 };
 
-export const getAuditLogs = (terminal?: string): AdminLog[] => {
-  const logs = getStorageItem<AdminLog[]>(AUDIT_KEY, []);
-  return terminal ? logs.filter(l => l.terminal === terminal) : logs;
-};
+export const getAuditLogs = (terminal?: string): AdminLog[] => getStorageItem<AdminLog[]>(AUDIT_KEY, []).filter(l => !terminal || l.terminal === terminal);
 
 export const addPromoterCredit = (terminal: string, amount: number, reason: string) => {
   const user = getUserByTerminal(terminal);
   if (user) {
     upsertUser({ terminal, saldo: user.saldo + amount });
-    logAdminAction({
-      adminUser: 'admin',
-      action: 'CREDIT_ADDED',
-      terminal,
-      delta: amount,
-      reason,
-      bancaId: user.bancaId
-    });
+    logAdminAction({ adminUser: 'admin', action: 'CREDIT_ADDED', terminal, delta: amount, reason, bancaId: user.bancaId });
   }
+};
+
+export const getUserByTerminal = (terminal: string): User | null => getUsers().find(u => u.terminal === terminal || u.email === terminal) || null;
+export const generateNextTerminalForBanca = (bancaId: string): string => {
+  const banca = getBancas().find(b => b.id === bancaId || b.subdomain === bancaId);
+  const users = getUsers();
+  const base = banca?.baseTerminal || 10000;
+  const terminalNumbers = users.filter(u => u.bancaId === banca?.id).map(u => parseInt(u.terminal)).filter(n => !isNaN(n) && n >= base);
+  let next = (terminalNumbers.length > 0 ? Math.max(...terminalNumbers) : base) + 1;
+  while (users.some(u => u.terminal === String(next))) next++;
+  return String(next);
 };
