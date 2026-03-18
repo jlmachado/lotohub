@@ -497,42 +497,57 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- Sync Logic Definitiva ---
 
   const syncJDBResults = useCallback(async () => {
-    // 1. GARANTIR AUTH
-    if (!user || !user.id) {
-      console.warn("[SYNC] Usuário não autenticado.");
-      return;
-    }
-
-    // 2. GARANTIR BANCA (Forte acoplamento com fallback)
-    const bancaId = user.bancaId || currentBanca?.id || 'default';
-    
     try {
-      // 3. DEBUG INICIAL
-      console.log("----------------------------");
-      console.log("[SYNC] UID:", user.id);
-      console.log("[SYNC] BANCA DESTINO:", bancaId);
+      // 1. GARANTIR AUTH
+      if (!user?.id && !user?.uid) {
+        throw new Error("Usuário não autenticado");
+      }
+
+      // 2. GARANTIR BANCA
+      if (!currentBanca?.id) {
+        throw new Error("Banca não definida");
+      }
+
+      const bancaId = currentBanca.id;
       
+      // 3. BUSCA RESULTADOS EXTERNOS
       const results = await ResultsSyncService.getLatestResults();
+      
+      // 4. DEBUG INICIAL
+      console.log("----------------------------");
+      console.log("USER:", user);
+      console.log("UID:", user?.id || user?.uid);
+      console.log("BANCA:", bancaId);
+      console.log("TOTAL RESULTADOS DISPONÍVEIS:", results.length);
+      
       const hoje = new Date();
       const dataFormatada = hoje.toLocaleDateString("pt-BR");
 
-      for (const res of results) {
-        const docId = `jdb-${res.date}-${res.time}-${res.stateCode.toLowerCase()}-${res.extractionName.toLowerCase().replace(/\s/g, '-')}`;
-        const docRef = doc(firestore, 'bancas', bancaId, 'resultados', docId);
-        
-        // 4. PERSISTÊNCIA REAL COM MERGE
-        await setDoc(docRef, {
-          ...res,
-          bancaId,
-          data: dataFormatada,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
+      // 5. LOOP DE SALVAMENTO RESILIENTE
+      for (const resultado of results) {
+        try {
+          // Normalização do ID do documento para persistência estável
+          const docId = resultado.id || `jdb-${resultado.date}-${resultado.time}-${resultado.stateCode.toLowerCase()}-${resultado.extractionName.toLowerCase().replace(/\s/g, '-')}`;
+          const docRef = doc(firestore, 'bancas', bancaId, 'resultados', docId);
+          
+          await setDoc(docRef, {
+            ...resultado,
+            bancaId,
+            data: dataFormatada,
+            createdAt: (resultado as any).createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+
+          console.log("SALVO NO FIRESTORE:", docId);
+        } catch (err: any) {
+          // Loga erro individual mas não quebra o loop total
+          console.error("ERRO AO SALVAR ITEM INDIVIDUAL:", resultado.extractionName, err.message);
+        }
       }
-      console.log("[SYNC] Sorteios processados com sucesso.");
+      console.log("[SYNC] Processo de persistência finalizado.");
       console.log("----------------------------");
     } catch (e: any) {
-      console.error("[SYNC] Falha ao salvar resultados:", e.message);
+      console.error("[SYNC] Falha crítica no fluxo de sincronização:", e.message);
     }
   }, [user, currentBanca, firestore]);
 
