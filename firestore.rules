@@ -3,27 +3,28 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // Regra para consultas de grupo (necessário para verificação de superadmin no login)
+    match /{path=**}/usuarios/{userId} {
+      allow read: if request.auth != null;
+    }
+
     // Regra Global SaaS Multi-Banca
-    // O acesso é permitido se:
-    // 1. É o próprio usuário acessando seu documento (login/perfil)
-    // 2. O bancaId do token coincide com o bancaId do caminho
-    // 3. O usuário é SUPER_ADMIN
     match /bancas/{bancaId}/{document=**} {
-      allow read: if request.auth != null; // Permite leitura inicial para login
+      allow read: if request.auth != null; 
       
       allow write: if request.auth != null 
         && (
-          request.auth.token.role == 'SUPER_ADMIN' ||
+          request.auth.token.role == 'superadmin' ||
           request.auth.token.tipoUsuario == 'SUPER_ADMIN' ||
           request.auth.token.bancaId == bancaId ||
-          request.auth.uid == document // Permite criar/atualizar próprio perfil
+          request.auth.uid == document.split('/').last() 
         );
     }
     
     // Coleção de Resultados (Shared Data - Leitura Pública)
     match /jdbResults/{resultId} {
       allow read: if true;
-      allow write: if request.auth != null && (request.auth.token.tipoUsuario == 'SUPER_ADMIN' || request.auth.token.role == 'SUPER_ADMIN');
+      allow write: if request.auth != null && (request.auth.token.role == 'superadmin' || request.auth.token.role == 'admin');
     }
     
     // Configurações públicas do sistema

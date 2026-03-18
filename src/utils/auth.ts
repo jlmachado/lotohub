@@ -2,8 +2,8 @@
 'use client';
 
 /**
- * @fileOverview Autenticação Multi-Tenant com Sincronização Firestore.
- * Versão V3: Busca obrigatória de perfil no Firestore após login.
+ * @fileOverview Autenticação Multi-Tenant com Auto-Promoção de SuperAdmin.
+ * Versão V5: Primeiro usuário a logar torna-se SuperAdmin automaticamente.
  */
 
 import { 
@@ -12,13 +12,21 @@ import {
   signOut
 } from 'firebase/auth';
 import { initializeFirebase } from '@/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  query, 
+  collectionGroup, 
+  where, 
+  getDocs 
+} from 'firebase/firestore';
 import { resolveCurrentBanca } from './bancaContext';
 import { 
   generateNextTerminalForBanca, 
   getDefaultPermissions, 
-  getUsers, 
-  getDefaultUsers
+  getUsers
 } from './usersStorage';
 import { getBancas } from './bancasStorage';
 
@@ -28,6 +36,7 @@ const SESSION_KEY = 'app:session:v1';
 
 /**
  * Realiza o login do usuário e sincroniza com o Firestore.
+ * Implementa a lógica de auto-promoção para o primeiro usuário do sistema.
  */
 export const login = async (terminalOrEmail: string, password: string): Promise<{ success: boolean; message: string; user?: any }> => {
   try {
@@ -46,7 +55,6 @@ export const login = async (terminalOrEmail: string, password: string): Promise<
         }
       }
       if (!banca) {
-        // Fallback para login global se a banca não for identificada
         const allBancas = getBancas();
         banca = allBancas.find(b => b.id === 'default') || allBancas[0];
       }
@@ -54,60 +62,74 @@ export const login = async (terminalOrEmail: string, password: string): Promise<
     }
 
     // 2. Autenticação Firebase Auth
-    console.log("[AUTH] Tentando autenticação para:", email);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const fbUser = userCredential.user;
     const uid = fbUser.uid;
 
-    console.log("UID AUTH:", uid);
+    // 3. Verificar se existe algum SuperAdmin no sistema (Busca Global)
+    const superadminQuery = query(
+      collectionGroup(firestore, "usuarios"),
+      where("role", "==", "superadmin")
+    );
+    const superadminSnapshot = await getDocs(superadminQuery);
+    const noSuperAdminExists = superadminSnapshot.empty;
 
-    // 3. Busca Obrigatória no Firestore
+    // 4. Definir banca e buscar documento do usuário
+    const bancaId = banca?.id || "default";
+    const userRef = doc(firestore, `bancas/${bancaId}/usuarios/${uid}`);
+    const userDoc = await getDoc(userRef);
+
     let userData: any = null;
-    let finalBancaId = banca?.id || 'default';
-    
-    // Tenta buscar no tenant atual ou resolvido
-    const userRef = doc(firestore, 'bancas', finalBancaId, 'usuarios', uid);
-    const userSnap = await getDoc(userRef);
+    let role = "usuario";
 
-    if (userSnap.exists()) {
-      userData = userSnap.data();
+    if (!userDoc.exists()) {
+      // 5. Criar usuário automaticamente se não existir no Firestore
+      // Se for o primeiro usuário do sistema, vira superadmin
+      role = noSuperAdminExists ? "superadmin" : "usuario";
+      
+      userData = {
+        id: uid,
+        uid,
+        terminal: isEmail ? "ADMIN" : terminalOrEmail,
+        email: fbUser.email,
+        nome: fbUser.displayName || fbUser.email,
+        bancaId,
+        role,
+        tipoUsuario: role === 'superadmin' ? 'SUPER_ADMIN' : 'USUARIO',
+        saldo: 0,
+        bonus: 0,
+        status: "ACTIVE",
+        permissoes: getDefaultPermissions(role === 'superadmin' ? 'SUPER_ADMIN' : 'USUARIO'),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(userRef, userData);
     } else {
-      // Fallback para Banca Master (SuperAdmin geralmente fica aqui)
-      console.log("[AUTH] Usuário não encontrado no tenant. Buscando em default...");
-      const masterRef = doc(firestore, 'bancas', 'default', 'usuarios', uid);
-      const masterSnap = await getDoc(masterRef);
-      if (masterSnap.exists()) {
-        userData = masterSnap.data();
-        finalBancaId = 'default';
-      }
-    }
-
-    // 4. Validação de existência no banco
-    if (!userData) {
-      // Se autenticou no Auth mas não existe no banco, verifica se é um usuário padrão do Seed
-      const seededUser = getDefaultUsers().find(u => u.email === email || u.terminal === terminalOrEmail);
-      if (seededUser) {
-        userData = {
-          ...seededUser,
-          id: uid,
-          updatedAt: new Date().toISOString()
-        };
-        // Auto-seed no Firestore
-        await setDoc(doc(firestore, 'bancas', userData.bancaId || 'default', uid), userData);
+      userData = userDoc.data();
+      
+      // 6. Garantir que o campo role exista
+      if (!userData.role) {
+        role = userData.tipoUsuario === 'SUPER_ADMIN' ? 'superadmin' : 'usuario';
+        await updateDoc(userRef, { role, updatedAt: new Date().toISOString() });
+        userData.role = role;
       } else {
-        throw new Error("Usuário autenticado mas perfil não encontrado no Firestore.");
+        role = userData.role;
       }
     }
 
-    console.log("USER DATA FOUND:", userData);
+    // DEBUG
+    console.log("Usuário logado:", uid);
+    console.log("Role:", role);
+    console.log("Banca:", bancaId);
 
-    // 5. Configurar Sessão
+    // 7. Configurar Sessão
     const session = {
       userId: uid,
       terminal: userData.terminal,
-      email: email,
-      role: userData.tipoUsuario || 'USUARIO',
-      bancaId: userData.bancaId || finalBancaId,
+      email: fbUser.email,
+      role: role,
+      bancaId: bancaId,
       loggedAt: Date.now()
     };
 
@@ -123,7 +145,6 @@ export const login = async (terminalOrEmail: string, password: string): Promise<
     console.error('[Auth Error]', error.message);
     let errorMsg = "Acesso negado. Verifique suas credenciais.";
     if (error.code === 'auth/invalid-credential') errorMsg = "E-mail ou senha inválidos.";
-    if (error.code === 'auth/user-not-found') errorMsg = "Usuário não cadastrado.";
     
     return { success: false, message: error.message || errorMsg };
   }
@@ -147,6 +168,7 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
 
     const newUser = {
       id: fbUser.uid,
+      uid: fbUser.uid,
       terminal,
       nome,
       cpf,
@@ -155,6 +177,7 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
       systemEmail,
       status: 'ACTIVE',
       tipoUsuario: 'USUARIO',
+      role: 'usuario',
       permissoes: getDefaultPermissions('USUARIO'),
       saldo: 0,
       bonus: 0,
