@@ -1,55 +1,28 @@
 
 {
   "entities": {
-    "User": {
-      "title": "User",
-      "description": "Usuário do sistema (Jogador, Promotor, Cambista, Admin)",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "terminal": { "type": "string" },
-        "email": { "type": "string" },
-        "nome": { "type": "string" },
-        "tipoUsuario": { "type": "string", "enum": ["USUARIO", "PROMOTOR", "CAMBISTA", "ADMIN", "SUPER_ADMIN"] },
-        "saldo": { "type": "number" },
-        "bonus": { "type": "number" },
-        "bancaId": { "type": "string" },
-        "status": { "type": "string" }
-      }
-    },
     "Banca": {
       "title": "Banca",
-      "description": "Unidade de negócio (Tenant)",
+      "description": "Entidade Master do Tenant",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "nome": { "type": "string" },
         "subdomain": { "type": "string" },
-        "status": { "type": "string" }
+        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED"] },
+        "saldo": { "type": "number" }
       }
     },
-    "LedgerEntry": {
-      "title": "LedgerEntry",
-      "description": "Registro financeiro no livro razão",
+    "User": {
+      "title": "User",
+      "description": "Usuário isolado por Banca",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "amount": { "type": "number" },
-        "type": { "type": "string" },
-        "modulo": { "type": "string" }
-      }
-    },
-    "Aposta": {
-      "title": "Aposta",
-      "description": "Registro de aposta de loteria ou bicho",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "loteria": { "type": "string" },
-        "valor": { "type": "string" },
-        "status": { "type": "string" }
+        "terminal": { "type": "string" },
+        "tipoUsuario": { "type": "string" },
+        "saldo": { "type": "number" },
+        "bancaId": { "type": "string" }
       }
     }
   },
@@ -57,29 +30,25 @@
     "providers": ["password"]
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": "#/backend/entities/User",
-      "description": "Coleção global de usuários e terminais"
-    },
     "/bancas/{bancaId}": {
       "schema": "#/backend/entities/Banca",
-      "description": "Configurações de unidades/bancas"
+      "description": "Configurações master da banca"
     },
-    "/ledgerEntries/{entryId}": {
-      "schema": "#/backend/entities/LedgerEntry",
-      "description": "Movimentações financeiras para auditoria"
+    "/bancas/{bancaId}/usuarios/{userId}": {
+      "schema": "#/backend/entities/User",
+      "description": "Usuários exclusivos do tenant"
     },
-    "/apostas/{apostaId}": {
-      "schema": "#/backend/entities/Aposta",
-      "description": "Apostas de loterias em aberto e finalizadas"
-    },
-    "/football_bets/{betId}": {
+    "/bancas/{bancaId}/apostas/{apostaId}": {
       "schema": "object",
-      "description": "Bilhetes de futebol sportsbook"
+      "description": "Bilhetes isolados"
     },
-    "/snooker_channels/{channelId}": {
+    "/bancas/{bancaId}/ledgerEntries/{entryId}": {
       "schema": "object",
-      "description": "Canais e mesas de sinuca"
+      "description": "Extrato financeiro transacional"
+    },
+    "/jdbResults/{resultId}": {
+      "schema": "object",
+      "description": "Resultados globais (Shared Data)"
     }
   }
 }

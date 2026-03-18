@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * @fileOverview Lógica de autenticação integrada ao Firebase Auth.
- * Mapeia terminais para identidades oficiais do Firebase.
+ * @fileOverview Autenticação Multi-Tenant.
+ * Garante que o login de um usuário seja validado contra a banca específica.
  */
 
 import { 
@@ -11,148 +11,59 @@ import {
   signOut
 } from 'firebase/auth';
 import { initializeFirebase } from '@/firebase';
-import { User, getUserByTerminal, upsertUser, getDefaultPermissions, generateNextTerminalForBanca } from './usersStorage';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { resolveCurrentBanca } from './bancaContext';
-import { usersRepo } from '@/repositories/users-repository';
 
-const { auth } = initializeFirebase();
-
-export interface Session {
-  userId: string;
-  terminal: string;
-  tipoUsuario: User['tipoUsuario'];
-  bancaId: string;
-  loggedAt: number;
-}
+const { auth, firestore } = initializeFirebase();
 
 const SESSION_KEY = 'app:session:v1';
 
-/**
- * Gera um e-mail virtual para o terminal para compatibilidade com Firebase Auth.
- */
-const getVirtualEmail = (terminal: string) => `${terminal}@lotohub.app`;
-
-export const login = async (identifier: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
+export const login = async (terminal: string, password: string): Promise<{ success: boolean; message: string; user?: any }> => {
   try {
-    let email = identifier.includes('@') ? identifier : getVirtualEmail(identifier);
+    const banca = resolveCurrentBanca();
+    if (!banca) throw new Error("Acesse através de um subdomínio válido.");
+
+    const email = `${terminal}@${banca.subdomain}.lotohub.app`;
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const firebaseUser = userCredential.user;
+    const fbUser = userCredential.user;
 
-    let userRecord = getUserByTerminal(identifier);
-    
-    if (!userRecord) {
-      userRecord = await usersRepo.getByTerminal(identifier);
+    // Busca dados estendidos no tenant correto
+    const userRef = doc(firestore, 'bancas', banca.id, 'usuarios', fbUser.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      throw new Error("Usuário não encontrado nesta banca.");
     }
 
-    if (!userRecord) {
-      userRecord = {
-        id: firebaseUser.uid,
-        terminal: identifier,
-        tipoUsuario: 'USUARIO',
-        bancaId: 'default',
-        nome: identifier,
-        saldo: 0,
-        bonus: 0,
-        status: 'ACTIVE',
-        email: email,
-        password: password,
-        permissoes: getDefaultPermissions('USUARIO'),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      } as User;
-    }
-
-    const session: Session = {
-      userId: firebaseUser.uid,
-      terminal: userRecord.terminal,
-      tipoUsuario: userRecord.tipoUsuario || 'USUARIO',
-      bancaId: userRecord.bancaId || 'default',
+    const userData = userSnap.data();
+    const session = {
+      userId: fbUser.uid,
+      terminal: userData.terminal,
+      tipoUsuario: userData.tipoUsuario,
+      bancaId: banca.id,
       loggedAt: Date.now()
     };
 
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    upsertUser(userRecord);
-    window.dispatchEvent(new Event('auth-change'));
-
-    return { success: true, message: 'Logado com sucesso!', user: userRecord };
+    return { success: true, message: 'Sucesso', user: { ...userData, id: fbUser.uid } };
   } catch (error: any) {
-    console.error('[Auth Login Error]:', error);
-    let msg = 'Erro ao realizar login.';
-    if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-      msg = 'Terminal ou senha incorretos.';
-    }
-    return { success: false, message: msg };
-  }
-};
-
-export const register = async (data: Omit<Partial<User>, 'terminal'>): Promise<{ success: boolean; message: string; terminal?: string }> => {
-  if (!data.nome || !data.password || !data.email) {
-    return { success: false, message: 'Dados obrigatórios ausentes.' };
-  }
-
-  try {
-    const banca = resolveCurrentBanca();
-    const bancaId = banca?.id || 'default';
-    const terminal = generateNextTerminalForBanca(bancaId);
-    const virtualEmail = getVirtualEmail(terminal);
-
-    const userCredential = await createUserWithEmailAndPassword(auth, virtualEmail, data.password!);
-    const firebaseUser = userCredential.user;
-
-    const newUser: User = {
-      ...data,
-      id: firebaseUser.uid,
-      terminal,
-      email: data.email,
-      password: data.password!,
-      tipoUsuario: 'USUARIO', 
-      saldo: 0,
-      bonus: 0,
-      status: 'ACTIVE',
-      bancaId,
-      permissoes: getDefaultPermissions('USUARIO'),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    } as User;
-
-    upsertUser(newUser);
-
-    return { 
-      success: true, 
-      message: 'Cadastro concluído com sucesso!', 
-      terminal 
-    };
-  } catch (error: any) {
-    console.error('[Auth Register Error]:', error);
-    let msg = 'Falha ao criar conta.';
-    if (error.code === 'auth/email-already-in-use') msg = 'Este e-mail já está em uso.';
-    return { success: false, message: msg };
+    console.error('[Auth Error]', error.message);
+    return { success: false, message: "Acesso negado. Verifique suas credenciais." };
   }
 };
 
 export const logout = async () => {
   await signOut(auth);
   localStorage.removeItem(SESSION_KEY);
-  window.dispatchEvent(new Event('auth-change'));
+  window.location.href = '/login';
 };
 
-export function getSession(): Session | null {
+export function getSession() {
   if (typeof window === 'undefined') return null;
   const stored = localStorage.getItem(SESSION_KEY);
-  if (!stored) return null;
-  try {
-    return JSON.parse(stored);
-  } catch (e) {
-    localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
+  return stored ? JSON.parse(stored) : null;
 }
 
-export function getCurrentUser(): Session | null {
+export function getCurrentUser() {
   return getSession();
 }
-
-export const canAccessAdmin = (user: Session | null): boolean => {
-  if (!user) return false;
-  return ['ADMIN', 'SUPER_ADMIN'].includes(user.tipoUsuario);
-};

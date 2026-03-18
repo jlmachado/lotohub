@@ -1,11 +1,13 @@
 'use client';
 
 /**
- * @fileOverview Ledger Service SaaS Multi-Tenant.
- * Unifica a fonte da verdade financeira apenas no Firestore.
+ * @fileOverview Ledger Service Enterprise.
+ * Utiliza transações do Firestore para garantir integridade financeira absoluta.
  */
 
-import { BaseRepository } from '@/repositories/base-repository';
+import { initializeFirebase } from '@/firebase';
+import { doc, runTransaction, collection } from 'firebase/firestore';
+import { resolveCurrentBanca } from '@/utils/bancaContext';
 
 export type LedgerType = 
   | 'BET_PLACED' 
@@ -18,7 +20,6 @@ export type LedgerType =
 
 export interface LedgerEntry {
   id: string;
-  bancaId: string;
   userId: string;
   terminal: string;
   tipoUsuario: string;
@@ -33,27 +34,59 @@ export interface LedgerEntry {
 }
 
 export class LedgerService {
-  private static repo = new BaseRepository<LedgerEntry>('ledgerEntries');
-
   /**
-   * Adiciona uma entrada no Livro Razão com persistência obrigatória.
+   * Registra uma movimentação financeira de forma atômica.
+   * Atualiza o saldo do usuário e cria o log no ledger em uma única transação.
    */
-  static async addEntry(entry: Omit<LedgerEntry, 'id' | 'createdAt'>): Promise<LedgerEntry> {
-    if (!entry.bancaId) {
-      throw new Error("ERRO FINANCEIRO: Tentativa de registro sem bancaId.");
+  static async registerMovement(entry: Omit<LedgerEntry, 'id' | 'createdAt' | 'balanceBefore' | 'balanceAfter'>) {
+    const { firestore } = initializeFirebase();
+    const banca = resolveCurrentBanca();
+    const bancaId = banca?.id || 'default';
+
+    const userRef = doc(firestore, 'bancas', bancaId, 'usuarios', entry.userId);
+    const ledgerColRef = collection(firestore, 'bancas', bancaId, 'ledgerEntries');
+    const newEntryId = `trx-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const ledgerRef = doc(ledgerColRef, newEntryId);
+
+    try {
+      return await runTransaction(firestore, async (transaction) => {
+        const userSnap = await transaction.get(userRef);
+        if (!userSnap.exists()) {
+          throw new Error("Usuário não encontrado para transação.");
+        }
+
+        const userData = userSnap.data();
+        const currentBalance = userData.saldo || 0;
+        const newBalance = currentBalance + entry.amount;
+
+        if (newBalance < 0 && entry.tipoUsuario !== 'CAMBISTA' && entry.tipoUsuario !== 'SUPER_ADMIN') {
+          throw new Error("Saldo insuficiente para realizar a operação.");
+        }
+
+        const now = new Date().toISOString();
+        
+        // 1. Atualiza Usuário
+        transaction.update(userRef, { 
+          saldo: newBalance,
+          updatedAt: now 
+        });
+
+        // 2. Cria entrada no Ledger
+        const finalEntry: LedgerEntry = {
+          ...entry,
+          id: newEntryId,
+          balanceBefore: currentBalance,
+          balanceAfter: newBalance,
+          createdAt: now
+        };
+
+        transaction.set(ledgerRef, finalEntry);
+
+        return { success: true, newBalance };
+      });
+    } catch (e: any) {
+      console.error("[LEDGER TRANSACTION ERROR]", e.message);
+      return { success: false, message: e.message };
     }
-
-    const newEntry: LedgerEntry = {
-      ...entry,
-      id: `trx-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      createdAt: new Date().toISOString()
-    };
-
-    // PERSISTÊNCIA CLOUD IMEDIATA (Sem LocalStorage para finanças)
-    await this.repo.save(newEntry);
-    
-    console.log(`[LEDGER] [BANCA: ${entry.bancaId}] TRX registrada: ${entry.type} | ${entry.amount}`);
-    
-    return newEntry;
   }
 }
