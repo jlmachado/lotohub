@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Header } from '@/components/header';
@@ -6,17 +7,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Search, Share2, Printer, Hash, RotateCcw, Loader2 } from 'lucide-react';
+import { Search, Share2, Printer, Hash, RotateCcw, Loader2, RefreshCw } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { JDB_STATES } from '@/utils/jdb-constants';
 import { cn } from '@/lib/utils';
-import { ResultsAutoSyncService } from '@/services/results-auto-sync-service';
 
 export default function ResultadosPublicPage() {
-  const { jdbResults, refreshData } = useAppContext();
+  const { jdbResults, refreshData, syncJDBResults } = useAppContext();
   const { toast } = useToast();
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -24,15 +24,23 @@ export default function ResultadosPublicPage() {
   const [selectedTime, setSelectedTime] = useState('all');
   const [isSearching, setIsSearching] = useState(false);
 
+  // Auto-sync ao carregar
+  useEffect(() => {
+    syncJDBResults();
+  }, [syncJDBResults]);
+
   const availableTimes = useMemo(() => {
-    const times = new Set(jdbResults.filter(r => r.status === 'PUBLICADO').map(r => r.time));
+    const times = new Set(jdbResults.map(r => r.time));
     return Array.from(times).sort();
   }, [jdbResults]);
 
   const filteredResults = useMemo(() => {
+    const hoje = new Date(date);
+    const dataFormatada = hoje.toLocaleDateString("pt-BR");
+
     return jdbResults.filter(r => {
-      if (r.status !== 'PUBLICADO') return false;
-      const matchDate = r.date === date;
+      // Filtro por data formatada PT-BR conforme requisito
+      const matchDate = r.data === dataFormatada || r.date === date;
       const matchState = selectedState === 'all' || r.stateCode === selectedState;
       const matchTime = selectedTime === 'all' || r.time === selectedTime;
       return matchDate && matchState && matchTime;
@@ -43,14 +51,8 @@ export default function ResultadosPublicPage() {
     if (isSearching) return;
     setIsSearching(true);
     try {
-      const summary = await ResultsAutoSyncService.forceRun();
-      if (summary) {
-        toast({ 
-          title: "Resultados Atualizados", 
-          description: summary.news > 0 ? `${summary.news} novas extrações encontradas.` : "Todos os resultados já estão importados."
-        });
-      }
-      refreshData();
+      await syncJDBResults();
+      toast({ title: "Resultados Atualizados!" });
     } catch (error) {
       toast({ variant: "destructive", title: "Falha na sincronização" });
     } finally {
@@ -66,14 +68,13 @@ export default function ResultadosPublicPage() {
       title: 'RESULTADO OFICIAL',
       ticketId: 'RES-' + result.id.split('-').pop()?.substring(0, 8),
       terminal: 'SINC QUADRO',
-      datetime: `${new Date(result.date + 'T12:00:00').toLocaleDateString('pt-BR')} ${result.time}`,
+      datetime: `${result.data} ${result.time}`,
       estado: result.stateName,
       loteria: result.extractionName,
       horario: result.time,
       jogo: `${result.stateName} - ${result.extractionName}`,
       cliente: 'Público',
       vendedor: 'Sistema LotoHub',
-      // Derivações do 1º prêmio para o template administrativo
       firstPrize: firstPrize ? {
         milhar: firstPrize.milhar,
         centena: firstPrize.milhar.slice(-3),
@@ -91,39 +92,7 @@ export default function ResultadosPublicPage() {
     };
 
     localStorage.setItem('PRINT_TICKET_DATA', JSON.stringify(ticketData));
-    const printWindow = window.open('/impressao.html', '_blank');
-    if (!printWindow) {
-      toast({ variant: 'destructive', title: 'Erro na Impressão', description: 'Libere popups para imprimir.' });
-    }
-  };
-
-  const handleShare = async (result: any) => {
-    const prizesText = result.prizes
-      .map((p: any) => `${p.position}º ${p.milhar} - Gr. ${p.grupo} - ${p.animal.toUpperCase()}`)
-      .join('\n');
-
-    const message = `🏆 *RESULTADO OFICIAL*
-📅 *DATA:* ${new Date(result.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-⏰ *HORA:* ${result.time}
-📍 *ESTADO:* ${result.stateName}
-🎰 *BANCA:* ${result.extractionName}
-
-${prizesText}
-
-✅ _Consulte no painel LotoHub_`;
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: `Resultado ${result.extractionName}`, text: message });
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
-          setTimeout(() => navigator.clipboard.writeText(message), 100);
-        }
-      }
-    } else {
-      navigator.clipboard.writeText(message);
-      toast({ title: "Copiado para o WhatsApp!" });
-    }
+    window.open('/impressao.html', '_blank');
   };
 
   return (
@@ -163,8 +132,8 @@ ${prizesText}
             </div>
             <div className="flex gap-2">
               <Button onClick={handleSearchResults} disabled={isSearching} className="flex-1 h-11 bg-primary text-black font-black uppercase italic rounded-xl lux-shine">
-                {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-                Pesquisar
+                {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                Atualizar
               </Button>
               <Button variant="outline" onClick={() => { setDate(new Date().toISOString().split('T')[0]); setSelectedState('all'); setSelectedTime('all'); }} className="h-11 px-4 border-white/10"><RotateCcw size={18} /></Button>
             </div>
@@ -174,7 +143,7 @@ ${prizesText}
         <div className="grid gap-6">
           {filteredResults.length === 0 ? (
             <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl opacity-40">
-              <p className="font-bold uppercase text-xs tracking-widest">Nenhum resultado disponível para estes filtros.</p>
+              <p className="font-bold uppercase text-xs tracking-widest">Nenhum resultado disponível para {new Date(date).toLocaleDateString("pt-BR")}.</p>
             </div>
           ) : (
             filteredResults.map((res) => (
@@ -187,11 +156,10 @@ ${prizesText}
                         <h3 className="text-lg font-black uppercase italic text-white leading-none">{res.extractionName}</h3>
                         <Badge variant="secondary" className="text-[8px] h-4">{res.stateName}</Badge>
                       </div>
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">{res.time} • {new Date(res.date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                      <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">{res.time} • {res.data || res.date}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button onClick={() => handleShare(res)} variant="outline" size="sm" className="h-9 rounded-lg font-bold border-white/10 hover:bg-primary hover:text-black gap-2"><Share2 size={14} /> WhatsApp</Button>
                     <Button onClick={() => handlePrint(res)} variant="outline" size="sm" className="h-9 rounded-lg font-bold border-white/10 gap-2"><Printer size={14} /> Imprimir</Button>
                   </div>
                 </div>

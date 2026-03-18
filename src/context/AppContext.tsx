@@ -3,7 +3,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
- * Versão V6: Implementação completa de estados da Sinuca, Automação e Reconhecimento OCR.
+ * Versão V7: Sincronização Corrigida para Resultados do Bicho e Sinuca com Fallback.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getSession, logout as authLogout } from '@/utils/auth';
 import { initializeFirebase } from '@/firebase';
-import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, addDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { resolveCurrentBanca, getSubdomain } from '@/utils/bancaContext';
 import { LedgerService } from '@/services/ledger-service';
 import { CommissionService } from '@/services/advanced/CommissionService';
@@ -21,6 +21,8 @@ import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catal
 import { espnService } from '@/services/espn-api-service';
 import { normalizeESPNScoreboard } from '@/utils/espn-normalizer';
 import { MatchMapperService, MatchModel } from '@/services/match-mapper-service';
+import { SnookerSyncService } from '@/services/snooker-sync-service';
+import { ResultsSyncService } from '@/services/results-sync-service';
 
 // --- Interfaces de Tipagem ---
 
@@ -111,6 +113,16 @@ export interface BingoTicket {
   createdAt: string;
   bancaId: string;
   isBot?: boolean;
+}
+
+export interface BingoPayout {
+  id: string;
+  userId: string;
+  drawId: string;
+  amount: number;
+  type: string;
+  status: 'pending' | 'paid' | 'failed' | 'cancelled';
+  createdAt: string;
 }
 
 export interface SnookerLiveConfig {
@@ -295,6 +307,9 @@ interface AppContextType {
   // Branding & Config
   liveMiniPlayerConfig: any;
   updateLiveMiniPlayerConfig: (cfg: any) => void;
+  
+  // Sync
+  syncJDBResults: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -401,15 +416,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- Firestore Listeners ---
 
   useEffect(() => {
-    const unsubResults = onSnapshot(query(collection(firestore, 'jdbResults'), orderBy('date', 'desc'), limit(50)), (s) => 
-      setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))));
-
     const bancaId = user?.bancaId || currentBanca?.id || 'default';
+    const bancaPath = `bancas/${bancaId}`;
+
+    // Listener para Resultados Multi-Banca
+    const hoje = new Date();
+    const dataFormatada = hoje.toLocaleDateString("pt-BR");
+    
+    const unsubResults = onSnapshot(query(
+      collection(firestore, bancaPath, 'resultados'), 
+      where("data", "==", dataFormatada)
+    ), (s) => {
+      const results = s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult));
+      setJdbResults(results);
+      console.log(`[SYNC][${bancaId}] Resultados recuperados:`, results.length);
+    });
+
     if (bancaId === 'default' && (!user || (user.tipoUsuario !== 'SUPER_ADMIN' && user.role !== 'superadmin'))) {
       return;
     }
-
-    const bancaPath = `bancas/${bancaId}`;
     
     const unsubscribers = [
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), (s) => 
@@ -427,8 +452,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(query(collection(firestore, bancaPath, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100)), (s) => 
         setLedger(s.docs.map(d => ({ id: d.id, ...d.data() })))),
 
-      onSnapshot(collection(firestore, bancaPath, 'snooker_channels'), (s) => 
-        setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(firestore, bancaPath, 'snooker'), (s) => {
+        const channels = s.docs.map(d => ({ id: d.id, ...d.data() }));
+        setSnookerChannels(channels);
+        console.log(`[SYNC][${bancaId}] Canais Sinuca recuperados:`, channels.length);
+      }),
 
       onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => {
         setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -469,7 +497,119 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [firestore, currentBanca, user]);
 
-  // --- Football Logic ---
+  // --- Sync Logic Corrected ---
+
+  const syncJDBResults = useCallback(async () => {
+    const bancaId = user?.bancaId || currentBanca?.id || 'default';
+    if (!bancaId) return;
+
+    try {
+      const hoje = new Date();
+      const dataFormatada = hoje.toLocaleDateString("pt-BR");
+      
+      const summary = await ResultsSyncService.syncToday();
+      const results = await ResultsSyncService.getLatestResults();
+      
+      console.log(`[SYNC][${bancaId}] Sincronizando Resultados:`, results);
+
+      for (const res of results) {
+        const docId = `jdb-${res.date}-${res.time}-${res.stateCode.toLowerCase()}-${res.extractionName.toLowerCase().replace(/\s/g, '-')}`;
+        await setDoc(doc(firestore, 'bancas', bancaId, 'resultados', docId), {
+          ...res,
+          bancaId,
+          data: dataFormatada,
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+      }
+    } catch (e: any) {
+      console.error("[SYNC] Falha nos resultados do bicho:", e.message);
+    }
+  }, [user, currentBanca, firestore]);
+
+  const syncSnookerFromYoutube = useCallback(async (force = false) => {
+    const bancaId = user?.bancaId || currentBanca?.id || 'default';
+    if (!bancaId) return;
+
+    setSnookerSyncState('syncing');
+    try {
+      console.log(`[SYNC][${bancaId}] Iniciando captura de Sinuca...`);
+      
+      // Fallback Strategy
+      let jogos = [];
+      try {
+        jogos = await SnookerSyncService.fetchFromMainSource(); 
+      } catch (e) {
+        console.warn("[SYNC] Fonte 1 falhou, tentando Fallback...");
+        jogos = await SnookerSyncService.fetchFromFallbackSource();
+      }
+
+      console.log(`[SYNC][${bancaId}] Eventos encontrados:`, jogos.length);
+
+      for (const jogo of jogos) {
+        await setDoc(doc(firestore, 'bancas', bancaId, 'snooker', jogo.id), {
+          ...jogo,
+          bancaId,
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+      }
+      setSnookerSyncState('idle');
+    } catch (e: any) {
+      console.error("[SYNC] Erro Sinuca:", e.message);
+      setSnookerSyncState('error');
+    }
+  }, [user, currentBanca, firestore]);
+
+  // Auto-Sync Trigger
+  useEffect(() => {
+    const bancaId = user?.bancaId || currentBanca?.id || 'default';
+    if (bancaId) {
+      syncJDBResults();
+      syncSnookerFromYoutube();
+    }
+  }, [user, currentBanca, syncJDBResults, syncSnookerFromYoutube]);
+
+  // --- Generic Handlers ---
+
+  const handleFinalizarAposta = async (aposta: any, valorTotal: number) => {
+    if (!user) { router.push('/login'); return null; }
+    const bancaId = user.bancaId || 'default';
+    const pouleId = generatePoule();
+    
+    const result = await LedgerService.registerMovement({
+      userId: user.id,
+      terminal: user.terminal,
+      tipoUsuario: user.tipoUsuario,
+      modulo: aposta.loteria,
+      type: 'BET_PLACED',
+      amount: -valorTotal,
+      referenceId: pouleId,
+      description: `${aposta.loteria}: ${aposta.numeros}`
+    });
+
+    if (result.success) {
+      try {
+        const apostaRef = doc(firestore, 'bancas', bancaId, 'apostas', pouleId);
+        await setDoc(apostaRef, {
+          ...aposta,
+          id: pouleId,
+          userId: user.id,
+          bancaId: bancaId,
+          status: 'aguardando',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+
+        await CommissionService.processarComissao(bancaId, user.id, user.tipoUsuario, valorTotal, pouleId);
+        return pouleId;
+      } catch (e: any) {
+        toast({ variant: 'destructive', title: "Erro ao Salvar", description: "Aposta paga mas não registrada." });
+        return null;
+      }
+    } else {
+      toast({ variant: 'destructive', title: "Erro Financeiro", description: result.message });
+      return null;
+    }
+  };
 
   const syncFootballAll = useCallback(async (force = false) => {
     if (footballData.syncStatus === 'syncing' && !force) return;
@@ -558,54 +698,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }));
   };
 
-  // --- Generic Handlers ---
-
-  const handleFinalizarAposta = async (aposta: any, valorTotal: number) => {
-    if (!user) { router.push('/login'); return null; }
-    const bancaId = user.bancaId || 'default';
-    const pouleId = generatePoule();
-    
-    const result = await LedgerService.registerMovement({
-      userId: user.id,
-      terminal: user.terminal,
-      tipoUsuario: user.tipoUsuario,
-      modulo: aposta.loteria,
-      type: 'BET_PLACED',
-      amount: -valorTotal,
-      referenceId: pouleId,
-      description: `${aposta.loteria}: ${aposta.numeros}`
-    });
-
-    if (result.success) {
-      try {
-        const apostaRef = doc(firestore, 'bancas', bancaId, 'apostas', pouleId);
-        await setDoc(apostaRef, {
-          ...aposta,
-          id: pouleId,
-          userId: user.id,
-          bancaId: bancaId,
-          status: 'aguardando',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-
-        await CommissionService.processarComissao(bancaId, user.id, user.tipoUsuario, valorTotal, pouleId);
-        return pouleId;
-      } catch (e: any) {
-        toast({ variant: 'destructive', title: "Erro ao Salvar", description: "Aposta paga mas não registrada." });
-        return null;
-      }
-    } else {
-      toast({ variant: 'destructive', title: "Erro Financeiro", description: result.message });
-      return null;
-    }
-  };
-
-  // --- Placeholders for Snooker actions ---
-  const syncSnookerFromYoutube = async (force = false) => {
-    setSnookerSyncState('syncing');
-    setTimeout(() => setSnookerSyncState('idle'), 1000);
-  };
+  // --- Placeholders for Chat & Interaction ---
   const joinChannel = (channelId: string, userId: string) => {};
   const leaveChannel = (channelId: string, userId: string) => {};
   const clearCelebration = () => setCelebrationTrigger(false);
@@ -614,21 +707,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const placeSnookerBet = (data: any) => true;
   const cashOutSnookerBet = (betId: string) => {};
   const settleSnookerRound = (channelId: string, winner: string) => {};
+  
   const updateSnookerLiveConfig = (cfg: any) => {
     const bancaId = user?.bancaId || 'default';
     setDoc(doc(firestore, 'bancas', bancaId, 'configuracoes', 'snooker_live_config'), cfg, { merge: true });
   };
   const updateSnookerChannel = (channel: any) => {
     const bancaId = user?.bancaId || 'default';
-    setDoc(doc(firestore, 'bancas', bancaId, 'snooker_channels', channel.id), channel, { merge: true });
+    setDoc(doc(firestore, 'bancas', bancaId, 'snooker', channel.id), channel, { merge: true });
   };
   const deleteSnookerChannel = (id: string) => {
     const bancaId = user?.bancaId || 'default';
-    deleteDoc(doc(firestore, 'bancas', bancaId, 'snooker_channels', id));
+    deleteDoc(doc(firestore, 'bancas', bancaId, 'snooker', id));
   };
   const addSnookerChannel = (channel: any) => {
     const bancaId = user?.bancaId || 'default';
-    setDoc(doc(firestore, 'bancas', bancaId, 'snooker_channels', channel.id), channel);
+    setDoc(doc(firestore, 'bancas', bancaId, 'snooker', channel.id), channel);
   };
   const updateSnookerScoreboard = (channelId: string, scoreboard: any) => {
     const bancaId = user?.bancaId || 'default';
@@ -651,7 +745,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     updateSnookerAutomationSettings({ ...snookerAutomationSettings, manualPrimaryChannelId: id });
   };
 
-  // --- Placeholders for Bingo & Casino actions ---
   const updateCasinoSettings = (cfg: any) => {
     const bancaId = user?.bancaId || 'default';
     setDoc(doc(firestore, 'bancas', bancaId, 'configuracoes', 'casino_settings'), cfg, { merge: true });
@@ -669,7 +762,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const refundBingoTicket = (id: string) => {};
   const payBingoPayout = (id: string) => {};
   
-  // Imagens Actions
   const updateBanner = (banner: Banner) => {
     const bancaId = user?.bancaId || 'default';
     setDoc(doc(firestore, 'bancas', bancaId, 'banners', banner.id), banner, { merge: true });
@@ -715,6 +807,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setDoc(doc(firestore, 'bancas', bancaId, 'configuracoes', 'mini_player'), cfg, { merge: true });
   };
 
+  const logout = () => {
+    authLogout();
+    setUser(null);
+  }
+
   const value: AppContextType = {
     user, allUsers, isLoading, currentBanca, subdomain,
     balance: user?.saldo || 0,
@@ -732,8 +829,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     casinoSettings, bingoSettings, bingoDraws, bingoTickets, bingoPayouts,
     liveMiniPlayerConfig,
 
-    refreshData: () => {}, 
-    logout: authLogout,
+    refreshData: () => {
+      syncJDBResults();
+      syncSnookerFromYoutube();
+    }, 
+    logout,
     handleFinalizarAposta,
     
     syncSnookerFromYoutube, joinChannel, leaveChannel, clearCelebration, sendSnookerChatMessage,
@@ -747,7 +847,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     buyBingoTickets, refundBingoTicket, payBingoPayout,
     updateCasinoSettings,
     updateBanner, addBanner, deleteBanner, updatePopup, addPopup, deletePopup, updateNews, addNews, deleteNews,
-    updateLiveMiniPlayerConfig
+    updateLiveMiniPlayerConfig,
+    syncJDBResults
   };
 
   return (

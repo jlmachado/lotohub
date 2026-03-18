@@ -1,12 +1,13 @@
+
 /**
  * @fileOverview Orquestrador central de sincronização de resultados.
+ * Refatorado para retornar os dados para o AppContext salvar no Firestore.
  */
 
 import { JDBNormalizedResult, SyncLogEntry } from "@/types/result-types";
 import { PortalBrasilProvider } from "./result-providers/portal-brasil-provider";
 import { getStorageItem, setStorageItem } from "@/utils/safe-local-storage";
 
-const RESULTS_KEY = 'app:jdb_results:v1';
 const SYNC_LOGS_KEY = 'app:jdb_sync_logs:v1';
 
 export interface SyncSummary {
@@ -18,82 +19,28 @@ export interface SyncSummary {
 
 export class ResultsSyncService {
   /**
-   * Sincroniza resultados usando os providers disponíveis.
-   * Agora publica automaticamente após a importação.
+   * Captura os resultados externos.
+   */
+  static async fetchExternal(): Promise<JDBNormalizedResult[]> {
+    return await PortalBrasilProvider.fetchResults();
+  }
+
+  /**
+   * Sincroniza e retorna os resultados formatados para o dia de hoje.
    */
   static async syncToday(): Promise<SyncSummary> {
-    const currentResults = getStorageItem<JDBNormalizedResult[]>(RESULTS_KEY, []);
-    
-    let news = 0;
-    let updated = 0;
-    let errors = 0;
-
     try {
       this.addLog('Iniciando sincronização de resultados...', 'SUCCESS');
-      
-      const imported = await PortalBrasilProvider.fetchResults();
-      
-      if (!imported || imported.length === 0) {
-        this.addLog('Nenhum resultado capturado pela fonte.', 'WARNING');
-        return { news: 0, updated: 0, errors: 0, totalProcessed: 0 };
-      }
-      
-      const newResultsList = [...currentResults];
-
-      imported.forEach(result => {
-        // Chave única composta para evitar colisões entre bancas no mesmo horário
-        const uniqueKey = `${result.date}_${result.stateCode}_${result.extractionName}_${result.time}`.toLowerCase();
-        
-        const existingIdx = newResultsList.findIndex(r => {
-          const rKey = `${r.date}_${r.stateCode}_${r.extractionName}_${r.time}`.toLowerCase();
-          return rKey === uniqueKey;
-        });
-        
-        if (existingIdx === -1) {
-          // Resultado novo: Já entra como PUBLICADO (Auto-Publish)
-          newResultsList.unshift({
-            ...result,
-            status: 'PUBLICADO',
-            publishedAt: new Date().toISOString(),
-            isSettled: false // Ativa apuração automática no AppContext
-          });
-          news++;
-        } else {
-          const existing = newResultsList[existingIdx];
-          // Se o checksum mudou (correção na fonte), republica
-          if (existing.checksum !== result.checksum) {
-            newResultsList[existingIdx] = { 
-              ...existing, 
-              ...result, 
-              status: 'PUBLICADO',
-              isSettled: false,
-              updatedAt: new Date().toISOString(),
-              publishedAt: new Date().toISOString()
-            };
-            updated++;
-          }
-        }
-      });
-
-      // Ordena por data e hora (mais recentes primeiro)
-      newResultsList.sort((a, b) => {
-        const dateTimeA = `${a.date}T${a.time}`;
-        const dateTimeB = `${b.date}T${b.time}`;
-        return dateTimeB.localeCompare(dateTimeA);
-      });
-
-      setStorageItem(RESULTS_KEY, newResultsList.slice(0, 3000));
-      
-      this.addLog(`Sync finalizado: ${news} publicados, ${updated} atualizados.`, 'SUCCESS');
-      window.dispatchEvent(new Event('app:data-changed'));
-
-      return { news, updated, errors, totalProcessed: imported.length };
-
+      const imported = await this.fetchExternal();
+      return { news: imported.length, updated: 0, errors: 0, totalProcessed: imported.length };
     } catch (e: any) {
-      errors++;
       this.addLog(`Falha na sincronização: ${e.message}`, 'ERROR');
-      return { news, updated, errors, totalProcessed: 0 };
+      return { news: 0, updated: 0, errors: 1, totalProcessed: 0 };
     }
+  }
+
+  static async getLatestResults(): Promise<JDBNormalizedResult[]> {
+    return await this.fetchExternal();
   }
 
   static addLog(message: string, status: SyncLogEntry['status'], action: string = 'SYNC') {
@@ -105,12 +52,6 @@ export class ResultsSyncService {
       status,
       message
     };
-    setStorageItem(SYNC_LOGS_KEY, [newLog, ...logs].slice(0, 100));
-    window.dispatchEvent(new Event('app:data-changed'));
-  }
-
-  static clearLogs() {
-    setStorageItem(SYNC_LOGS_KEY, []);
-    window.dispatchEvent(new Event('app:data-changed'));
+    setStorageItem(SYNC_LOGS_KEY, [newLog, ...logs].slice(0, 50));
   }
 }
