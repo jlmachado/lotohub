@@ -1,268 +1,85 @@
+
 {
   "entities": {
-    "UserProfile": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "UserProfile",
+    "User": {
+      "title": "User",
+      "description": "Usuário do sistema (Jogador, Promotor, Cambista, Admin)",
       "type": "object",
-      "description": "Represents a user of the LotoHub application, storing their profile information and assigned role within the system.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the UserProfile entity."
-        },
-        "email": {
-          "type": "string",
-          "description": "The user's email address, used for identification. (Relationship: UserProfile 1:1 AuthenticationSystem)",
-          "format": "email"
-        },
-        "fullName": {
-          "type": "string",
-          "description": "The full name of the user."
-        },
-        "role": {
-          "type": "string",
-          "description": "The assigned role of the user within the system (e.g., 'SuperAdmin', 'AdminBanca', 'Promotor', 'Cambista')."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp indicating when the user profile was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp indicating when the user profile was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "email",
-        "fullName",
-        "role",
-        "createdAt",
-        "updatedAt"
-      ]
+        "id": { "type": "string" },
+        "terminal": { "type": "string" },
+        "email": { "type": "string" },
+        "nome": { "type": "string" },
+        "tipoUsuario": { "type": "string", "enum": ["USUARIO", "PROMOTOR", "CAMBISTA", "ADMIN", "SUPER_ADMIN"] },
+        "saldo": { "type": "number" },
+        "bonus": { "type": "number" },
+        "bancaId": { "type": "string" },
+        "status": { "type": "string" }
+      }
     },
-    "Account": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Account",
+    "Banca": {
+      "title": "Banca",
+      "description": "Unidade de negócio (Tenant)",
       "type": "object",
-      "description": "Represents a specific financial account (e.g., main balance, bonus balance) belonging to a user, storing its current balance.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Account entity."
-        },
-        "userId": {
-          "type": "string",
-          "description": "Reference to the UserProfile entity that owns this account. (Relationship: UserProfile 1:N Account)"
-        },
-        "accountType": {
-          "type": "string",
-          "description": "The type of the financial account (e.g., 'Main' for primary balance 'Saldo', 'Bonus' for promotional funds 'Bônus')."
-        },
-        "balance": {
-          "type": "number",
-          "description": "The current monetary balance available in this account."
-        },
-        "currency": {
-          "type": "string",
-          "description": "The three-letter ISO 4217 currency code for the balance (e.g., 'BRL')."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp indicating when the account was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp indicating when the account was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "userId",
-        "accountType",
-        "balance",
-        "currency",
-        "createdAt",
-        "updatedAt"
-      ]
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "subdomain": { "type": "string" },
+        "status": { "type": "string" }
+      }
     },
-    "Terminal": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Terminal",
+    "LedgerEntry": {
+      "title": "LedgerEntry",
+      "description": "Registro financeiro no livro razão",
       "type": "object",
-      "description": "Represents a physical or logical terminal within the LotoHub system, identified by a unique name and associated with an operator.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Terminal entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "A descriptive name or identifier for the terminal (e.g., 'Terminal 1234')."
-        },
-        "location": {
-          "type": "string",
-          "description": "The physical location or contextual description of where the terminal operates."
-        },
-        "status": {
-          "type": "string",
-          "description": "The current operational status of the terminal (e.g., 'Online', 'Offline', 'Maintenance')."
-        },
-        "operatorUserId": {
-          "type": "string",
-          "description": "Reference to the UserProfile entity currently operating or responsible for this terminal. (Relationship: UserProfile 1:N Terminal)"
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp indicating when the terminal record was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp indicating when the terminal record was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "location",
-        "status",
-        "operatorUserId",
-        "createdAt",
-        "updatedAt"
-      ]
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string" },
+        "modulo": { "type": "string" }
+      }
+    },
+    "Aposta": {
+      "title": "Aposta",
+      "description": "Registro de aposta de loteria ou bicho",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "loteria": { "type": "string" },
+        "valor": { "type": "string" },
+        "status": { "type": "string" }
+      }
     }
   },
   "auth": {
-    "providers": [
-      "password",
-      "anonymous"
-    ]
+    "providers": ["password"]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/userProfiles/{userId}",
-        "definition": {
-          "entityName": "UserProfile",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Stores individual user profile information, including their full name and current role. The document ID `{userId}` corresponds to the `UserProfile.id` field. Includes a 'role' field for display, while primary authorization checks for roles are handled by dedicated role collections.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique ID of the user, corresponding to their Firebase Authentication UID."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/userProfiles/{userId}/accounts/{accountId}",
-        "definition": {
-          "entityName": "Account",
-          "schema": {
-            "$ref": "#/backend/entities/Account"
-          },
-          "description": "Stores specific financial accounts (e.g., 'Main' for Saldo, 'Bonus' for Bônus) for a user. The `userId` from the parent path is denormalized into the `Account.userId` field for authorization independence. The document ID `{accountId}` corresponds to the `Account.id` field.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique ID of the user who owns this account."
-            },
-            {
-              "name": "accountId",
-              "description": "The unique ID of the specific financial account."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/terminals/{terminalId}",
-        "definition": {
-          "entityName": "Terminal",
-          "schema": {
-            "$ref": "#/backend/entities/Terminal"
-          },
-          "description": "A top-level collection for managing all operational terminals. The `operatorUserId` field is denormalized within the document for authorization independence, allowing operators to manage their assigned terminals. The document ID `{terminalId}` corresponds to the `Terminal.id` field.",
-          "params": [
-            {
-              "name": "terminalId",
-              "description": "The unique ID of the terminal."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/superAdmins/{userId}",
-        "definition": {
-          "entityName": "UserRole",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Dedicated collection for SuperAdmin roles. The *existence* of a document where `{userId}` matches `request.auth.uid` grants SuperAdmin privileges. This implements the 'Existence over Content' DBAC model for robust authorization.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique ID of the user designated as a SuperAdmin."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/adminBancas/{userId}",
-        "definition": {
-          "entityName": "UserRole",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Dedicated collection for AdminBanca roles. The *existence* of a document where `{userId}` matches `request.auth.uid` grants AdminBanca privileges. Used for robust authorization checks.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique ID of the user designated as an AdminBanca."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/promoters/{userId}",
-        "definition": {
-          "entityName": "UserRole",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Dedicated collection for Promoter roles. The *existence* of a document where `{userId}` matches `request.auth.uid` grants Promoter privileges. Used for robust authorization checks.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique ID of the user designated as a Promoter."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/cambistas/{userId}",
-        "definition": {
-          "entityName": "UserRole",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Dedicated collection for Cambista roles. The *existence* of a document where `{userId}` matches `request.auth.uid` grants Cambista privileges. Used for robust authorization checks.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique ID of the user designated as a Cambista."
-            }
-          ]
-        }
-      }
-    ],
-    "reasoning": "The recommended Firestore structure for LotoHub prioritizes Authorization Independence, DBAC (Database Access Control) using the 'Existence over Content' model for roles, and QAP (Queries as a Predicate) support. \n\n**Authorization Independence (CRITICAL):**\n1.  **User Accounts:** Each `Account` document (e.g., `saldo`, `bônus`) explicitly includes the `userId` (`Account.userId`). This `userId` field is denormalized from its parent `UserProfile` and directly matches the `{userId}` wildcard in the path `/userProfiles/{userId}/accounts/{accountId}`. This design eliminates the need for Firestore security rules to use slow and non-atomic `get()` operations on the parent document to verify ownership. Rules can simply check `request.auth.uid == userId` or `request.auth.uid == resource.data.userId` directly against the document and path, ensuring atomic authorization checks during creation, read, update, and delete operations.\n2.  **Terminals:** The `Terminal` entity includes an `operatorUserId` field. This field is denormalized within the `Terminal` document itself. When an operator attempts to interact with a terminal, security rules can directly compare `request.auth.uid` with `resource.data.operatorUserId` without needing to fetch any related user or role documents, thus maintaining authorization independence and atomicity.\n3.  **Roles (DBAC):** Rather than relying on a `role` field within the `UserProfile` document for *authorization* (which can be vulnerable to spoofing during writes), dedicated top-level collections are created for each role type (e.g., `/superAdmins/{userId}`, `/adminBancas/{userId}`). The *existence* of a document with `request.auth.uid` as its ID in these collections serves as the authoritative source for role-based authorization. This strictly adheres to the 'Existence over Content' principle, making authorization checks highly secure, explicit, and independent of any other document's content, relying solely on `request.auth.uid` and document existence. The `UserProfile.role` field is retained for display and data consistency but not as the primary source for security rules.\n\n**QAPs (Queries as a Predicate) Support:**\n1.  **User Profiles (`/userProfiles/{userId}`):** This structure naturally supports QAPs. An individual user can only query (get/update) their own profile (`request.auth.uid == userId`). Administrators (e.g., SuperAdmin, AdminBanca) can be granted permission to list all user profiles, which is a common administrative QAP. \n2.  **User Accounts (`/userProfiles/{userId}/accounts/{accountId}`):** Users can list their own accounts securely as the `{userId}` in the path aligns with `request.auth.uid`. For administrative needs (e.g., AdminBanca viewing all accounts), a Collection Group query on `accounts` is supported, allowing broad queries while still enforcing security rules (e.g., `allow list: if isAdminBanca();`).\n3.  **Terminals (`/terminals/{terminalId}`):** Operators can list only the terminals where `operatorUserId == request.auth.uid`, effectively implementing a secure filtered list based on ownership. Administrators can list all terminals. This flexible structure ensures that both specific and broad listing operations adhere to security rules.\n4.  **Role Collections:** These collections are primarily accessed via `exists()` checks in security rules, which are inherently QAP-compliant. Administrative users could be allowed to list these collections to manage role assignments.\n\n**Overall Strategy:** The design leverages hierarchical paths for user-owned data (`/userProfiles/{userId}/accounts/{accountId}`), top-level collections for global entities (`/terminals/{terminalId}`), and dedicated single-document collections for roles (`/superAdmins/{userId}`). This promotes structural segregation, clear intent, and robust security rules by minimizing dependencies and explicitly modeling access patterns, adhering to all core design principles."
+    "/users/{userId}": {
+      "schema": "#/backend/entities/User",
+      "description": "Coleção global de usuários e terminais"
+    },
+    "/bancas/{bancaId}": {
+      "schema": "#/backend/entities/Banca",
+      "description": "Configurações de unidades/bancas"
+    },
+    "/ledgerEntries/{entryId}": {
+      "schema": "#/backend/entities/LedgerEntry",
+      "description": "Movimentações financeiras para auditoria"
+    },
+    "/apostas/{apostaId}": {
+      "schema": "#/backend/entities/Aposta",
+      "description": "Apostas de loterias em aberto e finalizadas"
+    },
+    "/football_bets/{betId}": {
+      "schema": "object",
+      "description": "Bilhetes de futebol sportsbook"
+    },
+    "/snooker_channels/{channelId}": {
+      "schema": "object",
+      "description": "Canais e mesas de sinuca"
+    }
   }
 }

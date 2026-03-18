@@ -1,140 +1,50 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * LotoHub Security Rules
-     * 
-     * Core Philosophy:
-     * This ruleset implements a robust Database Access Control (DBAC) model based on the "Existence over Content" principle.
-     * Authorization is strictly decoupled from document content to prevent spoofing and ensure high performance.
-     * 
-     * Data Structure:
-     * - User-specific data is nested under `/userProfiles/{userId}` for natural hierarchical security.
-     * - Financial accounts are sub-collections of user profiles, using denormalized `userId` fields for atomic validation.
-     * - Terminals are managed as a top-level collection, with access governed by an `operatorUserId` field.
-     * - Roles are managed through dedicated indicator collections: `/superAdmins`, `/adminBancas`, `/promoters`, and `/cambistas`.
-     * 
-     * Key Security Decisions:
-     * 1. DBAC for Roles: A user's role is determined by the existence of their UID in a specific role collection, not a field in their profile.
-     * 2. Authorization Independence: Critical fields like `userId` or `operatorUserId` are denormalized onto documents to allow rules to run without costly cross-document lookups.
-     * 3. Immutability: Relational fields (e.g., the link between a profile and its accounts) are enforced as immutable after creation.
-     * 4. Structural Segregation: Administrative actions and role management are restricted to the SuperAdmin role.
-     */
-
-    // --- GLOBAL HELPER FUNCTIONS ---
-
-    /** @description Checks if the user is authenticated with Firebase Auth. */
+    
     function isSignedIn() {
       return request.auth != null;
     }
-
-    /** @description Checks if the provided ID matches the authenticated user's UID. */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /** @description Checks if the user is a SuperAdmin via the existence of a document in the superAdmins collection. */
+    
+    // Regra de Ouro: SuperAdmins podem tudo
     function isSuperAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/superAdmins/$(request.auth.uid));
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tipoUsuario == 'SUPER_ADMIN';
     }
 
-    /** @description Checks if the user is an AdminBanca via the existence of a document in the adminBancas collection. */
-    function isAdminBanca() {
-      return isSignedIn() && exists(/databases/$(database)/documents/adminBancas/$(request.auth.uid));
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
     }
 
-    /** @description Checks if the user is a Promoter via the existence of a document in the promoters collection. */
-    function isPromoter() {
-      return isSignedIn() && exists(/databases/$(database)/documents/promoters/$(request.auth.uid));
+    match /bancas/{bancaId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
     }
 
-    // The 'isCambista' function was identified as unused and was causing linting warnings
-    // related to 'Invalid function name: exists.' and 'Invalid variable name: request.'
-    // when applied to an unused function body. It has been removed.
-    // If 'cambista' specific permissions are needed in the future, the function
-    // can be re-added and utilized in 'allow' statements.
-
-    /** @description Helper to check if a document exists and the requester is the owner. Used for updates/deletes. */
-    function isExistingOwner(userId) {
-      return resource != null && isOwner(userId);
+    match /ledgerEntries/{entryId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSuperAdmin();
     }
 
-    // --- COLLECTION RULES ---
-
-    /**
-     * @description Rules for the UserProfile collection. Users manage their own profile; admins can view all.
-     * @path /userProfiles/{userId}
-     * @allow (get) If user is the owner or an administrator.
-     * @deny (create) If the userId in the path does not match the auth UID.
-     * @principle Enforces identity-based access and restricts administrative listing to high-privilege roles.
-     */
-    match /userProfiles/{userId} {
-      allow get: if isOwner(userId) || isSuperAdmin() || isAdminBanca();
-      allow list: if isSuperAdmin() || isAdminBanca();
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if (isExistingOwner(userId) || isSuperAdmin()) && request.resource.data.id == resource.data.id;
-      allow delete: if isSuperAdmin();
-
-      /**
-       * @description Rules for financial accounts (Saldo/Bônus). Nested under the user for clarity.
-       * @path /userProfiles/{userId}/accounts/{accountId}
-       * @allow (list) If the authenticated user is the parent userId.
-       * @deny (update) If the internal userId is changed (immutability).
-       * @principle Ensures financial data isolation and relational integrity through path-matching.
-       */
-      match /accounts/{accountId} {
-        allow get, list: if isOwner(userId) || isSuperAdmin() || isAdminBanca();
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if (isExistingOwner(userId) || isSuperAdmin() || isAdminBanca()) && request.resource.data.userId == resource.data.userId;
-        allow delete: if isSuperAdmin();
-      }
+    match /apostas/{apostaId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if isSuperAdmin();
     }
 
-    /**
-     * @description Management of physical/logical terminals. Access is granted to assigned operators.
-     * @path /terminals/{terminalId}
-     * @allow (update) If the user is the assigned operatorUserId.
-     * @deny (create) If the user is not a SuperAdmin or AdminBanca.
-     * @principle Uses denormalized operator IDs for performant ownership checks.
-     */
-    match /terminals/{terminalId} {
-      allow get: if isSignedIn();
-      allow list: if isSuperAdmin() || isAdminBanca() || (isSignedIn() && resource.data.operatorUserId == request.auth.uid);
-      allow create: if isSuperAdmin() || isAdminBanca();
-      allow update: if isSuperAdmin() || isAdminBanca() || (resource != null && resource.data.operatorUserId == request.auth.uid);
-      allow delete: if isSuperAdmin();
+    match /football_bets/{betId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if isSuperAdmin();
     }
 
-    /**
-     * @description Role indicator collections. These follow the "Existence over Content" model.
-     * @path /superAdmins/{userId}, /adminBancas/{userId}, /promoters/{userId}, /cambistas/{userId}
-     * @allow (get) Any signed-in user can verify a role existence.
-     * @deny (write) Any user who is not a SuperAdmin.
-     * @principle Strictly restricts role assignment to the highest privilege level.
-     */
-    match /superAdmins/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSuperAdmin();
-      allow create, update, delete: if isSuperAdmin();
+    match /snooker_channels/{channelId} {
+      allow read: if true;
+      allow write: if isSignedIn();
     }
-
-    match /adminBancas/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSuperAdmin() || isAdminBanca();
-      allow create, update, delete: if isSuperAdmin();
-    }
-
-    match /promoters/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSuperAdmin() || isAdminBanca();
-      allow create, update, delete: if isSuperAdmin() || isAdminBanca();
-    }
-
-    match /cambistas/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSuperAdmin() || isAdminBanca() || isPromoter();
-      allow create, update, delete: if isSuperAdmin() || isAdminBanca() || isPromoter();
+    
+    match /{path=**} {
+      allow read, write: if isSuperAdmin();
     }
   }
 }

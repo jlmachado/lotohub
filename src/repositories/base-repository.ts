@@ -1,7 +1,9 @@
+
 'use client';
 
 /**
- * @fileOverview Classe base para repositórios Firestore com Tipagem Forte e escrita não-bloqueante.
+ * @fileOverview Repositório Base compatível com Firebase Studio.
+ * Realiza escritas não-bloqueantes com tratamento de erros contextual.
  */
 
 import { 
@@ -10,7 +12,6 @@ import {
   getDoc, 
   getDocs, 
   setDoc, 
-  updateDoc, 
   deleteDoc, 
   query, 
   QueryConstraint,
@@ -29,30 +30,40 @@ export class BaseRepository<T extends { id: string }> {
   }
 
   async getAll(constraints: QueryConstraint[] = []): Promise<T[]> {
-    const q = query(this.getCollection(), ...constraints);
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
+    try {
+      const q = query(this.getCollection(), ...constraints);
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
+    } catch (e) {
+      return [];
+    }
   }
 
   async getById(id: string): Promise<T | null> {
     if (!id) return null;
-    const docRef = doc(this.db, this.collectionName, id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? ({ ...docSnap.data(), id: docSnap.id } as T) : null;
+    try {
+      const docRef = doc(this.db, this.collectionName, id);
+      const docSnap = await getDoc(docRef);
+      return docSnap.exists() ? ({ ...docSnap.data(), id: docSnap.id } as T) : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   /**
-   * Salva dados de forma não-bloqueante (Padrão Firebase Studio).
+   * Salva dados no Firestore usando persistência não-bloqueante.
    */
   save(data: T): void {
     const now = new Date().toISOString();
     const docRef = doc(this.db, this.collectionName, data.id);
+    
     const docData = {
       ...data,
       updatedAt: now,
       createdAt: (data as any).createdAt || now
     };
 
+    // Operação assíncrona não-bloqueante
     setDoc(docRef, docData, { merge: true })
       .catch(async (serverError) => {
         const permissionError = new FirestorePermissionError({
@@ -64,7 +75,7 @@ export class BaseRepository<T extends { id: string }> {
       });
   }
 
-  async delete(id: string): Promise<void> {
+  delete(id: string): void {
     const docRef = doc(this.db, this.collectionName, id);
     deleteDoc(docRef).catch(async (serverError) => {
       const permissionError = new FirestorePermissionError({
