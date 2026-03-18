@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @fileOverview AppContext - Orquestrador Central com Persistência Cloud Total.
+ * @fileOverview AppContext - Orquestrador Central com Sincronização em Tempo Real e Persistência Cloud.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -17,6 +17,11 @@ import { INITIAL_GENERIC_LOTTERIES, INITIAL_JDB_LOTERIAS } from '@/constants/lot
 import { JDBNormalizedResult } from '@/types/result-types';
 import { ESPN_LEAGUE_CATALOG } from '@/utils/espn-league-catalog';
 import { SnookerPriorityService } from '@/services/snooker-priority-service';
+import { normalizeESPNScoreboard } from '@/utils/espn-normalizer';
+import { MatchMapperService } from '@/services/match-mapper-service';
+import { FootballOddsEngine } from '@/services/football-odds-engine';
+import { FootballMarketsEngine } from '@/services/football-markets-engine';
+import { SnookerSyncService } from '@/services/snooker-sync-service';
 
 // Firebase Repositories
 import { useFirestore } from '@/firebase';
@@ -270,16 +275,107 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const findLeagueById = useCallback((id: string) => { return footballData.leagues.find(l => l.id === id); }, [footballData.leagues]);
   const processarResultados = useCallback((dados: any) => { const current = getStorageItem<any[]>('app:posted_results:v1', []); setStorageItem('app:posted_results:v1', [dados, ...current]); notify(); }, [notify]);
   
-  const syncFootballAll = useCallback(async (force = false) => { if (force) toast({ title: 'Sync Concluído' }); notify(); }, [toast, notify]);
+  const syncFootballAll = useCallback(async (force = false) => { 
+    if (footballData.syncStatus === 'syncing') return;
+    setFootballData(prev => ({ ...prev, syncStatus: 'syncing' }));
+    
+    try {
+      const activeLeagues = footballData.leagues.filter(l => l.active);
+      let allMatches: any[] = [];
+      
+      for (const league of activeLeagues) {
+        const response = await fetch(`/api/espn/scoreboard?league=${league.slug}`);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.ok) {
+            const normalized = normalizeESPNScoreboard(result.data, league.slug);
+            allMatches = [...allMatches, ...normalized];
+          }
+        }
+      }
+      
+      const unified = allMatches.map(m => {
+        const bettable = MatchMapperService.transformEspnToBettable(m);
+        const probs = FootballOddsEngine.calculateMatchProbabilities(m.homeTeam.id, m.awayTeam.id, [], m.id);
+        bettable.markets = FootballMarketsEngine.generateAllMarkets(probs);
+        return bettable;
+      });
+
+      const updatedData: FootballData = {
+        ...footballData,
+        matches: allMatches,
+        unifiedMatches: unified,
+        syncStatus: 'success',
+        lastSyncAt: new Date().toISOString()
+      };
+      
+      setFootballData(updatedData);
+      setStorageItem('app:football:unified:v1', updatedData);
+      
+      if (force) toast({ title: 'Sportsbook Atualizado', description: `${unified.length} partidas sincronizadas.` });
+      notify();
+    } catch (error) {
+      setFootballData(prev => ({ ...prev, syncStatus: 'error' }));
+      console.error("Football Sync Error:", error);
+    }
+  }, [footballData, toast, notify]);
   
-  const syncSnookerFromYoutube = useCallback(async (force = false) => { notify(); }, [notify]);
+  const syncSnookerFromYoutube = useCallback(async (force = false, sourceId?: string) => { 
+    if (snookerSyncState === 'syncing') return;
+    setSnookerSyncState('syncing');
+
+    try {
+      const sources = sourceId 
+        ? snookerAutomationSettings.sources.filter((s: any) => s.id === sourceId)
+        : snookerAutomationSettings.sources.filter((s: any) => s.enabled);
+
+      let currentList = [...snookerChannels];
+      let totalCreated = 0;
+      let totalUpdated = 0;
+
+      for (const source of sources) {
+        const { updatedChannels, summary } = await SnookerSyncService.sync(
+          currentList,
+          user?.bancaId || 'default',
+          source,
+          snookerAutomationSettings
+        );
+        currentList = updatedChannels;
+        totalCreated += summary.created;
+        totalUpdated += summary.updated;
+        
+        // Log sync local
+        const newLog = { 
+          id: `log-${Date.now()}`, 
+          createdAt: new Date().toISOString(), 
+          sourceName: source.name, 
+          status: 'success', 
+          message: `Sync ok: ${summary.created} novos, ${summary.updated} atualizados.` 
+        };
+        const logs = getStorageItem<any[]>('app:snooker_sync_logs:v1', []);
+        setStorageItem('app:snooker_sync_logs:v1', [newLog, ...logs].slice(0, 50));
+      }
+
+      setSnookerChannels(currentList);
+      setStorageItem('app:snooker_channels:v1', currentList);
+      
+      // Persistência Cloud Coletiva
+      currentList.forEach(c => snookerChannelsRepo.save(c));
+
+      setSnookerSyncState('success');
+      if (force) toast({ title: 'Sinuca Atualizada', description: `${totalCreated} novos eventos encontrados.` });
+      notify();
+    } catch (error: any) {
+      setSnookerSyncState('error');
+      console.error("Snooker Sync Error:", error);
+    }
+  }, [snookerSyncState, snookerAutomationSettings, snookerChannels, user, snookerChannelsRepo, toast, notify]);
   
   const updateGenericLottery = useCallback((c: GenericLotteryConfig) => { const current = getStorageItem<GenericLotteryConfig[]>('app:generic_loterias:v1', []); setStorageItem('app:generic_loterias:v1', current.map(i => i.id === c.id ? c : i)); settingsRepo.save({ id: `lottery_config_${c.id}`, ...c }); notify(); }, [settingsRepo, notify]);
   const updateJDBLoteria = useCallback((l: JDBLoteria) => { const current = getStorageItem<JDBLoteria[]>('app:jdb_loterias:v1', []); setStorageItem('app:jdb_loterias:v1', current.map(i => i.id === l.id ? l : i)); settingsRepo.save({ id: `jdb_loteria_${l.id}`, ...l }); notify(); }, [settingsRepo, notify]);
   const addJDBLoteria = useCallback((l: JDBLoteria) => { const current = getStorageItem<JDBLoteria[]>('app:jdb_loterias:v1', []); setStorageItem('app:jdb_loterias:v1', [...current, l]); settingsRepo.save({ id: `jdb_loteria_${l.id}`, ...l }); notify(); }, [settingsRepo, notify]);
   const deleteJDBLoteria = useCallback((id: string) => { const current = getStorageItem<JDBLoteria[]>('app:jdb_loterias:v1', []); setStorageItem('app:jdb_loterias:v1', current.filter(i => i.id !== id)); settingsRepo.delete(`jdb_loteria_${id}`); notify(); }, [settingsRepo, notify]);
 
-  // Placeholder automation methods to avoid reference errors
   const updateSnookerAutomationSource = useCallback((id: string, updates: Partial<any>) => {
     const current = getStorageItem<any>('app:snooker_automation:v1', { sources: [] });
     const updated = { ...current, sources: (current.sources || []).map((s: any) => s.id === id ? { ...s, ...updates } : s) };
@@ -293,15 +389,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const approveAutoSnookerChannel = useCallback((id: string) => {
     const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
-    setStorageItem('app:snooker_channels:v1', current.map(c => c.id === id ? { ...c, sourceStatus: 'synced', enabled: true } : c));
+    const updated = current.map(c => c.id === id ? { ...c, sourceStatus: 'synced' as const, enabled: true } : c);
+    setStorageItem('app:snooker_channels:v1', updated);
+    const chan = updated.find(c => c.id === id);
+    if (chan) snookerChannelsRepo.save(chan);
     notify();
-  }, [notify]);
+  }, [snookerChannelsRepo, notify]);
 
   const archiveAutoSnookerChannel = useCallback((id: string) => {
     const current = getStorageItem<SnookerChannel[]>('app:snooker_channels:v1', []);
-    setStorageItem('app:snooker_channels:v1', current.map(c => c.id === id ? { ...c, isArchived: true } : c));
+    const updated = current.map(c => c.id === id ? { ...c, isArchived: true } : c);
+    setStorageItem('app:snooker_channels:v1', updated);
+    const chan = updated.find(c => c.id === id);
+    if (chan) snookerChannelsRepo.save(chan);
     notify();
-  }, [notify]);
+  }, [snookerChannelsRepo, notify]);
 
   const clearSnookerSyncLogs = useCallback(() => {
     setStorageItem('app:snooker_sync_logs:v1', []);
@@ -326,7 +428,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       toast({ variant: 'destructive', title: 'Saldo insuficiente' });
       return false;
     }
-    // Implementação básica de compra
     const currentTickets = getStorageItem<BingoTicket[]>('app:bingo_tickets:v1', []);
     const newTickets: BingoTicket[] = Array.from({ length: count }, (_, i) => ({
       id: `tkt-${Date.now()}-${i}`,
@@ -341,11 +442,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       bancaId: user.bancaId || 'default'
     }));
     setStorageItem('app:bingo_tickets:v1', [...currentTickets, ...newTickets]);
+    newTickets.forEach(t => bingoTicketsRepo.save(t));
     upsertUser({ terminal: user.terminal, saldo: user.saldo - total });
     notify();
     toast({ title: 'Compra realizada!', description: `${count} cartelas adquiridas.` });
     return true;
-  }, [user, bingoSettings, notify, toast]);
+  }, [user, bingoSettings, bingoTicketsRepo, notify, toast]);
 
   const contextValue = useMemo(() => ({
     user, isLoading, balance: user?.saldo || 0, bonus: user?.bonus || 0, terminal: user?.terminal || '', activeBancaId: user?.bancaId || 'default', ledger, allUsers, fullLedger: ledger, banners, popups, news, apostas, postedResults, jdbResults, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, toggleFullscreen, casinoSettings, updateCasinoSettings, registerCambistaMovement, publishJDBResult, deleteJDBResult,
@@ -363,8 +465,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     refreshData: loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, updateLeagueConfig, findLeagueById, addBetToSlip: (b: any) => setBetSlip(prev => [...prev.filter(i => i.matchId !== b.matchId || i.id !== b.id), b]), removeBetFromSlip: (id: string) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]), placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews,
     updateGenericLottery, updateJDBLoteria, addJDBLoteria, deleteJDBLoteria, updateLiveMiniPlayerConfig
   }), [
-    user, isLoading, ledger, allUsers, banners, popups, news, apostas, postedResults, jdbResults, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, bingoSettings, bingoDraws, bingoTickets, bingoPayouts, snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerChatMessages, snookerScoreboards, snookerSyncLogs, snookerAutomationSettings, snookerActivityFeed, snookerBetsFeed, celebrationTrigger, snookerSyncState, snookerPrimaryChannelId, snookerScoreRecognitionSettings, snookerCurrentReading, loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, updateLeagueConfig, findLeagueById, placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, drawBingoBall, casinoSettings, updateCasinoSettings, publishJDBResult, deleteJDBResult, updateBingoSettings, createBingoDraw, startBingoDraw, finishBingoDraw, cancelBingoDraw, buyBingoTickets, refundBingoTicket, payBingoPayout, registerCambistaMovement, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, settleSnookerRound, clearCelebration, syncSnookerFromYoutube, updateGenericLottery, updateJDBLoteria, addJDBLoteria, deleteJDBLoteria, updateLiveMiniPlayerConfig,
-    updateSnookerAutomationSource, toggleSnookerSource, approveAutoSnookerChannel, archiveAutoSnookerChannel, clearSnookerSyncLogs, updateSnookerAutomationSettings, updateSnookerScoreRecognitionSettings, notify
+    user, isLoading, ledger, allUsers, banners, popups, news, apostas, postedResults, jdbResults, jdbLoterias, genericLotteryConfigs, footballData, footballBets, betSlip, liveMiniPlayerConfig, isFullscreen, bingoSettings, bingoDraws, bingoTickets, bingoPayouts, snookerChannels, snookerPresence, snookerFinancialHistory, snookerBets, snookerChatMessages, snookerScoreboards, snookerSyncLogs, snookerAutomationSettings, snookerActivityFeed, snookerBetsFeed, celebrationTrigger, snookerSyncState, snookerPrimaryChannelId, snookerScoreRecognitionSettings, snookerCurrentReading, loadLocalData, logout, handleFinalizarAposta, processarResultados, syncFootballAll, updateLeagueConfig, findLeagueById, placeFootballBet, addBanner, updateBanner, deleteBanner, addPopup, updatePopup, deletePopup, addNews, updateNews, deleteNews, toggleFullscreen, casinoSettings, updateCasinoSettings, publishJDBResult, deleteJDBResult, updateBingoSettings, createBingoDraw, startBingoDraw, drawBingoBall, finishBingoDraw, cancelBingoDraw, buyBingoTickets, refundBingoTicket, payBingoPayout, registerCambistaMovement, joinChannel, leaveChannel, placeSnookerBet, cashOutSnookerBet, sendSnookerChatMessage, deleteSnookerChatMessage, sendSnookerReaction, updateSnookerLiveConfig, updateSnookerScoreboard, addSnookerChannel, updateSnookerChannel, deleteSnookerChannel, settleSnookerRound, clearCelebration, syncSnookerFromYoutube, updateGenericLottery, updateJDBLoteria, addJDBLoteria, deleteJDBLoteria, updateLiveMiniPlayerConfig, updateSnookerAutomationSource, toggleSnookerSource, approveAutoSnookerChannel, archiveAutoSnookerChannel, clearSnookerSyncLogs, updateSnookerAutomationSettings, updateSnookerScoreRecognitionSettings, notify
   ]);
 
   return <AppContext.Provider value={contextValue}>{mounted && children}</AppContext.Provider>;
