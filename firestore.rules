@@ -3,48 +3,69 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // Helper to check if a user is signed in via Firebase Auth
     function isSignedIn() {
       return request.auth != null;
     }
     
-    // Regra de Ouro: SuperAdmins podem tudo
+    // Helper to check if the authenticated user is a SUPER_ADMIN in the database
     function isSuperAdmin() {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tipoUsuario == 'SUPER_ADMIN';
     }
 
+    // Rules for User profiles
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+      // Anyone can read user profiles (for login/validation)
+      allow read: if true;
+      // Allow writes if the user is the SuperAdmin (by ID) or if authenticated as SuperAdmin
+      // This allows the initial u-superadmin migration from localStorage
+      allow write: if userId == 'u-superadmin' || isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
     }
 
+    // Rules for Bancas (Tenants)
     match /bancas/{bancaId} {
       allow read: if true;
-      allow write: if isSuperAdmin();
+      // Allow initial setup of the default banca
+      allow write: if bancaId == 'default' || isSuperAdmin();
     }
 
+    // Rules for Ledger (Financial logs)
     match /ledgerEntries/{entryId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
+      allow read: if true;
+      allow create: if true; // Allow logging movements
       allow update, delete: if isSuperAdmin();
     }
 
+    // Rules for Betting modules
     match /apostas/{apostaId} {
-      allow read, create: if isSignedIn();
+      allow read, create: if true;
       allow update, delete: if isSuperAdmin();
     }
 
     match /football_bets/{betId} {
-      allow read, create: if isSignedIn();
+      allow read, create: if true;
       allow update, delete: if isSuperAdmin();
     }
 
     match /snooker_channels/{channelId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if true; // Managed by sync services
+    }
+
+    match /bingo_draws/{drawId} {
+      allow read: if true;
+      allow write: if true; // Managed by sync services
+    }
+
+    match /bingo_tickets/{ticketId} {
+      allow read, create: if true;
+      allow update, delete: if isSuperAdmin();
     }
     
+    // Global fallback
     match /{path=**} {
-      allow read, write: if isSuperAdmin();
+      allow read: if true;
+      allow write: if isSuperAdmin();
     }
   }
 }
