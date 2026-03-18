@@ -6,7 +6,8 @@
 
 import { getStorageItem, setStorageItem } from './safe-local-storage';
 import { getBancas } from './bancasStorage';
-import { usersRepo } from '@/repositories/users-repository';
+import { initializeFirebase } from '@/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 export type UserStatus = 'ACTIVE' | 'BLOCKED';
 export type UserType = 'USUARIO' | 'PROMOTOR' | 'CAMBISTA' | 'ADMIN' | 'SUPER_ADMIN';
@@ -61,8 +62,8 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
   }
 };
 
-const getDefaultUsers = (): User[] => {
-  const now = new Date().toISOString();
+export const getDefaultUsers = (): User[] => {
+  const now = "2024-01-01T00:00:00.000Z";
   return [
     {
       id: 'u-jao-lm',
@@ -93,44 +94,12 @@ const getDefaultUsers = (): User[] => {
       bancaId: 'default',
       createdAt: now,
       updatedAt: now
-    },
-    {
-      id: 'u-player-01',
-      terminal: '12345',
-      email: 'jogador@demo.com',
-      password: '1234',
-      nome: 'Jogador Demo',
-      status: 'ACTIVE',
-      tipoUsuario: 'USUARIO',
-      permissoes: getDefaultPermissions('USUARIO'),
-      saldo: 500,
-      bonus: 100,
-      bancaId: 'default',
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: 'u-cambista-01',
-      terminal: '20001',
-      email: 'cambista@demo.com',
-      password: '1234',
-      nome: 'Cambista Matriz',
-      status: 'ACTIVE',
-      tipoUsuario: 'CAMBISTA',
-      permissoes: getDefaultPermissions('CAMBISTA'),
-      saldo: 0,
-      bonus: 0,
-      bancaId: 'default',
-      promotorConfig: { porcentagemComissao: 10 },
-      cambistaConfig: { loginFechamento: 'caixa20001', senhaFechamento: '1234' },
-      createdAt: now,
-      updatedAt: now
     }
   ];
 };
 
-export const getUsers = (bancaId?: string | null): User[] => {
-  let users = getStorageItem<User[]>(USERS_KEY, []);
+export const getUsers = (): User[] => {
+  const users = getStorageItem<User[]>(USERS_KEY, []);
   if (users.length === 0) {
     const defaults = getDefaultUsers();
     setStorageItem(USERS_KEY, defaults);
@@ -139,7 +108,8 @@ export const getUsers = (bancaId?: string | null): User[] => {
   return users;
 };
 
-export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
+export const upsertUser = async (userData: Partial<User> & { terminal: string }) => {
+  const { firestore } = initializeFirebase();
   const allUsers = getUsers();
   const index = allUsers.findIndex(u => u.terminal === userData.terminal);
   const now = new Date().toISOString();
@@ -148,16 +118,7 @@ export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
 
   if (index >= 0) {
     const existing = allUsers[index];
-    const newRole = userData.tipoUsuario || existing.tipoUsuario;
-    const updates: Partial<User> = { ...userData, updatedAt: now };
-    
-    if (newRole === 'PROMOTOR' && !existing.promotorConfig) updates.promotorConfig = { porcentagemComissao: 10 };
-    if (newRole === 'CAMBISTA') {
-      if (!existing.promotorConfig) updates.promotorConfig = { porcentagemComissao: 10 };
-      if (!existing.cambistaConfig) updates.cambistaConfig = { loginFechamento: `caixa${existing.terminal}`, senhaFechamento: '1234' };
-    }
-
-    finalUser = { ...existing, ...updates, permissoes: getDefaultPermissions(newRole) };
+    finalUser = { ...existing, ...userData, updatedAt: now };
     allUsers[index] = finalUser;
   } else {
     const type = userData.tipoUsuario || 'USUARIO';
@@ -177,37 +138,21 @@ export const upsertUser = (userData: Partial<User> & { terminal: string }) => {
   }
 
   setStorageItem(USERS_KEY, allUsers);
-  usersRepo.save(finalUser); // PERSISTÊNCIA CLOUD IMEDIATA
+  
+  // Persistência Cloud
+  const userRef = doc(firestore, 'bancas', finalUser.bancaId, 'usuarios', finalUser.id);
+  await setDoc(userRef, finalUser, { merge: true });
   
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('app:data-changed'));
 };
 
-export interface AdminLog { id: string; adminUser: string; action: string; terminal: string; delta?: number; reason?: string; at: string; bancaId: string; }
-const AUDIT_KEY = 'app:admin_audit:v1';
-
-export const logAdminAction = (log: Omit<AdminLog, 'id' | 'at'>) => {
-  const logs = getStorageItem<AdminLog[]>(AUDIT_KEY, []);
-  const newLog = { ...log, id: `log-${Date.now()}`, at: new Date().toISOString() };
-  logs.unshift(newLog);
-  setStorageItem(AUDIT_KEY, logs.slice(0, 1000));
-};
-
-export const getAuditLogs = (terminal?: string): AdminLog[] => getStorageItem<AdminLog[]>(AUDIT_KEY, []).filter(l => !terminal || l.terminal === terminal);
-
-export const addPromoterCredit = (terminal: string, amount: number, reason: string) => {
-  const user = getUserByTerminal(terminal);
-  if (user) {
-    upsertUser({ terminal, saldo: user.saldo + amount });
-    logAdminAction({ adminUser: 'admin', action: 'CREDIT_ADDED', terminal, delta: amount, reason, bancaId: user.bancaId });
-  }
-};
-
 export const getUserByTerminal = (terminal: string): User | null => getUsers().find(u => u.terminal === terminal || u.email === terminal) || null;
+
 export const generateNextTerminalForBanca = (bancaId: string): string => {
-  const banca = getBancas().find(b => b.id === bancaId || b.subdomain === bancaId);
+  const banca = getBancas().find(b => b.id === bancaId);
   const users = getUsers();
   const base = banca?.baseTerminal || 10000;
-  const terminalNumbers = users.filter(u => u.bancaId === banca?.id).map(u => parseInt(u.terminal)).filter(n => !isNaN(n) && n >= base);
+  const terminalNumbers = users.filter(u => u.bancaId === bancaId).map(u => parseInt(u.terminal)).filter(n => !isNaN(n) && n >= base);
   let next = (terminalNumbers.length > 0 ? Math.max(...terminalNumbers) : base) + 1;
   while (users.some(u => u.terminal === String(next))) next++;
   return String(next);

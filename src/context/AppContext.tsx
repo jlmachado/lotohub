@@ -2,7 +2,6 @@
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
- * Sincroniza dinamicamente baseado no subdomínio e banca selecionada.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -45,7 +44,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [subdomain, setSubdomain] = useState<string | null>(null);
   const [currentBanca, setCurrentBanca] = useState<any>(null);
 
-  // States Dinâmicos
   const [banners, setBanners] = useState<Banner[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
   const [news, setNews] = useState<NewsMessage[]>([]);
@@ -54,7 +52,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [jdbResults, setJdbResults] = useState<JDBNormalizedResult[]>([]);
   const [snookerChannels, setSnookerChannels] = useState<any[]>([]);
 
-  // 1. Inicializa Contexto de Tenant
   useEffect(() => {
     const banca = resolveCurrentBanca();
     const sub = getSubdomain();
@@ -63,7 +60,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     const session = getSession();
     if (session) {
-      const activeBancaId = banca?.id || session.bancaId || 'default';
+      const activeBancaId = session.bancaId || banca?.id || 'default';
       const userRef = doc(firestore, 'bancas', activeBancaId, 'usuarios', session.userId);
       const unsubUser = onSnapshot(userRef, (snap) => {
         if (snap.exists()) {
@@ -77,15 +74,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [firestore]);
 
-  // 2. Listeners de Tempo Real Isoldados por Tenant (Nested Collections)
   useEffect(() => {
-    if (!currentBanca) return;
+    // Escuta global de resultados (independente de banca)
+    const unsubResults = onSnapshot(query(collection(firestore, 'jdbResults'), orderBy('date', 'desc'), limit(50)), (s) => 
+      setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))));
 
-    const bancaId = currentBanca.id;
+    if (!currentBanca && !user?.tipoUsuario?.includes('ADMIN')) return;
+
+    const bancaId = currentBanca?.id || user?.bancaId || 'default';
     const bancaPath = `bancas/${bancaId}`;
     
-    console.log(`[SaaS][BANCA: ${bancaId}] Ativando listeners em tempo real.`);
-
     const unsubscribers = [
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), (s) => 
         setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner)))),
@@ -102,29 +100,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(query(collection(firestore, bancaPath, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100)), (s) => 
         setLedger(s.docs.map(d => ({ id: d.id, ...d.data() })))),
 
-      onSnapshot(query(collection(firestore, 'jdbResults'), orderBy('date', 'desc'), limit(50)), (s) => 
-        setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult)))),
-
       onSnapshot(collection(firestore, bancaPath, 'snooker_channels'), (s) => 
         setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() })))),
 
       onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => {
-        const usersList = s.docs.map(d => ({ id: d.id, ...d.data() }));
-        setAllUsers(usersList);
+        setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() })));
       })
     ];
 
-    return () => unsubscribers.forEach(unsub => unsub());
-  }, [firestore, currentBanca]);
+    return () => {
+      unsubResults();
+      unsubscribers.forEach(unsub => unsub());
+    };
+  }, [firestore, currentBanca, user]);
 
   const handleFinalizarAposta = async (aposta: any, valorTotal: number) => {
     if (!user) { router.push('/login'); return null; }
-    if (!currentBanca) { toast({ variant: 'destructive', title: "Erro de Contexto", description: "Banca não identificada." }); return null; }
+    const bancaId = user.bancaId || currentBanca?.id || 'default';
 
     const pouleId = generatePoule();
-    const bancaId = currentBanca.id;
     
-    // 1. Registrar Movimentação Financeira (Atômico via Transação)
     const result = await LedgerService.registerMovement({
       userId: user.id,
       terminal: user.terminal,
@@ -138,7 +133,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     if (result.success) {
       try {
-        // 2. Salvar Bilhete na Subcoleção da Banca
         const apostaRef = doc(firestore, 'bancas', bancaId, 'apostas', pouleId);
         await setDoc(apostaRef, {
           ...aposta,
@@ -150,14 +144,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           updatedAt: new Date().toISOString()
         });
 
-        // 3. Processar Comissão (Paralelo)
         await CommissionService.processarComissao(bancaId, user.id, user.tipoUsuario, valorTotal, pouleId);
 
         toast({ title: "Aposta Confirmada!", description: `Poule: ${pouleId}` });
         return pouleId;
       } catch (e: any) {
-        console.error("[BET SAVE ERROR]", e);
-        toast({ variant: 'destructive', title: "Erro ao Salvar", description: "Aposta paga mas não registrada. Contate suporte." });
+        toast({ variant: 'destructive', title: "Erro ao Salvar", description: "Aposta paga mas não registrada." });
         return null;
       }
     } else {
