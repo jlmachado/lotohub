@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
- * Versão V9: Correção definitiva de permissões e sincronização controlada por Auth.
+ * Versão V10: Correção definitiva de permissões e resolução de banca.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
@@ -503,18 +503,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // 2. GARANTIR BANCA
-    const bancaId = user.bancaId || currentBanca?.id;
-    if (!bancaId) {
-      console.warn("[SYNC] Banca não resolvida.");
-      return;
-    }
-
+    // 2. GARANTIR BANCA (Forte acoplamento com fallback)
+    const bancaId = user.bancaId || currentBanca?.id || 'default';
+    
     try {
       // 3. DEBUG INICIAL
       console.log("----------------------------");
       console.log("[SYNC] UID:", user.id);
-      console.log("[SYNC] BANCA:", bancaId);
+      console.log("[SYNC] BANCA DESTINO:", bancaId);
       
       const results = await ResultsSyncService.getLatestResults();
       const hoje = new Date();
@@ -524,9 +520,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const docId = `jdb-${res.date}-${res.time}-${res.stateCode.toLowerCase()}-${res.extractionName.toLowerCase().replace(/\s/g, '-')}`;
         const docRef = doc(firestore, 'bancas', bancaId, 'resultados', docId);
         
-        // 4. DEBUG SALVAMENTO
-        console.log("[SYNC] SALVANDO:", res.extractionName, res.time);
-        
+        // 4. PERSISTÊNCIA REAL COM MERGE
         await setDoc(docRef, {
           ...res,
           bancaId,
@@ -535,7 +529,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           updatedAt: new Date().toISOString()
         }, { merge: true });
       }
-      console.log("[SYNC] Finalizado com sucesso.");
+      console.log("[SYNC] Sorteios processados com sucesso.");
       console.log("----------------------------");
     } catch (e: any) {
       console.error("[SYNC] Falha ao salvar resultados:", e.message);
@@ -544,8 +538,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const syncSnookerFromYoutube = useCallback(async (force = false) => {
     if (!user || !user.id) return;
-    const bancaId = user.bancaId || currentBanca?.id;
-    if (!bancaId) return;
+    const bancaId = user.bancaId || currentBanca?.id || 'default';
 
     setSnookerSyncState('syncing');
     try {

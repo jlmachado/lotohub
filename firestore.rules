@@ -2,12 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Regra Global SaaS: Permite acesso total dentro do caminho da banca para usuários autenticados
+    // Regra Global SaaS: Permite acesso total dentro do caminho da banca para usuários autenticados.
+    // Isso garante que a sincronização de resultados e dados operacionais funcione 
+    // independente de claims customizados no token.
     match /bancas/{bancaId}/{document=**} {
       allow read, write: if request.auth != null;
     }
     
-    // Regra para coleções legadas na raiz (se existirem)
+    // Regras para coleções globais/shared
     match /jdbResults/{resultId} {
       allow read: if true;
       allow write: if request.auth != null;
