@@ -2,14 +2,15 @@
 'use client';
 
 /**
- * @fileOverview Autenticação Multi-Tenant com Auto-Promoção de SuperAdmin.
- * Versão V5: Primeiro usuário a logar torna-se SuperAdmin automaticamente.
+ * @fileOverview Autenticação Multi-Tenant com Tratamento de Erros e Auto-Promoção.
+ * Versão V6: Tratamento robusto para conflitos de e-mail e integração Firestore.
  */
 
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut
+  signOut,
+  fetchSignInMethodsForEmail
 } from 'firebase/auth';
 import { initializeFirebase } from '@/firebase';
 import { 
@@ -36,7 +37,6 @@ const SESSION_KEY = 'app:session:v1';
 
 /**
  * Realiza o login do usuário e sincroniza com o Firestore.
- * Implementa a lógica de auto-promoção para o primeiro usuário do sistema.
  */
 export const login = async (terminalOrEmail: string, password: string): Promise<{ success: boolean; message: string; user?: any }> => {
   try {
@@ -66,70 +66,32 @@ export const login = async (terminalOrEmail: string, password: string): Promise<
     const fbUser = userCredential.user;
     const uid = fbUser.uid;
 
-    // 3. Verificar se existe algum SuperAdmin no sistema (Busca Global)
-    const superadminQuery = query(
-      collectionGroup(firestore, "usuarios"),
-      where("role", "==", "superadmin")
-    );
-    const superadminSnapshot = await getDocs(superadminQuery);
-    const noSuperAdminExists = superadminSnapshot.empty;
-
-    // 4. Definir banca e buscar documento do usuário
+    // 3. Buscar Dados no Firestore (Tentando banca atual ou master)
     const bancaId = banca?.id || "default";
-    const userRef = doc(firestore, `bancas/${bancaId}/usuarios/${uid}`);
-    const userDoc = await getDoc(userRef);
+    let userRef = doc(firestore, `bancas/${bancaId}/usuarios/${uid}`);
+    let userDoc = await getDoc(userRef);
 
-    let userData: any = null;
-    let role = "usuario";
-
-    if (!userDoc.exists()) {
-      // 5. Criar usuário automaticamente se não existir no Firestore
-      // Se for o primeiro usuário do sistema, vira superadmin
-      role = noSuperAdminExists ? "superadmin" : "usuario";
-      
-      userData = {
-        id: uid,
-        uid,
-        terminal: isEmail ? "ADMIN" : terminalOrEmail,
-        email: fbUser.email,
-        nome: fbUser.displayName || fbUser.email,
-        bancaId,
-        role,
-        tipoUsuario: role === 'superadmin' ? 'SUPER_ADMIN' : 'USUARIO',
-        saldo: 0,
-        bonus: 0,
-        status: "ACTIVE",
-        permissoes: getDefaultPermissions(role === 'superadmin' ? 'SUPER_ADMIN' : 'USUARIO'),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      await setDoc(userRef, userData);
-    } else {
-      userData = userDoc.data();
-      
-      // 6. Garantir que o campo role exista
-      if (!userData.role) {
-        role = userData.tipoUsuario === 'SUPER_ADMIN' ? 'superadmin' : 'usuario';
-        await updateDoc(userRef, { role, updatedAt: new Date().toISOString() });
-        userData.role = role;
-      } else {
-        role = userData.role;
-      }
+    // Se não encontrou na banca atual, tenta na banca master (comum para SuperAdmin)
+    if (!userDoc.exists() && bancaId !== 'default') {
+      userRef = doc(firestore, `bancas/default/usuarios/${uid}`);
+      userDoc = await getDoc(userRef);
     }
 
-    // DEBUG
-    console.log("Usuário logado:", uid);
-    console.log("Role:", role);
-    console.log("Banca:", bancaId);
+    if (!userDoc.exists()) {
+      throw new Error("Perfil de usuário não encontrado no sistema.");
+    }
 
-    // 7. Configurar Sessão
+    const userData = userDoc.data();
+    console.log("[AUTH] Usuário logado:", uid, "Role:", userData.role);
+
+    // 4. Configurar Sessão
     const session = {
       userId: uid,
       terminal: userData.terminal,
       email: fbUser.email,
-      role: role,
-      bancaId: bancaId,
+      role: userData.role || 'usuario',
+      bancaId: userData.bancaId || bancaId,
+      tipoUsuario: userData.tipoUsuario,
       loggedAt: Date.now()
     };
 
@@ -144,12 +106,19 @@ export const login = async (terminalOrEmail: string, password: string): Promise<
   } catch (error: any) {
     console.error('[Auth Error]', error.message);
     let errorMsg = "Acesso negado. Verifique suas credenciais.";
+    
     if (error.code === 'auth/invalid-credential') errorMsg = "E-mail ou senha inválidos.";
+    if (error.code === 'auth/user-not-found') errorMsg = "Usuário não cadastrado.";
+    if (error.code === 'auth/wrong-password') errorMsg = "Senha incorreta.";
+    if (error.code === 'auth/too-many-requests') errorMsg = "Muitas tentativas. Tente novamente mais tarde.";
     
     return { success: false, message: error.message || errorMsg };
   }
 };
 
+/**
+ * Realiza o cadastro de um novo usuário.
+ */
 export const register = async (userData: { nome: string; cpf: string; cidade: string; email: string; password: string }): Promise<{ success: boolean; message: string; terminal?: string }> => {
   try {
     let banca = resolveCurrentBanca();
@@ -163,8 +132,17 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
     const terminal = generateNextTerminalForBanca(banca.id);
     const systemEmail = `${terminal}@${banca.subdomain}.lotohub.app`;
 
+    // 1. Criar usuário no Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, systemEmail, password);
     const fbUser = userCredential.user;
+
+    // 2. Verificar se este é o primeiro SuperAdmin do sistema
+    const superadminQuery = query(
+      collectionGroup(firestore, "usuarios"),
+      where("role", "==", "superadmin")
+    );
+    const superadminSnapshot = await getDocs(superadminQuery);
+    const isFirstUser = superadminSnapshot.empty;
 
     const newUser = {
       id: fbUser.uid,
@@ -176,9 +154,9 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
       email, 
       systemEmail,
       status: 'ACTIVE',
-      tipoUsuario: 'USUARIO',
-      role: 'usuario',
-      permissoes: getDefaultPermissions('USUARIO'),
+      tipoUsuario: isFirstUser ? 'SUPER_ADMIN' : 'USUARIO',
+      role: isFirstUser ? 'superadmin' : 'usuario',
+      permissoes: getDefaultPermissions(isFirstUser ? 'SUPER_ADMIN' : 'USUARIO'),
       saldo: 0,
       bonus: 0,
       bancaId: banca.id,
@@ -186,10 +164,26 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
       updatedAt: new Date().toISOString()
     };
 
+    // 3. Salvar no Firestore
     await setDoc(doc(firestore, 'bancas', banca.id, 'usuarios', fbUser.uid), newUser);
+    
     return { success: true, message: 'Cadastro realizado com sucesso!', terminal };
   } catch (error: any) {
     console.error('[Register Error]', error.message);
+    
+    if (error.code === 'auth/email-already-in-use') {
+      return { 
+        success: false, 
+        message: "Este número de terminal já está registrado. Tente outro ou realize o login." 
+      };
+    }
+    if (error.code === 'auth/weak-password') {
+      return { success: false, message: "A senha escolhida é muito fraca." };
+    }
+    if (error.code === 'auth/invalid-email') {
+      return { success: false, message: "Erro interno na geração do terminal." };
+    }
+
     return { success: false, message: error.message || "Falha ao realizar cadastro." };
   }
 };
