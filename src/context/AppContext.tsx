@@ -1,8 +1,9 @@
+
 'use client';
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
- * Versão V11: Correção de concorrência no Sync (Aguardando Banca/User).
+ * Versão V12: Correção de persistência JDB (Loop Sequencial + ID Normalizado).
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
@@ -10,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getSession, logout as authLogout } from '@/utils/auth';
 import { initializeFirebase } from '@/firebase';
-import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, addDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, addDoc, updateDoc, deleteDoc, where, getFirestore } from 'firebase/firestore';
 import { resolveCurrentBanca, getSubdomain } from '@/utils/bancaContext';
 import { LedgerService } from '@/services/ledger-service';
 import { CommissionService } from '@/services/advanced/CommissionService';
@@ -503,47 +504,56 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // 2. GARANTIR BANCA
-      if (!currentBanca || !currentBanca.id) {
-        console.warn("SYNC JDB cancelado: banca não definida");
+      const bancaId = user.bancaId || currentBanca?.id;
+      if (!bancaId) {
+        console.warn("SYNC JDB cancelado: bancaId não definido");
         return;
       }
 
-      const bancaId = currentBanca.id;
+      // 3. TESTE DE ESCRITA MANUAL (DIAGNÓSTICO)
+      try {
+        await setDoc(doc(firestore, `bancas/${bancaId}/teste/1`), { ok: true, timestamp: Date.now() });
+        console.log(`[SYNC JDB] Teste de escrita na banca ${bancaId}: OK`);
+      } catch (e: any) {
+        console.error(`[SYNC JDB] Falha no teste de escrita: ${e.message}. Verifique permissões/regras.`);
+        return;
+      }
       
-      // 3. BUSCA RESULTADOS EXTERNOS
+      // 4. BUSCA RESULTADOS EXTERNOS
       const results = await ResultsSyncService.getLatestResults();
-      
-      // 4. DEBUG
-      console.log("Iniciando sync JDB...");
-      console.log("USER UID:", user?.id || user?.uid);
-      console.log("BANCA ID:", bancaId);
-      console.log("TOTAL CAPTURADO:", results.length);
+      console.log(`[SYNC JDB] Total capturado para processamento: ${results.length}`);
       
       const hoje = new Date();
       const dataFormatada = hoje.toLocaleDateString("pt-BR");
 
-      // 5. LOOP DE SALVAMENTO RESILIENTE
+      // 5. LOOP DE SALVAMENTO SEGURO (NÃO USAR forEach)
       for (const resultado of results) {
         try {
-          const docId = resultado.id || `jdb-${resultado.date}-${resultado.time}-${resultado.stateCode.toLowerCase()}-${resultado.extractionName.toLowerCase().replace(/\s/g, '-')}`;
-          const docRef = doc(firestore, 'bancas', bancaId, 'resultados', docId);
+          if (!resultado) continue;
+
+          // Normalização do ID para compatibilidade Firestore
+          const idBase = `${resultado.date}-${resultado.lotteryName}-${resultado.time}`;
+          const safeId = idBase.replace(/\s/g, "_").replace(/[^\w-]/g, "").toLowerCase();
+
+          const docRef = doc(firestore, 'bancas', bancaId, 'resultados', safeId);
           
           await setDoc(docRef, {
             ...resultado,
+            id: safeId,
             bancaId,
             data: dataFormatada,
             createdAt: (resultado as any).createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
           }, { merge: true });
 
-          console.log("SALVO NO FIRESTORE:", docId);
+          console.log("SALVO COM SUCESSO:", safeId);
         } catch (err: any) {
           console.error("ERRO AO SALVAR ITEM JDB:", resultado.extractionName, err.message);
         }
       }
-      console.log("[SYNC JDB] Processo finalizado.");
+      console.log("[SYNC JDB] Processo de persistência finalizado.");
     } catch (e: any) {
-      console.error("[SYNC JDB] Falha crítica no fluxo:", e.message);
+      console.error("[SYNC JDB] Falha crítica no fluxo global:", e.message);
     }
   }, [user, currentBanca, firestore]);
 
@@ -592,8 +602,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- Gatilho de Sincronização baseado em Auth e Banca ---
   useEffect(() => {
     if (user && currentBanca) {
-      console.log("USER STATE:", user);
-      console.log("BANCA STATE:", currentBanca);
+      console.log("USER STATE READY:", user.uid || user.id);
+      console.log("BANCA STATE READY:", currentBanca.id);
       syncJDBResults();
       syncSnookerFromYoutube();
     }
