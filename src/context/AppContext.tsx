@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
- * Versão V10: Correção definitiva de permissões e resolução de banca.
+ * Versão V11: Correção de concorrência no Sync (Aguardando Banca/User).
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
@@ -197,14 +197,12 @@ export interface SnookerScoreRecognitionSettings {
   captureIntervalSeconds: number;
 }
 
-export interface SnookerWinner {
-  userName: string;
-  terminalId: string;
-  winAmount: number;
-  category: string;
-  winningNumbers: number[];
-  wonAt: string;
-  type: string;
+export interface SnookerAutomationSettings {
+  enabled: boolean;
+  intervalMinutes: number;
+  sources: SnookerAutomationSource[];
+  manualPrimaryChannelId: string | null;
+  status: 'idle' | 'running' | 'error';
 }
 
 interface AppContextType {
@@ -499,13 +497,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const syncJDBResults = useCallback(async () => {
     try {
       // 1. GARANTIR AUTH
-      if (!user?.id && !user?.uid) {
-        throw new Error("Usuário não autenticado");
+      if (!user || (!user.id && !user.uid)) {
+        console.warn("SYNC JDB cancelado: usuário não autenticado");
+        return;
       }
 
       // 2. GARANTIR BANCA
-      if (!currentBanca?.id) {
-        throw new Error("Banca não definida");
+      if (!currentBanca || !currentBanca.id) {
+        console.warn("SYNC JDB cancelado: banca não definida");
+        return;
       }
 
       const bancaId = currentBanca.id;
@@ -513,12 +513,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       // 3. BUSCA RESULTADOS EXTERNOS
       const results = await ResultsSyncService.getLatestResults();
       
-      // 4. DEBUG INICIAL
-      console.log("----------------------------");
-      console.log("USER:", user);
-      console.log("UID:", user?.id || user?.uid);
-      console.log("BANCA:", bancaId);
-      console.log("TOTAL RESULTADOS DISPONÍVEIS:", results.length);
+      // 4. DEBUG
+      console.log("Iniciando sync JDB...");
+      console.log("USER UID:", user?.id || user?.uid);
+      console.log("BANCA ID:", bancaId);
+      console.log("TOTAL CAPTURADO:", results.length);
       
       const hoje = new Date();
       const dataFormatada = hoje.toLocaleDateString("pt-BR");
@@ -526,7 +525,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       // 5. LOOP DE SALVAMENTO RESILIENTE
       for (const resultado of results) {
         try {
-          // Normalização do ID do documento para persistência estável
           const docId = resultado.id || `jdb-${resultado.date}-${resultado.time}-${resultado.stateCode.toLowerCase()}-${resultado.extractionName.toLowerCase().replace(/\s/g, '-')}`;
           const docRef = doc(firestore, 'bancas', bancaId, 'resultados', docId);
           
@@ -540,22 +538,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
           console.log("SALVO NO FIRESTORE:", docId);
         } catch (err: any) {
-          // Loga erro individual mas não quebra o loop total
-          console.error("ERRO AO SALVAR ITEM INDIVIDUAL:", resultado.extractionName, err.message);
+          console.error("ERRO AO SALVAR ITEM JDB:", resultado.extractionName, err.message);
         }
       }
-      console.log("[SYNC] Processo de persistência finalizado.");
-      console.log("----------------------------");
+      console.log("[SYNC JDB] Processo finalizado.");
     } catch (e: any) {
-      console.error("[SYNC] Falha crítica no fluxo de sincronização:", e.message);
+      console.error("[SYNC JDB] Falha crítica no fluxo:", e.message);
     }
   }, [user, currentBanca, firestore]);
 
   const syncSnookerFromYoutube = useCallback(async (force = false) => {
-    if (!user || !user.id) return;
-    const bancaId = user.bancaId || currentBanca?.id || 'default';
+    if (!user || (!user.id && !user.uid)) {
+      console.warn("SYNC SNOOKER cancelado: usuário não autenticado");
+      return;
+    }
+    
+    if (!currentBanca || !currentBanca.id) {
+      console.warn("SYNC SNOOKER cancelado: banca não definida");
+      return;
+    }
 
+    const bancaId = currentBanca.id;
     setSnookerSyncState('syncing');
+
     try {
       console.log("[SYNC SNOOKER] BANCA:", bancaId);
       let jogos = [];
@@ -567,22 +572,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
 
       for (const jogo of jogos) {
-        await setDoc(doc(firestore, 'bancas', bancaId, 'snooker', jogo.id), {
-          ...jogo,
-          bancaId,
-          createdAt: new Date().toISOString()
-        }, { merge: true });
+        try {
+          await setDoc(doc(firestore, 'bancas', bancaId, 'snooker', jogo.id), {
+            ...jogo,
+            bancaId,
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+        } catch (err: any) {
+          console.error("ERRO AO SALVAR JOGO SNOOKER:", jogo.id, err.message);
+        }
       }
       setSnookerSyncState('idle');
     } catch (e: any) {
-      console.error("[SYNC SNOOKER] Erro:", e.message);
+      console.error("[SYNC SNOOKER] Erro crítico:", e.message);
       setSnookerSyncState('error');
     }
   }, [user, currentBanca, firestore]);
 
-  // --- Gatilho de Sincronização baseado em Auth ---
+  // --- Gatilho de Sincronização baseado em Auth e Banca ---
   useEffect(() => {
-    if (user && (currentBanca || user.bancaId)) {
+    if (user && currentBanca) {
+      console.log("USER STATE:", user);
+      console.log("BANCA STATE:", currentBanca);
       syncJDBResults();
       syncSnookerFromYoutube();
     }
