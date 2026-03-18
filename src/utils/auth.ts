@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview Autenticação Multi-Tenant.
- * Garante que o login de um usuário seja validado contra a banca específica.
+ * Suporta detecção automática de banca por terminal caso o subdomínio não esteja presente.
  */
 
 import { 
@@ -13,27 +13,46 @@ import {
 import { initializeFirebase } from '@/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { resolveCurrentBanca } from './bancaContext';
-import { generateNextTerminalForBanca, getDefaultPermissions } from './usersStorage';
+import { generateNextTerminalForBanca, getDefaultPermissions, getUsers, getUserByTerminal } from './usersStorage';
+import { getBancas } from './bancasStorage';
 
 const { auth, firestore } = initializeFirebase();
 
 const SESSION_KEY = 'app:session:v1';
 
+/**
+ * Realiza o login do usuário.
+ * Se não houver subdomínio, tenta localizar a banca pelo número do terminal.
+ */
 export const login = async (terminal: string, password: string): Promise<{ success: boolean; message: string; user?: any }> => {
   try {
-    const banca = resolveCurrentBanca();
-    if (!banca) throw new Error("Acesse através de um subdomínio válido.");
+    let banca = resolveCurrentBanca();
+    
+    // Fallback: Se não estamos em um subdomínio, procuramos a qual banca este terminal pertence
+    if (!banca) {
+      const allUsers = getUsers();
+      const userRecord = allUsers.find(u => u.terminal === terminal);
+      if (userRecord) {
+        const bancas = getBancas();
+        banca = bancas.find(b => b.id === userRecord.bancaId) || null;
+      }
+    }
 
+    if (!banca) {
+      throw new Error("Terminal não reconhecido ou unidade inválida.");
+    }
+
+    // O email no Firebase Auth segue o padrão terminal@subdomain.lotohub.app
     const email = `${terminal}@${banca.subdomain}.lotohub.app`;
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const fbUser = userCredential.user;
 
-    // Busca dados estendidos no tenant correto
+    // Busca dados estendidos no tenant correto no Firestore
     const userRef = doc(firestore, 'bancas', banca.id, 'usuarios', fbUser.uid);
     const userSnap = await getDoc(userRef);
 
     if (!userSnap.exists()) {
-      throw new Error("Usuário não encontrado nesta banca.");
+      throw new Error("Perfil de usuário não encontrado nesta unidade.");
     }
 
     const userData = userSnap.data();
@@ -49,7 +68,9 @@ export const login = async (terminal: string, password: string): Promise<{ succe
     return { success: true, message: 'Sucesso', user: { ...userData, id: fbUser.uid } };
   } catch (error: any) {
     console.error('[Auth Error]', error.message);
-    return { success: false, message: "Acesso negado. Verifique suas credenciais." };
+    let errorMsg = "Acesso negado. Verifique suas credenciais.";
+    if (error.message.includes("Terminal não reconhecido")) errorMsg = error.message;
+    return { success: false, message: errorMsg };
   }
 };
 
@@ -58,8 +79,17 @@ export const login = async (terminal: string, password: string): Promise<{ succe
  */
 export const register = async (userData: { nome: string; cpf: string; cidade: string; email: string; password: string }): Promise<{ success: boolean; message: string; terminal?: string }> => {
   try {
-    const banca = resolveCurrentBanca();
-    if (!banca) throw new Error("Acesse através de um subdomínio válido.");
+    let banca = resolveCurrentBanca();
+    
+    // Se não houver subdomínio (ex: localhost), usa a banca default para o cadastro
+    if (!banca) {
+      const bancas = getBancas();
+      banca = bancas.find(b => b.id === 'default') || bancas[0];
+    }
+
+    if (!banca) {
+      throw new Error("Nenhuma unidade disponível para cadastro.");
+    }
 
     const { nome, cpf, cidade, email, password } = userData;
 
@@ -96,6 +126,11 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
 
     await setDoc(userRef, newUser);
 
+    // Atualiza cache local para garantir que o login encontre o novo registro
+    const allUsers = getUsers();
+    allUsers.push(newUser as any);
+    localStorage.setItem('app:users:v1', JSON.stringify(allUsers));
+
     return { success: true, message: 'Cadastro realizado com sucesso!', terminal };
   } catch (error: any) {
     console.error('[Register Error]', error.message);
@@ -109,7 +144,9 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
 };
 
 export const logout = async () => {
-  await signOut(auth);
+  try {
+    await signOut(auth);
+  } catch (e) {}
   localStorage.removeItem(SESSION_KEY);
   window.location.href = '/login';
 };
