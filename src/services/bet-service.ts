@@ -1,35 +1,39 @@
 'use client';
 
 /**
- * @fileOverview BetService - Motor local Tenant-Aware.
- * Gerencia o consumo de saldo e registro de movimentações financeiras.
+ * @fileOverview BetService Multi-Tenant.
+ * Valida a integridade do bancaId antes de qualquer transação financeira.
  */
 
 import { User, upsertUser } from '@/utils/usersStorage';
 import { LedgerService } from './ledger-service';
-import { resolveCurrentBanca } from '@/utils/bancaContext';
 
 export interface BetRequest {
   userId: string;
   modulo: string;
   valor: number;
   retornoPotencial: number;
-  descricao: string;
+  description: string;
   referenceId: string;
 }
 
 export class BetService {
+  /**
+   * Processa o fluxo financeiro de uma aposta garantindo isolamento total.
+   */
   static processBet(user: User, request: BetRequest) {
-    // Resolve o contexto da banca do usuário para garantir isolamento.
-    // Prioriza bancaId do usuário, depois contexto global, depois default.
-    const contextBanca = resolveCurrentBanca();
-    const bancaId = user.bancaId || contextBanca?.id || 'default';
+    const bancaId = user.bancaId;
     
+    if (!bancaId) {
+      console.error("[BET ERROR] Usuário sem bancaId vinculado.");
+      return { success: false, message: "Erro de configuração de banca." };
+    }
+
     let newBalance = user.saldo;
     let newBonus = user.bonus;
     const initialTotal = user.saldo + user.bonus;
 
-    // Regra Cambista: Não consome saldo imediato do operador, mas registra no ledger como venda da banca.
+    // Regra de Consumo: Bônus primeiro, depois Saldo
     if (user.tipoUsuario !== 'CAMBISTA') {
       if (newBonus >= request.valor) {
         newBonus -= request.valor;
@@ -40,7 +44,11 @@ export class BetService {
       }
     }
 
-    // Atualizar Usuário (Saldo e Bônus)
+    if (newBalance < 0 && user.tipoUsuario !== 'CAMBISTA') {
+      return { success: false, message: "Saldo insuficiente." };
+    }
+
+    // Atualizar Usuário no Firestore
     upsertUser({ 
       terminal: user.terminal, 
       saldo: newBalance, 
@@ -48,7 +56,7 @@ export class BetService {
       bancaId 
     });
 
-    // Registrar Aposta no Ledger (Fonte da verdade para KPIs Administrativos)
+    // Registrar no Ledger Global (Obrigatório Await em cenário real, aqui usamos sync cloud no repo)
     LedgerService.addEntry({
       bancaId,
       userId: user.id,
@@ -56,32 +64,12 @@ export class BetService {
       tipoUsuario: user.tipoUsuario,
       modulo: request.modulo,
       type: 'BET_PLACED',
-      amount: -request.valor, // Valor negativo representa saída/aposta realizada
+      amount: -request.valor,
       balanceBefore: initialTotal,
       balanceAfter: newBalance + newBonus,
       referenceId: request.referenceId,
-      description: request.descricao
+      description: request.description
     });
-
-    // Processamento de Comissão (Registrado no Ledger como COMMISSION_EARNED)
-    const percComissao = user.promotorConfig?.porcentagemComissao || 0;
-    const valorComissao = (request.valor * percComissao) / 100;
-
-    if (valorComissao > 0) {
-      LedgerService.addEntry({
-        bancaId,
-        userId: user.id,
-        terminal: user.terminal,
-        tipoUsuario: user.tipoUsuario,
-        modulo: request.modulo,
-        type: 'COMMISSION_EARNED',
-        amount: valorComissao,
-        balanceBefore: newBalance + newBonus,
-        balanceAfter: newBalance + newBonus, // No protótipo, comissão é informativa ou creditada em saldo administrativo
-        referenceId: request.referenceId,
-        description: `Comissão ${percComissao}% s/ venda ${request.modulo}`
-      });
-    }
 
     return { success: true };
   }

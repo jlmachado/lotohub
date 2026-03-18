@@ -1,27 +1,20 @@
-
 'use client';
 
 /**
- * @fileOverview Ledger Service - Gerencia o Livro Razão com persistência Cloud.
+ * @fileOverview Ledger Service SaaS Multi-Tenant.
+ * Unifica a fonte da verdade financeira apenas no Firestore.
  */
 
-import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
-import { ledgerRepo } from '@/repositories/ledger-repository';
+import { BaseRepository } from '@/repositories/base-repository';
 
 export type LedgerType = 
   | 'BET_PLACED' 
   | 'BET_WIN' 
-  | 'BET_LOSS' 
   | 'COMMISSION_EARNED' 
-  | 'CREDIT_RECEIVED' 
-  | 'BALANCE_ADJUST' 
-  | 'PRIZE_PAID' 
-  | 'DESCARGA' 
-  | 'DEPOSIT' 
-  | 'WITHDRAW'
   | 'CASH_IN'
   | 'CASH_OUT_RECOLHE'
-  | 'CASH_CLOSE';
+  | 'DEPOSIT'
+  | 'WITHDRAW';
 
 export interface LedgerEntry {
   id: string;
@@ -39,35 +32,28 @@ export interface LedgerEntry {
   createdAt: string;
 }
 
-const LEDGER_KEY = 'app:ledger:v1';
-
 export class LedgerService {
-  static getEntries(): LedgerEntry[] {
-    return getStorageItem(LEDGER_KEY, []);
-  }
+  private static repo = new BaseRepository<LedgerEntry>('ledgerEntries');
 
-  static addEntry(entry: Omit<LedgerEntry, 'id' | 'createdAt'>): LedgerEntry {
-    const entries = this.getEntries();
+  /**
+   * Adiciona uma entrada no Livro Razão com persistência obrigatória.
+   */
+  static async addEntry(entry: Omit<LedgerEntry, 'id' | 'createdAt'>): Promise<LedgerEntry> {
+    if (!entry.bancaId) {
+      throw new Error("ERRO FINANCEIRO: Tentativa de registro sem bancaId.");
+    }
+
     const newEntry: LedgerEntry = {
       ...entry,
       id: `trx-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       createdAt: new Date().toISOString()
     };
 
-    entries.unshift(newEntry);
-    setStorageItem(LEDGER_KEY, entries.slice(0, 5000));
+    // PERSISTÊNCIA CLOUD IMEDIATA (Sem LocalStorage para finanças)
+    await this.repo.save(newEntry);
     
-    // PERSISTÊNCIA CLOUD IMEDIATA
-    ledgerRepo.save(newEntry);
+    console.log(`[LEDGER] [BANCA: ${entry.bancaId}] TRX registrada: ${entry.type} | ${entry.amount}`);
     
     return newEntry;
-  }
-
-  static getByBanca(bancaId: string): LedgerEntry[] {
-    return this.getEntries().filter(e => e.bancaId === bancaId);
-  }
-
-  static getByUser(userId: string): LedgerEntry[] {
-    return this.getEntries().filter(e => e.userId === userId);
   }
 }

@@ -1,10 +1,31 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permite leitura e escrita total durante a fase de migração e seeding
-    // Isso garante que o LocalStorage seja espelhado no banco sem erros de permissão
-    match /{document=**} {
-      allow read, write: if true;
+    
+    // Regra Global SaaS Multi-Banca
+    // Impede que dados vazem entre diferentes bancaId
+    match /{collection}/{docId} {
+      allow read, write: if request.auth != null 
+        && (
+          // SuperAdmin tem acesso total
+          request.auth.token.tipoUsuario == 'SUPER_ADMIN' ||
+          // Admin/User só acessa se o bancaId coincidir
+          request.auth.token.bancaId == resource.data.bancaId || 
+          request.auth.token.bancaId == request.resource.data.bancaId
+        );
+    }
+    
+    // Permite criação de usuários iniciais (Cadastro)
+    match /users/{userId} {
+      allow create: if true; 
+    }
+    
+    // Configurações públicas do sistema (Banners, Popups ativos)
+    match /banners/{bannerId} {
+      allow read: if resource.data.active == true;
+    }
+    match /popups/{popupId} {
+      allow read: if resource.data.active == true;
     }
   }
 }
