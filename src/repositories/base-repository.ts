@@ -3,7 +3,6 @@
 
 /**
  * @fileOverview Repositório Base compatível com Firebase Studio.
- * Realiza escritas não-bloqueantes com tratamento de erros contextual.
  */
 
 import { 
@@ -19,8 +18,6 @@ import {
   DocumentData,
   Firestore
 } from 'firebase/firestore';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 export class BaseRepository<T extends { id: string }> {
   constructor(protected db: Firestore, protected collectionName: string) {}
@@ -35,6 +32,7 @@ export class BaseRepository<T extends { id: string }> {
       const snapshot = await getDocs(q);
       return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T));
     } catch (e) {
+      console.error(`Error fetching all from ${this.collectionName}:`, e);
       return [];
     }
   }
@@ -46,6 +44,7 @@ export class BaseRepository<T extends { id: string }> {
       const docSnap = await getDoc(docRef);
       return docSnap.exists() ? ({ ...docSnap.data(), id: docSnap.id } as T) : null;
     } catch (e) {
+      console.error(`Error fetching ${id} from ${this.collectionName}:`, e);
       return null;
     }
   }
@@ -63,26 +62,16 @@ export class BaseRepository<T extends { id: string }> {
       createdAt: (data as any).createdAt || now
     };
 
-    // Operação assíncrona não-bloqueante
-    setDoc(docRef, docData, { merge: true })
-      .catch(async (serverError) => {
-        const permissionError = new FirestorePermissionError({
-          path: docRef.path,
-          operation: 'write',
-          requestResourceData: docData,
-        });
-        errorEmitter.emit('permission-error', permissionError);
-      });
+    // Operação assíncrona silenciosa (não bloqueia o frontend)
+    setDoc(docRef, docData, { merge: true }).catch(error => {
+      console.warn(`[Firestore Save Error] Collection: ${this.collectionName}, ID: ${data.id}`, error);
+    });
   }
 
   delete(id: string): void {
     const docRef = doc(this.db, this.collectionName, id);
-    deleteDoc(docRef).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: docRef.path,
-        operation: 'delete',
-      });
-      errorEmitter.emit('permission-error', permissionError);
+    deleteDoc(docRef).catch(error => {
+      console.warn(`[Firestore Delete Error] Collection: ${this.collectionName}, ID: ${id}`, error);
     });
   }
 }

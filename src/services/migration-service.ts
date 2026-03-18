@@ -10,7 +10,7 @@ import { getStorageItem, setStorageItem } from '@/utils/safe-local-storage';
 import { Firestore } from 'firebase/firestore';
 import { BaseRepository } from '@/repositories/base-repository';
 
-const CLOUD_SYNC_STATUS_KEY = 'app:cloud_sync:status:v2';
+const CLOUD_SYNC_STATUS_KEY = 'app:cloud_sync:status:v3';
 
 export class MigrationService {
   /**
@@ -19,16 +19,10 @@ export class MigrationService {
   static async syncToCloud(db: Firestore) {
     if (typeof window === 'undefined') return;
 
-    const syncStatus = getStorageItem(CLOUD_SYNC_STATUS_KEY, { lastFullSync: null });
-    const now = Date.now();
-
-    // Evita loop de sincronização, mas permite um check a cada 30 minutos
-    if (syncStatus.lastFullSync && (now - syncStatus.lastFullSync < 1800000)) return;
-
-    console.log("🚀 Iniciando migração de segurança para nuvem...");
+    console.log("🚀 [Migration] Iniciando verificação de sincronismo com Firebase...");
 
     const collectionsToSync = [
-      { local: 'app:users:v1', cloud: 'users', idKey: 'terminal' },
+      { local: 'app:users:v1', cloud: 'users', idKey: 'id' },
       { local: 'app:bancas:v1', cloud: 'bancas', idKey: 'id' },
       { local: 'app:ledger:v1', cloud: 'ledgerEntries', idKey: 'id' },
       { local: 'app:apostas:v1', cloud: 'apostas', idKey: 'id' },
@@ -42,26 +36,32 @@ export class MigrationService {
     ];
 
     try {
+      let totalItemsSynced = 0;
+
       for (const mapping of collectionsToSync) {
         const items = getStorageItem<any[]>(mapping.local, []);
-        if (items.length === 0) continue;
+        if (!items || items.length === 0) {
+          console.log(`- [Migration] Coleção local ${mapping.local} está vazia.`);
+          continue;
+        }
 
+        console.log(`- [Migration] Sincronizando ${items.length} itens para a coleção [${mapping.cloud}]...`);
         const repo = new BaseRepository<any>(db, mapping.cloud);
         
         for (const item of items) {
           // Garante ID consistente para o Firestore
-          const docId = item.id || (mapping.idKey === 'terminal' ? `u-${item.terminal}` : null);
+          const docId = item.id || (item.terminal ? `u-${item.terminal}` : null);
           if (docId) {
             repo.save({ ...item, id: docId });
+            totalItemsSynced++;
           }
         }
-        console.log(`✅ Coleção [${mapping.cloud}] sincronizada.`);
       }
 
-      setStorageItem(CLOUD_SYNC_STATUS_KEY, { lastFullSync: now });
-      console.log("💎 Sincronização Cloud finalizada com sucesso.");
+      setStorageItem(CLOUD_SYNC_STATUS_KEY, { lastFullSync: Date.now(), total: totalItemsSynced });
+      console.log(`💎 [Migration] Sincronização finalizada! ${totalItemsSynced} registros enviados.`);
     } catch (e) {
-      console.error("❌ Erro durante migração para o Firebase:", e);
+      console.error("❌ [Migration] Erro durante migração para o Firebase:", e);
     }
   }
 }
