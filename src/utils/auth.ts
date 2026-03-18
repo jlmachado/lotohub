@@ -1,7 +1,9 @@
+
 'use client';
 
 /**
  * @fileOverview Autenticação Multi-Tenant com Sincronização Firestore.
+ * Versão V3: Busca obrigatória de perfil no Firestore após login.
  */
 
 import { 
@@ -43,78 +45,87 @@ export const login = async (terminalOrEmail: string, password: string): Promise<
           banca = bancas.find(b => b.id === userRecord.bancaId) || null;
         }
       }
-      if (!banca) throw new Error("Terminal não reconhecido ou unidade inválida.");
-      email = `${terminalOrEmail}@${banca.subdomain}.lotohub.app`;
+      if (!banca) {
+        // Fallback para login global se a banca não for identificada
+        const allBancas = getBancas();
+        banca = allBancas.find(b => b.id === 'default') || allBancas[0];
+      }
+      email = `${terminalOrEmail}@${banca?.subdomain || 'matriz'}.lotohub.app`;
     }
 
-    // 2. Autenticação Firebase
-    let userCredential;
-    try {
-      userCredential = await signInWithEmailAndPassword(auth, email, password);
-    } catch (authError: any) {
-      // Auto-seeding para usuários mestres (SuperAdmin)
-      const seededUser = getDefaultUsers().find(u => u.email === email || u.terminal === terminalOrEmail);
-      
-      if (seededUser && seededUser.password === password && (authError.code === 'auth/invalid-credential' || authError.code === 'auth/user-not-found')) {
-        userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        throw authError;
+    // 2. Autenticação Firebase Auth
+    console.log("[AUTH] Tentando autenticação para:", email);
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const fbUser = userCredential.user;
+    const uid = fbUser.uid;
+
+    console.log("UID AUTH:", uid);
+
+    // 3. Busca Obrigatória no Firestore
+    let userData: any = null;
+    let finalBancaId = banca?.id || 'default';
+    
+    // Tenta buscar no tenant atual ou resolvido
+    const userRef = doc(firestore, 'bancas', finalBancaId, 'usuarios', uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      userData = userSnap.data();
+    } else {
+      // Fallback para Banca Master (SuperAdmin geralmente fica aqui)
+      console.log("[AUTH] Usuário não encontrado no tenant. Buscando em default...");
+      const masterRef = doc(firestore, 'bancas', 'default', 'usuarios', uid);
+      const masterSnap = await getDoc(masterRef);
+      if (masterSnap.exists()) {
+        userData = masterSnap.data();
+        finalBancaId = 'default';
       }
     }
 
-    const fbUser = userCredential.user;
-
-    // 3. Busca de Dados Completos no Firestore (Obrigatório)
-    let userData: any = null;
-    
-    // Tenta primeiro na banca atual
-    if (banca) {
-      const userRef = doc(firestore, 'bancas', banca.id, 'usuarios', fbUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) userData = userSnap.data();
-    }
-
-    // Fallback para Banca Master (SuperAdmin)
+    // 4. Validação de existência no banco
     if (!userData) {
-      const masterRef = doc(firestore, 'bancas', 'default', 'usuarios', fbUser.uid);
-      const masterSnap = await getDoc(masterRef);
-      if (masterSnap.exists()) userData = masterSnap.data();
-    }
-
-    // Se ainda não existe no Firestore, usa o Seed
-    if (!userData) {
-      const sessionUserLocal = getDefaultUsers().find(u => u.email === email || u.terminal === terminalOrEmail);
-      if (sessionUserLocal) {
-        const targetBancaId = sessionUserLocal.bancaId || 'default';
+      // Se autenticou no Auth mas não existe no banco, verifica se é um usuário padrão do Seed
+      const seededUser = getDefaultUsers().find(u => u.email === email || u.terminal === terminalOrEmail);
+      if (seededUser) {
         userData = {
-          ...sessionUserLocal,
-          id: fbUser.uid,
+          ...seededUser,
+          id: uid,
           updatedAt: new Date().toISOString()
         };
-        await setDoc(doc(firestore, 'bancas', targetBancaId, 'usuarios', fbUser.uid), userData);
+        // Auto-seed no Firestore
+        await setDoc(doc(firestore, 'bancas', userData.bancaId || 'default', uid), userData);
       } else {
-        throw new Error("Usuário autenticado mas perfil não encontrado no banco de dados.");
+        throw new Error("Usuário autenticado mas perfil não encontrado no Firestore.");
       }
     }
 
-    console.log("USER DATA FETCHED:", userData);
+    console.log("USER DATA FOUND:", userData);
 
+    // 5. Configurar Sessão
     const session = {
-      userId: fbUser.uid,
+      userId: uid,
       terminal: userData.terminal,
-      tipoUsuario: userData.tipoUsuario || 'USUARIO',
-      bancaId: userData.bancaId || 'default',
+      email: email,
+      role: userData.tipoUsuario || 'USUARIO',
+      bancaId: userData.bancaId || finalBancaId,
       loggedAt: Date.now()
     };
 
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    return { success: true, message: 'Sucesso', user: { ...userData, id: fbUser.uid } };
+    
+    return { 
+      success: true, 
+      message: 'Sucesso', 
+      user: { ...userData, id: uid } 
+    };
 
   } catch (error: any) {
     console.error('[Auth Error]', error.message);
     let errorMsg = "Acesso negado. Verifique suas credenciais.";
     if (error.code === 'auth/invalid-credential') errorMsg = "E-mail ou senha inválidos.";
-    return { success: false, message: errorMsg };
+    if (error.code === 'auth/user-not-found') errorMsg = "Usuário não cadastrado.";
+    
+    return { success: false, message: error.message || errorMsg };
   }
 };
 

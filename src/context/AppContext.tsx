@@ -1,7 +1,9 @@
+
 'use client';
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
+ * Versão V4: Sincronização de perfil baseada em sessão corrigida.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -59,17 +61,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setSubdomain(sub);
     
     const session = getSession();
-    if (session) {
-      // Busca dados completos do usuário em tempo real
-      const activeBancaId = session.bancaId || banca?.id || 'default';
+    if (session && session.userId) {
+      console.log("[SYNC] Iniciando sincronização para UID:", session.userId);
+      
+      // Busca dados completos do usuário em tempo real usando o bancaId da sessão
+      const activeBancaId = session.bancaId || 'default';
       const userRef = doc(firestore, 'bancas', activeBancaId, 'usuarios', session.userId);
+      
       const unsubUser = onSnapshot(userRef, (snap) => {
         if (snap.exists()) {
           const data = snap.data();
           setUser({ id: snap.id, ...data });
-          console.log("APP CONTEXT USER SYNCED:", data);
+          console.log("[SYNC] Perfil atualizado:", data);
         } else if (activeBancaId !== 'default') {
-          // Fallback para SuperAdmin em banca master
+          // Fallback para SuperAdmin que pode estar na banca default
           const masterRef = doc(firestore, 'bancas', 'default', 'usuarios', session.userId);
           onSnapshot(masterRef, (mSnap) => {
             if (mSnap.exists()) setUser({ id: mSnap.id, ...mSnap.data() });
@@ -87,9 +92,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const unsubResults = onSnapshot(query(collection(firestore, 'jdbResults'), orderBy('date', 'desc'), limit(50)), (s) => 
       setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))));
 
-    const bancaId = currentBanca?.id || user?.bancaId || 'default';
+    const bancaId = user?.bancaId || currentBanca?.id || 'default';
     if (bancaId === 'default' && (!user || user.tipoUsuario !== 'SUPER_ADMIN')) {
-      // Se não for superadmin e não houver banca, espera
       return;
     }
 
@@ -127,7 +131,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const handleFinalizarAposta = async (aposta: any, valorTotal: number) => {
     if (!user) { router.push('/login'); return null; }
-    const bancaId = user.bancaId || currentBanca?.id || 'default';
+    const bancaId = user.bancaId || 'default';
 
     const pouleId = generatePoule();
     

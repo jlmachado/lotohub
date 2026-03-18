@@ -1,22 +1,29 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
     // Regra Global SaaS Multi-Banca
-    // O acesso é permitido se o usuário for SUPER_ADMIN (acesso global)
-    // ou se o bancaId do token coincidir com o bancaId do caminho.
+    // O acesso é permitido se:
+    // 1. É o próprio usuário acessando seu documento (login/perfil)
+    // 2. O bancaId do token coincide com o bancaId do caminho
+    // 3. O usuário é SUPER_ADMIN
     match /bancas/{bancaId}/{document=**} {
-      allow read, write: if request.auth != null 
+      allow read: if request.auth != null; // Permite leitura inicial para login
+      
+      allow write: if request.auth != null 
         && (
+          request.auth.token.role == 'SUPER_ADMIN' ||
           request.auth.token.tipoUsuario == 'SUPER_ADMIN' ||
-          request.auth.token.bancaId == bancaId
+          request.auth.token.bancaId == bancaId ||
+          request.auth.uid == document // Permite criar/atualizar próprio perfil
         );
     }
     
     // Coleção de Resultados (Shared Data - Leitura Pública)
     match /jdbResults/{resultId} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.token.tipoUsuario == 'SUPER_ADMIN';
+      allow write: if request.auth != null && (request.auth.token.tipoUsuario == 'SUPER_ADMIN' || request.auth.token.role == 'SUPER_ADMIN');
     }
     
     // Configurações públicas do sistema
