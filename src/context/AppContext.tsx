@@ -1,9 +1,8 @@
-
 'use client';
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
- * Versão V8: Sincronização de Resultados e Sinuca com logs de debug e regras de permissão corrigidas.
+ * Versão V9: Correção definitiva de permissões e sincronização controlada por Auth.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
@@ -495,21 +494,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [firestore, currentBanca, user]);
 
-  // --- Sync Logic Corrected ---
+  // --- Sync Logic Definitiva ---
 
   const syncJDBResults = useCallback(async () => {
-    // RESOLVER BANCAID COM PRIORIDADE E SEGURANÇA
-    const bancaId = user?.bancaId || currentBanca?.id || 'default';
-    
+    // 1. GARANTIR AUTH
+    if (!user || !user.id) {
+      console.warn("[SYNC] Usuário não autenticado.");
+      return;
+    }
+
+    // 2. GARANTIR BANCA
+    const bancaId = user.bancaId || currentBanca?.id;
     if (!bancaId) {
-      console.warn("[SYNC] Banca não definida para sincronização de resultados.");
+      console.warn("[SYNC] Banca não resolvida.");
       return;
     }
 
     try {
-      console.log("SYNC BANCA:", bancaId);
-      const results = await ResultsSyncService.getLatestResults();
+      // 3. DEBUG INICIAL
+      console.log("----------------------------");
+      console.log("[SYNC] UID:", user.id);
+      console.log("[SYNC] BANCA:", bancaId);
       
+      const results = await ResultsSyncService.getLatestResults();
       const hoje = new Date();
       const dataFormatada = hoje.toLocaleDateString("pt-BR");
 
@@ -517,7 +524,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const docId = `jdb-${res.date}-${res.time}-${res.stateCode.toLowerCase()}-${res.extractionName.toLowerCase().replace(/\s/g, '-')}`;
         const docRef = doc(firestore, 'bancas', bancaId, 'resultados', docId);
         
-        console.log("SALVANDO RESULTADO:", res.extractionName, res.time);
+        // 4. DEBUG SALVAMENTO
+        console.log("[SYNC] SALVANDO:", res.extractionName, res.time);
         
         await setDoc(docRef, {
           ...res,
@@ -527,29 +535,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           updatedAt: new Date().toISOString()
         }, { merge: true });
       }
+      console.log("[SYNC] Finalizado com sucesso.");
+      console.log("----------------------------");
     } catch (e: any) {
       console.error("[SYNC] Falha ao salvar resultados:", e.message);
     }
   }, [user, currentBanca, firestore]);
 
   const syncSnookerFromYoutube = useCallback(async (force = false) => {
-    const bancaId = user?.bancaId || currentBanca?.id || 'default';
+    if (!user || !user.id) return;
+    const bancaId = user.bancaId || currentBanca?.id;
     if (!bancaId) return;
 
     setSnookerSyncState('syncing');
     try {
-      console.log("SYNC BANCA (SNOOKER):", bancaId);
-      
-      // Fallback Strategy
+      console.log("[SYNC SNOOKER] BANCA:", bancaId);
       let jogos = [];
       try {
         jogos = await SnookerSyncService.fetchFromMainSource(); 
       } catch (e) {
-        console.warn("[SYNC] Fonte 1 falhou, tentando Fallback...");
+        console.warn("[SYNC SNOOKER] Fallback acionado...");
         jogos = await SnookerSyncService.fetchFromFallbackSource();
       }
-
-      console.log("SNOOKER:", jogos);
 
       for (const jogo of jogos) {
         await setDoc(doc(firestore, 'bancas', bancaId, 'snooker', jogo.id), {
@@ -560,15 +567,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
       setSnookerSyncState('idle');
     } catch (e: any) {
-      console.error("[SYNC] Erro Sinuca:", e.message);
+      console.error("[SYNC SNOOKER] Erro:", e.message);
       setSnookerSyncState('error');
     }
   }, [user, currentBanca, firestore]);
 
-  // Auto-Sync Trigger
+  // --- Gatilho de Sincronização baseado em Auth ---
   useEffect(() => {
-    const bancaId = user?.bancaId || currentBanca?.id || 'default';
-    if (bancaId) {
+    if (user && (currentBanca || user.bancaId)) {
       syncJDBResults();
       syncSnookerFromYoutube();
     }
@@ -704,7 +710,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }));
   };
 
-  // --- Placeholders for Chat & Interaction ---
+  // --- Interaction Handlers ---
   const joinChannel = (channelId: string, userId: string) => {};
   const leaveChannel = (channelId: string, userId: string) => {};
   const clearCelebration = () => setCelebrationTrigger(false);

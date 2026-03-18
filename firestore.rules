@@ -1,43 +1,23 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Regra específica para perfis de usuário
-    match /bancas/{bancaId}/usuarios/{userId} {
-      // Permite a criação do próprio documento se autenticado (essencial para o registro)
-      allow create: if request.auth != null && request.auth.uid == userId;
-      
-      // Permite leitura e update pelo próprio usuário
-      allow read, update: if request.auth != null && request.auth.uid == userId;
 
-      // Permite acesso total para SuperAdmins (Master)
-      allow read, write: if request.auth != null && (
-        request.auth.token.role == 'superadmin' ||
-        request.auth.token.tipoUsuario == 'SUPER_ADMIN'
-      );
-    }
-
-    // Regra Global SaaS Multi-Banca para outros documentos (Resultados, Apostas, Configs)
+    // Regra Global SaaS: Permite acesso total dentro do caminho da banca para usuários autenticados
     match /bancas/{bancaId}/{document=**} {
-      // Permitir leitura para qualquer usuário autenticado
-      allow read: if request.auth != null; 
-      
-      // Permitir escrita para usuários autenticados (Admin e Usuários em Sincronização)
-      allow write: if request.auth != null;
+      allow read, write: if request.auth != null;
     }
     
-    // Coleção de Resultados Global (Shared Data - Leitura Pública)
+    // Regra para coleções legadas na raiz (se existirem)
     match /jdbResults/{resultId} {
       allow read: if true;
       allow write: if request.auth != null;
     }
     
-    // Configurações públicas do sistema (Banners e Popups)
     match /banners/{bannerId} {
       allow read: if true;
       allow write: if request.auth != null;
     }
+    
     match /popups/{popupId} {
       allow read: if true;
       allow write: if request.auth != null;
