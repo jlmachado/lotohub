@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview Autenticação Multi-Tenant.
- * Suporta detecção automática de banca por terminal caso o subdomínio não esteja presente.
+ * Suporta login híbrido via Terminal (SaaS) ou E-mail Direto (SuperAdmin).
  */
 
 import { 
@@ -22,37 +22,51 @@ const SESSION_KEY = 'app:session:v1';
 
 /**
  * Realiza o login do usuário.
- * Se não houver subdomínio, tenta localizar a banca pelo número do terminal.
+ * Suporta detecção automática de banca por terminal ou login via e-mail direto.
  */
-export const login = async (terminal: string, password: string): Promise<{ success: boolean; message: string; user?: any }> => {
+export const login = async (terminalOrEmail: string, password: string): Promise<{ success: boolean; message: string; user?: any }> => {
   try {
+    let email = terminalOrEmail;
     let banca = resolveCurrentBanca();
     
-    // Fallback: Se não estamos em um subdomínio, procuramos a qual banca este terminal pertence
-    if (!banca) {
-      const allUsers = getUsers();
-      const userRecord = allUsers.find(u => u.terminal === terminal);
-      if (userRecord) {
-        const bancas = getBancas();
-        banca = bancas.find(b => b.id === userRecord.bancaId) || null;
+    const isEmail = terminalOrEmail.includes('@');
+
+    // Se for um terminal numérico, resolvemos a identidade SaaS
+    if (!isEmail) {
+      if (!banca) {
+        const allUsers = getUsers();
+        const userRecord = allUsers.find(u => u.terminal === terminalOrEmail);
+        if (userRecord) {
+          const bancas = getBancas();
+          banca = bancas.find(b => b.id === userRecord.bancaId) || null;
+        }
       }
+
+      if (!banca) {
+        throw new Error("Terminal não reconhecido ou unidade inválida.");
+      }
+
+      // O email no Firebase Auth para terminais segue o padrão SaaS
+      email = `${terminalOrEmail}@${banca.subdomain}.lotohub.app`;
     }
 
-    if (!banca) {
-      throw new Error("Terminal não reconhecido ou unidade inválida.");
-    }
-
-    // O email no Firebase Auth segue o padrão terminal@subdomain.lotohub.app
-    const email = `${terminal}@${banca.subdomain}.lotohub.app`;
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const fbUser = userCredential.user;
 
-    // Busca dados estendidos no tenant correto no Firestore
-    const userRef = doc(firestore, 'bancas', banca.id, 'usuarios', fbUser.uid);
-    const userSnap = await getDoc(userRef);
+    // Busca dados estendidos no tenant correto. 
+    // Se não tiver banca (SuperAdmin), procura na 'default'.
+    const activeBancaId = banca?.id || 'default';
+    let userRef = doc(firestore, 'bancas', activeBancaId, 'usuarios', fbUser.uid);
+    let userSnap = await getDoc(userRef);
+
+    // Tenta fallback na default se não encontrou (comum para Admins globais)
+    if (!userSnap.exists() && activeBancaId !== 'default') {
+      userRef = doc(firestore, 'bancas', 'default', 'usuarios', fbUser.uid);
+      userSnap = await getDoc(userRef);
+    }
 
     if (!userSnap.exists()) {
-      throw new Error("Perfil de usuário não encontrado nesta unidade.");
+      throw new Error("Perfil de usuário não encontrado.");
     }
 
     const userData = userSnap.data();
@@ -60,7 +74,7 @@ export const login = async (terminal: string, password: string): Promise<{ succe
       userId: fbUser.uid,
       terminal: userData.terminal,
       tipoUsuario: userData.tipoUsuario,
-      bancaId: banca.id,
+      bancaId: userData.bancaId || activeBancaId,
       loggedAt: Date.now()
     };
 
@@ -69,7 +83,10 @@ export const login = async (terminal: string, password: string): Promise<{ succe
   } catch (error: any) {
     console.error('[Auth Error]', error.message);
     let errorMsg = "Acesso negado. Verifique suas credenciais.";
+    if (error.code === 'auth/user-not-found') errorMsg = "Usuário não cadastrado.";
+    if (error.code === 'auth/wrong-password') errorMsg = "Senha incorreta.";
     if (error.message.includes("Terminal não reconhecido")) errorMsg = error.message;
+    
     return { success: false, message: errorMsg };
   }
 };
@@ -81,7 +98,6 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
   try {
     let banca = resolveCurrentBanca();
     
-    // Se não houver subdomínio (ex: localhost), usa a banca default para o cadastro
     if (!banca) {
       const bancas = getBancas();
       banca = bancas.find(b => b.id === 'default') || bancas[0];
@@ -92,18 +108,12 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
     }
 
     const { nome, cpf, cidade, email, password } = userData;
-
-    // 1. Gerar próximo terminal disponível para esta banca
     const terminal = generateNextTerminalForBanca(banca.id);
-    
-    // Pattern de email para o Firebase Auth vinculado à banca para evitar conflitos globais
     const systemEmail = `${terminal}@${banca.subdomain}.lotohub.app`;
 
-    // 2. Criar conta no Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, systemEmail, password);
     const fbUser = userCredential.user;
 
-    // 3. Salvar perfil detalhado no Firestore dentro da estrutura isolada da banca
     const userRef = doc(firestore, 'bancas', banca.id, 'usuarios', fbUser.uid);
     
     const newUser = {
@@ -112,8 +122,8 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
       nome,
       cpf,
       cidade,
-      email, // Email real para contato
-      systemEmail, // Email técnico usado no login
+      email, 
+      systemEmail,
       status: 'ACTIVE',
       tipoUsuario: 'USUARIO',
       permissoes: getDefaultPermissions('USUARIO'),
@@ -126,7 +136,6 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
 
     await setDoc(userRef, newUser);
 
-    // Atualiza cache local para garantir que o login encontre o novo registro
     const allUsers = getUsers();
     allUsers.push(newUser as any);
     localStorage.setItem('app:users:v1', JSON.stringify(allUsers));
@@ -134,12 +143,7 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
     return { success: true, message: 'Cadastro realizado com sucesso!', terminal };
   } catch (error: any) {
     console.error('[Register Error]', error.message);
-    
-    let message = "Falha ao realizar cadastro.";
-    if (error.code === 'auth/email-already-in-use') message = "Terminal já registrado.";
-    if (error.code === 'auth/weak-password') message = "A senha deve ter pelo menos 6 caracteres.";
-    
-    return { success: false, message: error.message || message };
+    return { success: false, message: error.message || "Falha ao realizar cadastro." };
   }
 };
 

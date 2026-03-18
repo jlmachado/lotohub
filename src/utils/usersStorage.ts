@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -65,6 +64,21 @@ export const getDefaultPermissions = (type: UserType): UserPermissions => {
 const getDefaultUsers = (): User[] => {
   const now = new Date().toISOString();
   return [
+    {
+      id: 'u-jao-lm',
+      terminal: '99999',
+      email: 'jao-lm@hotmail.com',
+      password: 'admin',
+      nome: 'João Machado (Master)',
+      status: 'ACTIVE',
+      tipoUsuario: 'SUPER_ADMIN',
+      permissoes: getDefaultPermissions('SUPER_ADMIN'),
+      saldo: 1000000,
+      bonus: 0,
+      bancaId: 'default',
+      createdAt: now,
+      updatedAt: now
+    },
     {
       id: 'u-superadmin',
       terminal: '10001',

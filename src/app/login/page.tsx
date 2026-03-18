@@ -23,7 +23,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Redirecionar se já estiver logado
   useEffect(() => {
     const session = getSession();
     if (session) {
@@ -48,19 +47,17 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!terminal || !password) {
-      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Informe seu terminal e senha.' });
+      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Informe seu terminal ou e-mail e senha.' });
       return;
     }
 
     setLoading(true);
     
-    // Processamento assíncrono via Firebase Auth
     const result = await login(terminal, password);
 
     if (result.success && result.user) {
       const user = result.user;
 
-      // 1. Sincroniza contexto de banca se o usuário pertencer a uma
       if (user.tipoUsuario === 'SUPER_ADMIN') {
         setBancaContextGlobal();
       } else if (user.bancaId) {
@@ -71,12 +68,8 @@ export default function LoginPage() {
         }
       }
 
-      // 2. Atualiza estado global do AppContext
       refreshData();
-      
       toast({ title: 'Acesso autorizado!', description: `Bem-vindo de volta, ${user.nome || user.terminal}` });
-
-      // 3. Executa redirecionamento
       handleRedirect(user);
     } else {
       toast({ variant: 'destructive', title: 'Falha no login', description: result.message });
@@ -101,10 +94,10 @@ export default function LoginPage() {
         <form onSubmit={handleLogin}>
           <CardContent className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="terminal" className="text-white/70 font-bold uppercase text-[10px] tracking-widest ml-1">Terminal ou Usuário</Label>
+              <Label htmlFor="terminal" className="text-white/70 font-bold uppercase text-[10px] tracking-widest ml-1">Terminal ou E-mail</Label>
               <Input 
                 id="terminal" 
-                placeholder="Ex: 10001" 
+                placeholder="Ex: 10001 ou admin@email.com" 
                 value={terminal} 
                 onChange={(e) => setTerminal(e.target.value)}
                 className="bg-black/40 border-white/10 h-12 text-white text-lg focus:border-primary/50 transition-all rounded-xl"
