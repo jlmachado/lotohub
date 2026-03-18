@@ -3,7 +3,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
- * Versão V7: Sincronização Corrigida para Resultados do Bicho e Sinuca com Fallback.
+ * Versão V8: Sincronização de Resultados e Sinuca com logs de debug e regras de permissão corrigidas.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
@@ -429,7 +429,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     ), (s) => {
       const results = s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult));
       setJdbResults(results);
-      console.log(`[SYNC][${bancaId}] Resultados recuperados:`, results.length);
     });
 
     if (bancaId === 'default' && (!user || (user.tipoUsuario !== 'SUPER_ADMIN' && user.role !== 'superadmin'))) {
@@ -455,7 +454,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(collection(firestore, bancaPath, 'snooker'), (s) => {
         const channels = s.docs.map(d => ({ id: d.id, ...d.data() }));
         setSnookerChannels(channels);
-        console.log(`[SYNC][${bancaId}] Canais Sinuca recuperados:`, channels.length);
       }),
 
       onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => {
@@ -500,29 +498,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- Sync Logic Corrected ---
 
   const syncJDBResults = useCallback(async () => {
+    // RESOLVER BANCAID COM PRIORIDADE E SEGURANÇA
     const bancaId = user?.bancaId || currentBanca?.id || 'default';
-    if (!bancaId) return;
+    
+    if (!bancaId) {
+      console.warn("[SYNC] Banca não definida para sincronização de resultados.");
+      return;
+    }
 
     try {
-      const hoje = new Date();
-      const dataFormatada = hoje.toLocaleDateString("pt-BR");
-      
-      const summary = await ResultsSyncService.syncToday();
+      console.log("SYNC BANCA:", bancaId);
       const results = await ResultsSyncService.getLatestResults();
       
-      console.log(`[SYNC][${bancaId}] Sincronizando Resultados:`, results);
+      const hoje = new Date();
+      const dataFormatada = hoje.toLocaleDateString("pt-BR");
 
       for (const res of results) {
         const docId = `jdb-${res.date}-${res.time}-${res.stateCode.toLowerCase()}-${res.extractionName.toLowerCase().replace(/\s/g, '-')}`;
-        await setDoc(doc(firestore, 'bancas', bancaId, 'resultados', docId), {
+        const docRef = doc(firestore, 'bancas', bancaId, 'resultados', docId);
+        
+        console.log("SALVANDO RESULTADO:", res.extractionName, res.time);
+        
+        await setDoc(docRef, {
           ...res,
           bancaId,
           data: dataFormatada,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         }, { merge: true });
       }
     } catch (e: any) {
-      console.error("[SYNC] Falha nos resultados do bicho:", e.message);
+      console.error("[SYNC] Falha ao salvar resultados:", e.message);
     }
   }, [user, currentBanca, firestore]);
 
@@ -532,7 +538,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     setSnookerSyncState('syncing');
     try {
-      console.log(`[SYNC][${bancaId}] Iniciando captura de Sinuca...`);
+      console.log("SYNC BANCA (SNOOKER):", bancaId);
       
       // Fallback Strategy
       let jogos = [];
@@ -543,7 +549,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         jogos = await SnookerSyncService.fetchFromFallbackSource();
       }
 
-      console.log(`[SYNC][${bancaId}] Eventos encontrados:`, jogos.length);
+      console.log("SNOOKER:", jogos);
 
       for (const jogo of jogos) {
         await setDoc(doc(firestore, 'bancas', bancaId, 'snooker', jogo.id), {
