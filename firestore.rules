@@ -2,19 +2,102 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /**
-     * Regra Simplificada para Prototipagem Multi-Banca
-     * Permite que qualquer usuário autenticado acesse os dados de sua banca.
-     */
-    match /bancas/{bancaId}/{document=**} {
-      allow read, write: if request.auth != null;
+    function isLogged() {
+      return request.auth != null;
     }
 
-    /**
-     * Regras para Perfis de Usuário (Legado/Compatibilidade)
-     */
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() {
+      return isLogged() && getUserData().role == "superadmin";
+    }
+
+    function isAdmin(bancaId) {
+      return isLogged() &&
+        getUserData().role == "admin" &&
+        getUserData().bancaId == bancaId;
+    }
+
+    function isPromotor(bancaId) {
+      return isLogged() &&
+        getUserData().role == "promotor" &&
+        getUserData().bancaId == bancaId;
+    }
+
+    function isCambista(bancaId) {
+      return isLogged() &&
+        getUserData().role == "cambista" &&
+        getUserData().bancaId == bancaId;
+    }
+
+    function isUser(bancaId) {
+      return isLogged() &&
+        getUserData().role == "user" &&
+        getUserData().bancaId == bancaId;
+    }
+
+    function belongsToBanca(bancaId) {
+      return isLogged() && getUserData().bancaId == bancaId;
+    }
+
+    match /{document=**} {
+      allow read, write: if isSuperAdmin();
+    }
+
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if request.auth.uid == userId || isSuperAdmin();
+    }
+
+    match /bancas/{bancaId} {
+
+      match /configuracoes/{doc} {
+        allow read: if belongsToBanca(bancaId);
+        allow write: if isAdmin(bancaId) || isSuperAdmin();
+      }
+
+      match /bingo_draws/{docId} {
+        allow read: if belongsToBanca(bancaId);
+        allow write: if isAdmin(bancaId) || isSuperAdmin();
+      }
+
+      match /jdbResults/{docId} {
+        allow read: if isLogged();
+        allow write: if isAdmin(bancaId) || isSuperAdmin();
+      }
+
+      match /apostas/{apostaId} {
+        allow create: if isCambista(bancaId) || isUser(bancaId);
+        allow read: if
+          isAdmin(bancaId) ||
+          isPromotor(bancaId) ||
+          request.auth.uid == resource.data.userId;
+        allow update: if
+          isAdmin(bancaId) ||
+          isPromotor(bancaId);
+        allow delete: if isAdmin(bancaId);
+      }
+
+      match /usuarios/{uid} {
+        allow read: if isAdmin(bancaId) || isPromotor(bancaId);
+        allow write: if isAdmin(bancaId);
+      }
+
+      match /transacoes/{id} {
+        allow read: if
+          isAdmin(bancaId) ||
+          isPromotor(bancaId) ||
+          request.auth.uid == resource.data.userId;
+        allow write: if
+          isAdmin(bancaId) ||
+          isCambista(bancaId);
+      }
+
+      match /relatorios/{id} {
+        allow read: if isAdmin(bancaId) || isPromotor(bancaId);
+        allow write: if isAdmin(bancaId);
+      }
     }
   }
 }
