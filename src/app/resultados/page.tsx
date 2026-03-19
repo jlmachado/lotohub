@@ -19,13 +19,17 @@ export default function ResultadosPublicPage() {
   const { jdbResults, refreshData, syncJDBResults } = useAppContext();
   const { toast } = useToast();
 
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState('');
   const [selectedState, setSelectedState] = useState('all');
   const [selectedTime, setSelectedTime] = useState('all');
   const [isSearching, setIsSearching] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Auto-sync ao carregar
+  // Initialize data and mount state on client side only to avoid hydration mismatch
   useEffect(() => {
+    setIsMounted(true);
+    const today = new Date().toISOString().split('T')[0];
+    setDate(today);
     syncJDBResults();
   }, [syncJDBResults]);
 
@@ -34,18 +38,29 @@ export default function ResultadosPublicPage() {
     return Array.from(times).sort();
   }, [jdbResults]);
 
+  const formattedDateLabel = useMemo(() => {
+    if (!date || !isMounted) return '';
+    try {
+      const [year, month, day] = date.split('-').map(Number);
+      return new Date(year, month - 1, day).toLocaleDateString("pt-BR");
+    } catch (e) {
+      return '';
+    }
+  }, [date, isMounted]);
+
   const filteredResults = useMemo(() => {
-    const hoje = new Date(date);
-    const dataFormatada = hoje.toLocaleDateString("pt-BR");
+    if (!isMounted || !date) return [];
+    
+    const localeDate = formattedDateLabel;
 
     return jdbResults.filter(r => {
-      // Filtro por data formatada PT-BR conforme requisito
-      const matchDate = r.data === dataFormatada || r.date === date;
+      // Filtro por data formatada PT-BR ou ISO
+      const matchDate = r.data === localeDate || r.date === date;
       const matchState = selectedState === 'all' || r.stateCode === selectedState;
       const matchTime = selectedTime === 'all' || r.time === selectedTime;
       return matchDate && matchState && matchTime;
     }).sort((a, b) => b.time.localeCompare(a.time));
-  }, [jdbResults, date, selectedState, selectedTime]);
+  }, [jdbResults, date, formattedDateLabel, selectedState, selectedTime, isMounted]);
 
   const handleSearchResults = async () => {
     if (isSearching) return;
@@ -95,6 +110,20 @@ export default function ResultadosPublicPage() {
     window.open('/impressao.html', '_blank');
   };
 
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-background pb-20">
+        <Header />
+        <main className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
+          <div className="flex flex-col gap-4 animate-pulse">
+            <div className="h-8 w-64 bg-white/5 rounded" />
+            <div className="h-48 w-full bg-white/5 rounded" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background pb-20">
       <Header />
@@ -143,7 +172,7 @@ export default function ResultadosPublicPage() {
         <div className="grid gap-6">
           {filteredResults.length === 0 ? (
             <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl opacity-40">
-              <p className="font-bold uppercase text-xs tracking-widest">Nenhum resultado disponível para {new Date(date).toLocaleDateString("pt-BR")}.</p>
+              <p className="font-bold uppercase text-xs tracking-widest">Nenhum resultado disponível para {formattedDateLabel}.</p>
             </div>
           ) : (
             filteredResults.map((res) => (
