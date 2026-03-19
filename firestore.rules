@@ -2,6 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // 🔍 Funções auxiliares de autenticação e cargo
     function isLogged() {
       return request.auth != null;
     }
@@ -42,31 +43,38 @@ service cloud.firestore {
       return isLogged() && getUserData().bancaId == bancaId;
     }
 
+    // 👑 Superadmin possui acesso global irrestrito
     match /{document=**} {
       allow read, write: if isSuperAdmin();
     }
 
+    // 👤 Perfil do Usuário (Privado)
     match /users/{userId} {
       allow read, write: if request.auth.uid == userId || isSuperAdmin();
     }
 
+    // 🏪 Estrutura de Bancas (Isolamento Multi-Tenant)
     match /bancas/{bancaId} {
 
+      // 🔓 CONFIGURAÇÕES
       match /configuracoes/{doc} {
         allow read: if belongsToBanca(bancaId);
         allow write: if isAdmin(bancaId) || isSuperAdmin();
       }
 
+      // 🎰 BINGO / SORTEIOS
       match /bingo_draws/{docId} {
         allow read: if belongsToBanca(bancaId);
         allow write: if isAdmin(bancaId) || isSuperAdmin();
       }
 
+      // 🎰 JDB RESULTS (Resultados do Bicho)
       match /jdbResults/{docId} {
         allow read: if isLogged();
         allow write: if isAdmin(bancaId) || isSuperAdmin();
       }
 
+      // 🎯 APOSTAS
       match /apostas/{apostaId} {
         allow create: if isCambista(bancaId) || isUser(bancaId);
         allow read: if
@@ -79,11 +87,13 @@ service cloud.firestore {
         allow delete: if isAdmin(bancaId);
       }
 
+      // 👥 USUÁRIOS DA BANCA (Gestão interna)
       match /usuarios/{uid} {
         allow read: if isAdmin(bancaId) || isPromotor(bancaId);
         allow write: if isAdmin(bancaId);
       }
 
+      // 💸 TRANSAÇÕES (Ledger)
       match /transacoes/{id} {
         allow read: if
           isAdmin(bancaId) ||
@@ -94,6 +104,7 @@ service cloud.firestore {
           isCambista(bancaId);
       }
 
+      // 📊 RELATÓRIOS
       match /relatorios/{id} {
         allow read: if isAdmin(bancaId) || isPromotor(bancaId);
         allow write: if isAdmin(bancaId);
