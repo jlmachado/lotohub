@@ -2,16 +2,98 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Regra global para bancas: permite leitura e escrita para qualquer usuário autenticado.
-    // Isso garante que o motor de sincronização funcione corretamente para usuários logados.
-    match /bancas/{bancaId}/{document=**} {
-      allow read, write: if request.auth != null;
+    /**
+     * FIRESTORE SECURITY RULES - PROTOTYPING MODE
+     * 
+     * CORE PHILOSOPHY:
+     * This ruleset enforces a strict user-ownership model for personal profiles and a 
+     * terminal-based (Banca) access model for game results. It prioritizes high-security 
+     * authorization while allowing flexible data shapes for rapid prototyping.
+     * 
+     * DATA STRUCTURE:
+     * - /userProfiles/{userId}: Private user data, keyed by the Auth UID.
+     * - /bancas/{bancaId}: Public/Authenticated information about specific terminals.
+     * - /bancas/{bancaId}/jdbResults/{jdbResultId}: Game/Lottery results nested under 
+     *   their respective Banca.
+     * 
+     * KEY SECURITY DECISIONS:
+     * 1. OWNERSHIP: User profiles are only accessible by the authenticated user matching 
+     *    the document ID.
+     * 2. BANCAS: Information about bancas is globally readable by signed-in users to 
+     *    allow terminal selection and display.
+     * 3. JDB RESULTS: Access to results is scoped to the specific Banca. Users can only 
+     *    read results belonging to the Banca associated with their UserProfile.
+     * 4. RELATIONAL INTEGRITY: Denormalized fields (like bancaId inside a result 
+     *    document) are validated against the resource path during creation to prevent 
+     *    orphaned or misfiled data.
+     * 5. WRITE PROTECTION: Only UserProfiles support self-creation. Results and 
+     *    Banca definitions are restricted for administrative control.
+     */
+
+    // --- GLOBAL HELPER FUNCTIONS ---
+
+    /** @description Checks if the request is from an authenticated user. */
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // Permitir leitura pública de resultados se necessário (opcional, mas seguro para este caso)
-    match /jdbResults/{document=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    /** @description Checks if the authenticated user's UID matches the provided userId. */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** @description Checks if the user is associated with a specific Banca. */
+    function belongsToBanca(bancaId) {
+      return isSignedIn() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.bancaId == bancaId;
+    }
+
+    /** @description Checks if the document exists before performing update/delete. */
+    function exists() {
+      return resource != null;
+    }
+
+    // --- COLLECTION RULES ---
+
+    /**
+     * @description Rules for user profile management. Users own their own profile document.
+     * @path /userProfiles/{userId}
+     * @allow (get, list, create, update) if the authenticated user's UID is {userId}.
+     * @deny Any attempt to access or modify a different user's profile.
+     * @principle Enforces document ownership and relational integrity between UID and document ID.
+     */
+    match /userProfiles/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isOwner(userId) && exists() && request.resource.data.id == resource.data.id;
+      allow delete: if false; // Profiles are typically not deleted by users in this model.
+    }
+
+    /**
+     * @description Rules for Banca (terminal) documents. Generally readable by all users.
+     * @path /bancas/{bancaId}
+     * @allow (get, list) if the user is signed in.
+     * @deny (create, update, delete) for all non-admin users.
+     * @principle Permits discovery of terminals while protecting configuration data from modification.
+     */
+    match /bancas/{bancaId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false; // Administrative operations only.
+    }
+
+    /**
+     * @description Rules for game results (jdbResults). Scoped to specific Bancas.
+     * @path /bancas/{bancaId}/jdbResults/{jdbResultId}
+     * @allow (get, list) if the user belongs to the parent Banca.
+     * @deny (create, update, delete) if the user is not an administrator or the result is misfiled.
+     * @principle Restricts access to results based on terminal association.
+     */
+    match /bancas/{bancaId}/jdbResults/{jdbResultId} {
+      allow get, list: if belongsToBanca(bancaId);
+      
+      // CRITICAL: Cannot implement owner-only writes. The 'JdbResult' entity is missing 
+      // an 'authorId' or 'creatorId' field for individual user validation.
+      allow create: if false; // TODO: Add creator validation once the schema includes a creatorId.
+      allow update, delete: if false; // Results are typically immutable or managed by admins.
     }
 
   }

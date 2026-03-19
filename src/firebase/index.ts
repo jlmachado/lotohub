@@ -3,38 +3,40 @@
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED } from 'firebase/firestore'
+import { getFirestore } from 'firebase/firestore'
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
   if (!getApps().length) {
+    // Important! initializeApp() is called without any arguments because Firebase App Hosting
+    // integrates with the initializeApp() function to provide the environment variables needed to
+    // populate the FirebaseOptions in production. It is critical that we attempt to call initializeApp()
+    // without arguments.
     let firebaseApp;
     try {
+      // Attempt to initialize via Firebase App Hosting environment variables
       firebaseApp = initializeApp();
     } catch (e) {
+      // Only warn in production because it's normal to use the firebaseConfig to initialize
+      // during development
       if (process.env.NODE_ENV === "production") {
         console.warn('Automatic initialization failed. Falling back to firebase config object.', e);
       }
       firebaseApp = initializeApp(firebaseConfig);
     }
 
-    // Initialize Firestore with settings to improve connectivity in flaky networks
-    const firestore = initializeFirestore(firebaseApp, {
-      experimentalForceLongPolling: true, // Fixes "Could not reach backend" in many environments
-    });
-
-    return {
-      firebaseApp,
-      auth: getAuth(firebaseApp),
-      firestore
-    };
+    return getSdks(firebaseApp);
   }
 
-  const app = getApp();
+  // If already initialized, return the SDKs with the already initialized App
+  return getSdks(getApp());
+}
+
+export function getSdks(firebaseApp: FirebaseApp) {
   return {
-    firebaseApp: app,
-    auth: getAuth(app),
-    firestore: getFirestore(app)
+    firebaseApp,
+    auth: getAuth(firebaseApp),
+    firestore: getFirestore(firebaseApp)
   };
 }
 

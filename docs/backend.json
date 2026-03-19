@@ -1,54 +1,162 @@
-
 {
   "entities": {
-    "Banca": {
-      "title": "Banca",
-      "description": "Entidade Master do Tenant",
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
       "type": "object",
+      "description": "Represents a user's profile information, including their financial balances and optional association with a specific terminal.",
       "properties": {
-        "id": { "type": "string" },
-        "nome": { "type": "string" },
-        "subdomain": { "type": "string" },
-        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED"] },
-        "saldo": { "type": "number" }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "balance": {
+          "type": "number",
+          "description": "Current monetary balance (Saldo) of the user."
+        },
+        "bonus": {
+          "type": "number",
+          "description": "Current bonus balance available to the user."
+        },
+        "bancaId": {
+          "type": "string",
+          "description": "Reference to the Banca (terminal/station) currently associated with or selected by the user. (Relationship: Banca 1:N UserProfile)"
+        }
+      },
+      "required": [
+        "id",
+        "balance",
+        "bonus"
+      ]
     },
-    "User": {
-      "title": "User",
-      "description": "Usuário isolado por Banca",
+    "Banca": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Banca",
       "type": "object",
+      "description": "Represents a lottery terminal, station, or an operational branch identified as a 'banca'.",
       "properties": {
-        "id": { "type": "string" },
-        "terminal": { "type": "string" },
-        "tipoUsuario": { "type": "string" },
-        "saldo": { "type": "number" },
-        "bancaId": { "type": "string" }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Banca entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "Descriptive name or identifier of the Banca, such as 'Terminal 1234'."
+        },
+        "location": {
+          "type": "string",
+          "description": "Geographical location or a brief description of where the Banca is situated."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the Banca record was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "createdAt"
+      ]
+    },
+    "JdbResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "JdbResult",
+      "type": "object",
+      "description": "Stores the results of games or lotteries, specifically associated with a particular Banca, as indicated by the 'jdbResults' collection.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the JdbResult entity."
+        },
+        "bancaId": {
+          "type": "string",
+          "description": "Reference to the Banca where this game or lottery result originated. (Relationship: Banca 1:N JdbResult)"
+        },
+        "date": {
+          "type": "string",
+          "description": "The specific date for which this result is recorded, typically formatted as a localized date string (e.g., 'dd/mm/yyyy')."
+        },
+        "resultData": {
+          "type": "string",
+          "description": "The actual data representing the outcome or details of the lottery or game result."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when this result record was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "bancaId",
+        "date",
+        "resultData",
+        "createdAt"
+      ]
     }
   },
   "auth": {
-    "providers": ["password"]
+    "providers": [
+      "password",
+      "anonymous"
+    ]
   },
   "firestore": {
-    "/bancas/{bancaId}": {
-      "schema": "#/backend/entities/Banca",
-      "description": "Configurações master da banca"
-    },
-    "/bancas/{bancaId}/usuarios/{userId}": {
-      "schema": "#/backend/entities/User",
-      "description": "Usuários exclusivos do tenant"
-    },
-    "/bancas/{bancaId}/apostas/{apostaId}": {
-      "schema": "object",
-      "description": "Bilhetes isolados"
-    },
-    "/bancas/{bancaId}/ledgerEntries/{entryId}": {
-      "schema": "object",
-      "description": "Extrato financeiro transacional"
-    },
-    "/jdbResults/{resultId}": {
-      "schema": "object",
-      "description": "Resultados globais (Shared Data)"
-    }
+    "structure": [
+      {
+        "path": "/userProfiles/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores individual user profile information. The document ID `{userId}` corresponds to `request.auth.uid`, making it directly owned by the authenticated user. Includes a denormalized 'bancaId' linking to the user's associated Banca.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user, corresponding to Firebase Authentication's UID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/bancas/{bancaId}",
+        "definition": {
+          "entityName": "Banca",
+          "schema": {
+            "$ref": "#/backend/entities/Banca"
+          },
+          "description": "Represents a lottery terminal or operational branch. This is a top-level collection, with each document representing a unique Banca.",
+          "params": [
+            {
+              "name": "bancaId",
+              "description": "The unique identifier for a specific Banca."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/bancas/{bancaId}/jdbResults/{jdbResultId}",
+        "definition": {
+          "entityName": "JdbResult",
+          "schema": {
+            "$ref": "#/backend/entities/JdbResult"
+          },
+          "description": "Stores the results of games or lotteries associated with a specific Banca. The 'bancaId' field within each JdbResult document is denormalized from its parent Banca for authorization independence, allowing security rules to validate access without needing to `get()` the parent Banca document.",
+          "params": [
+            {
+              "name": "bancaId",
+              "description": "The unique identifier of the parent Banca to which this result belongs."
+            },
+            {
+              "name": "jdbResultId",
+              "description": "The unique identifier for a specific game or lottery result."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The proposed Firestore structure addresses the user's issue by standardizing the collection path for game results, ensuring that the frontend reads from the correct 'jdbResults' collection. This design prioritizes authorization independence and clarity, adhering to the core design principles.\n\n1.  **Authorization Independence:**\n    *   **UserProfile:** Stored in `/userProfiles/{userId}`, where `{userId}` directly corresponds to `request.auth.uid`. This makes user profile access completely independent, as authorization can be verified solely against the document's path and `request.auth.uid` without any `get()` operations on other documents.\n    *   **Banca:** Stored in `/bancas/{bancaId}`. This is a top-level collection. Any authorization for a specific Banca would reside within the Banca document itself (e.g., an `ownerId` or `members` map if needed for administrative access), making its access independent of other documents.\n    *   **JdbResult:** Stored as a subcollection `/bancas/{bancaId}/jdbResults/{jdbResultId}`. The `JdbResult` entity includes a `bancaId` field. This is a crucial denormalization. While a user's *permission* to access results for a given `bancaId` might still involve checking their `UserProfile.bancaId` (via a `get()` on their own profile, which is acceptable), the `JdbResult` document itself doesn't need to perform a `get()` on its parent `Banca` document to validate the `bancaId` or other related authorization data. The `bancaId` within the `JdbResult` document ensures data integrity by allowing rules to compare the path's `{bancaId}` wildcard with the document's `bancaId` field. This design allows for atomic operations (e.g., creating a JdbResult) without needing to read the parent Banca first for authorization data.\n\n2.  **QAPs (Rules are not Filters):**\n    *   **Structural Segregation:** Each collection (`userProfiles`, `bancas`, `jdbResults`) has a homogeneous security posture. `userProfiles` are private to the owning user. `bancas` are likely readable by authenticated users (or specific roles) to allow selection or display of the associated terminal. `jdbResults` are tightly coupled to their parent `Banca` and are likely readable by users associated with that `Banca`.\n    *   **Secure Listing:** For `jdbResults`, a `list` operation will be performed on a specific path `/bancas/{bancaId}/jdbResults`. The security rules can then check if `request.auth.uid` is authorized for *that specific* `bancaId`. This check would typically involve looking up `request.auth.uid`'s associated `bancaId` in their `/userProfiles/{request.auth.uid}` document. For example, a rule could state: `allow list: if request.auth.uid != null && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.bancaId == bancaId;`. This ensures that `list` queries only return results for bancas the user is authorized to view, preventing rules from acting as filters and maintaining QAPs.\n\nThis structure directly resolves the stated bug by defining `jdbResults` as the correct subcollection for game results and provides a clear, secure foundation for future rule implementation."
   }
 }
