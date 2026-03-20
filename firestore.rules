@@ -7,20 +7,26 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Busca dados do usuário na banca mestre (default) para validação de cargo
     function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return get(/databases/$(database)/documents/bancas/default/usuarios/$(request.auth.uid)).data;
     }
 
     function isSuperAdmin() {
-      return isLogged() && getUserData().role == "superadmin";
+      return isLogged() && (
+        getUserData().role == "superadmin" || 
+        getUserData().tipoUsuario == "SUPER_ADMIN"
+      );
     }
 
     function isAdmin(bancaId) {
-      return isLogged() && (getUserData().role == "admin" || getUserData().role == "superadmin") && (getUserData().bancaId == bancaId || getUserData().role == "superadmin");
-    }
-
-    function belongsToBanca(bancaId) {
-      return isLogged() && getUserData().bancaId == bancaId;
+      return isLogged() && (
+        getUserData().role == "admin" || 
+        getUserData().role == "superadmin" || 
+        getUserData().tipoUsuario == "ADMIN" || 
+        getUserData().tipoUsuario == "SUPER_ADMIN" ||
+        (getUserData().bancaId == bancaId && getUserData().tipoUsuario == "ADMIN")
+      );
     }
 
     // 👑 Superadmin possui acesso global irrestrito
@@ -28,79 +34,85 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
-    // 👤 Perfil do Usuário (Privado)
-    match /users/{userId} {
-      allow read, write: if request.auth.uid == userId;
-    }
-
     // 🏪 Estrutura de Bancas (Isolamento Multi-Tenant)
     match /bancas/{bancaId} {
 
-      // 🔓 DADOS PÚBLICOS (UI e Resultados)
-      // Visitantes precisam ler essas informações para renderizar o site
-      match /configuracoes/{doc} {
+      // 🔓 DADOS PÚBLICOS (Acessíveis mesmo sem login para renderizar a UI)
+      match /configuracoes/{docId} {
         allow read: if true;
         allow write: if isAdmin(bancaId);
       }
 
-      match /banners/{id} {
+      match /banners/{docId} {
         allow read: if true;
         allow write: if isAdmin(bancaId);
       }
 
-      match /popups/{id} {
+      match /popups/{docId} {
         allow read: if true;
         allow write: if isAdmin(bancaId);
       }
 
-      match /news_messages/{id} {
+      match /news_messages/{docId} {
         allow read: if true;
         allow write: if isAdmin(bancaId);
       }
 
-      match /jdbResults/{id} {
+      match /jdbResults/{docId} {
         allow read: if true;
         allow write: if isAdmin(bancaId);
       }
 
-      match /snooker/{id} {
+      match /snooker/{docId} {
+        allow read: if true;
+        allow write: if isAdmin(bancaId);
+      }
+      
+      match /snooker_scoreboards/{docId} {
         allow read: if true;
         allow write: if isAdmin(bancaId);
       }
 
-      match /bingo_draws/{id} {
+      match /bingo_draws/{docId} {
         allow read: if true;
         allow write: if isAdmin(bancaId);
       }
 
-      // 🎯 APOSTAS (Privado por Usuário/Banca)
+      // 🎯 INTERAÇÃO PÚBLICA (Chat)
+      match /snooker_chat/{msgId} {
+        allow read: if true;
+        allow create: if isLogged();
+        allow delete: if isAdmin(bancaId);
+      }
+
+      // 🔒 DADOS PROTEGIDOS (Requer Login e Vinculação)
+      
+      match /usuarios/{uid} {
+        allow read: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
+        allow write: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
+      }
+
       match /apostas/{apostaId} {
         allow create: if isLogged();
         allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
         allow update, delete: if isAdmin(bancaId);
       }
 
-      match /football_bets/{id} {
+      match /snooker_bets/{betId} {
         allow create: if isLogged();
         allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
         allow update, delete: if isAdmin(bancaId);
       }
 
-      // 👥 USUÁRIOS DA BANCA (Gestão interna)
-      match /usuarios/{uid} {
-        allow read: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
-        allow write: if isAdmin(bancaId);
-      }
-
-      // 💸 TRANSAÇÕES (Ledger)
       match /ledgerEntries/{id} {
         allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
         allow write: if isAdmin(bancaId);
       }
       
-      // 🎱 SNOOKER EXTRAS
-      match /snooker_scoreboards/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
-      match /snooker_sync_logs/{id} { allow read: if isAdmin(bancaId); allow write: if isAdmin(bancaId); }
+      match /bingo_tickets/{id} {
+        allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
+        allow create: if isLogged();
+      }
     }
   }
 }
