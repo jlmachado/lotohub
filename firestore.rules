@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 🔍 Funções auxiliares de autenticação e cargo
+    // 🔍 Funções auxiliares
     function isLogged() {
       return request.auth != null;
     }
@@ -16,27 +16,7 @@ service cloud.firestore {
     }
 
     function isAdmin(bancaId) {
-      return isLogged() &&
-        getUserData().role == "admin" &&
-        getUserData().bancaId == bancaId;
-    }
-
-    function isPromotor(bancaId) {
-      return isLogged() &&
-        getUserData().role == "promotor" &&
-        getUserData().bancaId == bancaId;
-    }
-
-    function isCambista(bancaId) {
-      return isLogged() &&
-        getUserData().role == "cambista" &&
-        getUserData().bancaId == bancaId;
-    }
-
-    function isUser(bancaId) {
-      return isLogged() &&
-        getUserData().role == "user" &&
-        getUserData().bancaId == bancaId;
+      return isLogged() && (getUserData().role == "admin" || getUserData().role == "superadmin") && (getUserData().bancaId == bancaId || getUserData().role == "superadmin");
     }
 
     function belongsToBanca(bancaId) {
@@ -50,65 +30,77 @@ service cloud.firestore {
 
     // 👤 Perfil do Usuário (Privado)
     match /users/{userId} {
-      allow read, write: if request.auth.uid == userId || isSuperAdmin();
+      allow read, write: if request.auth.uid == userId;
     }
 
     // 🏪 Estrutura de Bancas (Isolamento Multi-Tenant)
     match /bancas/{bancaId} {
 
-      // 🔓 CONFIGURAÇÕES
+      // 🔓 DADOS PÚBLICOS (UI e Resultados)
+      // Visitantes precisam ler essas informações para renderizar o site
       match /configuracoes/{doc} {
-        allow read: if belongsToBanca(bancaId);
-        allow write: if isAdmin(bancaId) || isSuperAdmin();
+        allow read: if true;
+        allow write: if isAdmin(bancaId);
       }
 
-      // 🎰 BINGO / SORTEIOS
-      match /bingo_draws/{docId} {
-        allow read: if belongsToBanca(bancaId);
-        allow write: if isAdmin(bancaId) || isSuperAdmin();
+      match /banners/{id} {
+        allow read: if true;
+        allow write: if isAdmin(bancaId);
       }
 
-      // 🎰 JDB RESULTS (Resultados do Bicho)
-      match /jdbResults/{docId} {
-        allow read: if isLogged();
-        allow write: if isAdmin(bancaId) || isSuperAdmin();
+      match /popups/{id} {
+        allow read: if true;
+        allow write: if isAdmin(bancaId);
       }
 
-      // 🎯 APOSTAS
+      match /news_messages/{id} {
+        allow read: if true;
+        allow write: if isAdmin(bancaId);
+      }
+
+      match /jdbResults/{id} {
+        allow read: if true;
+        allow write: if isAdmin(bancaId);
+      }
+
+      match /snooker/{id} {
+        allow read: if true;
+        allow write: if isAdmin(bancaId);
+      }
+
+      match /bingo_draws/{id} {
+        allow read: if true;
+        allow write: if isAdmin(bancaId);
+      }
+
+      // 🎯 APOSTAS (Privado por Usuário/Banca)
       match /apostas/{apostaId} {
-        allow create: if isCambista(bancaId) || isUser(bancaId);
-        allow read: if
-          isAdmin(bancaId) ||
-          isPromotor(bancaId) ||
-          request.auth.uid == resource.data.userId;
-        allow update: if
-          isAdmin(bancaId) ||
-          isPromotor(bancaId);
-        allow delete: if isAdmin(bancaId);
+        allow create: if isLogged();
+        allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
+        allow update, delete: if isAdmin(bancaId);
+      }
+
+      match /football_bets/{id} {
+        allow create: if isLogged();
+        allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
+        allow update, delete: if isAdmin(bancaId);
       }
 
       // 👥 USUÁRIOS DA BANCA (Gestão interna)
       match /usuarios/{uid} {
-        allow read: if isAdmin(bancaId) || isPromotor(bancaId);
+        allow read: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
         allow write: if isAdmin(bancaId);
       }
 
       // 💸 TRANSAÇÕES (Ledger)
-      match /transacoes/{id} {
-        allow read: if
-          isAdmin(bancaId) ||
-          isPromotor(bancaId) ||
-          request.auth.uid == resource.data.userId;
-        allow write: if
-          isAdmin(bancaId) ||
-          isCambista(bancaId);
-      }
-
-      // 📊 RELATÓRIOS
-      match /relatorios/{id} {
-        allow read: if isAdmin(bancaId) || isPromotor(bancaId);
+      match /ledgerEntries/{id} {
+        allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
         allow write: if isAdmin(bancaId);
       }
+      
+      // 🎱 SNOOKER EXTRAS
+      match /snooker_scoreboards/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
+      match /snooker_sync_logs/{id} { allow read: if isAdmin(bancaId); allow write: if isAdmin(bancaId); }
     }
   }
 }
