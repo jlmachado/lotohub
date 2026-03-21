@@ -35,13 +35,14 @@ export class BaseRepository<T extends { id: string }> {
    * Isolamento: bancas/{bancaId}/{coleção}
    */
   protected getCollection(): CollectionReference<DocumentData> {
-    const bancaId = getCurrentBancaId();
-    
     // Coleções que permanecem globais por definição de sistema
+    // Break recursion: a coleção 'bancas' não deve tentar resolver o contexto de banca
     if (this.collectionName === 'bancas') {
       return collection(this.db, 'bancas');
     }
 
+    const bancaId = getCurrentBancaId();
+    
     // Estrutura Multi-Banca Centralizada
     return collection(this.db, 'bancas', bancaId, this.collectionName);
   }
@@ -70,7 +71,9 @@ export class BaseRepository<T extends { id: string }> {
   }
 
   async save(data: T): Promise<void> {
-    const bancaId = getCurrentBancaId();
+    // Break recursion: se estivermos salvando na coleção de bancas, o bancaId é o próprio ID do objeto
+    const bancaId = this.collectionName === 'bancas' ? data.id : getCurrentBancaId();
+    
     const docRef = doc(this.getCollection(), data.id);
     const now = new Date().toISOString();
     
