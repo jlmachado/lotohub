@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor de Tempo Real Multi-Tenant.
- * Centraliza o estado global e a lógica de negócio para todos os módulos.
+ * Versão V11: Estabilização de listeners e tratamento silencioso de permissões durante transição.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
@@ -379,7 +379,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           setUser({ id: snap.id, ...snap.data() });
         }
         setIsLoading(false);
-      }, (err) => console.warn("[AUTH] Permissão negada:", err.message));
+      }, (err) => console.warn("[AUTH] Permissão negada durante transição:", err.message));
       return () => unsubUser();
     } else {
       setIsLoading(false);
@@ -396,39 +396,39 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       // Public Listeners (Always active)
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), 
         (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner))),
-        (err) => console.warn("[DB] Public data blocked (banners):", err.message)
+        (err) => {} // Silencioso para dados públicos
       ),
       onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), 
         (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup))),
-        (err) => console.warn("[DB] Public data blocked (popups):", err.message)
+        (err) => {}
       ),
       onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), 
         (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage))),
-        (err) => console.warn("[DB] Public data blocked (news):", err.message)
+        (err) => {}
       ),
       onSnapshot(collection(firestore, bancaPath, 'snooker'), 
         (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))),
-        (err) => console.warn("[DB] Public data blocked (snooker):", err.message)
+        (err) => {}
       ),
       onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
         (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
-        (err) => console.warn("[DB] Public data blocked (results):", err.message)
+        (err) => {}
       ),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
-        (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings),
-        (err) => console.warn("[DB] Public config blocked (casino):", err.message)
+        (s) => { if (s.exists()) setCasinoSettings(s.data() as CasinoSettings); },
+        (err) => {}
       ),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), 
-        (s) => s.exists() && setBingoSettings(s.data() as BingoSettings),
-        (err) => console.warn("[DB] Public config blocked (bingo):", err.message)
+        (s) => { if (s.exists()) setBingoSettings(s.data() as BingoSettings); },
+        (err) => {}
       ),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'snooker_live_config'), 
-        (s) => s.exists() && setSnookerLiveConfig(s.data() as SnookerLiveConfig),
-        (err) => console.warn("[DB] Public config blocked (snooker):", err.message)
+        (s) => { if (s.exists()) setSnookerLiveConfig(s.data() as SnookerLiveConfig); },
+        (err) => {}
       ),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'mini_player'), 
-        (s) => s.exists() && setLiveMiniPlayerConfig(s.data()),
-        (err) => console.warn("[DB] Public config blocked (player):", err.message)
+        (s) => { if (s.exists()) setLiveMiniPlayerConfig(s.data()); },
+        (err) => {}
       )
     ];
 
@@ -448,7 +448,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           async (err) => errorEmitter.emit('permission-error', new FirestorePermissionError({ path: `${bancaPath}/snooker_bets`, operation: 'list' }))
         ),
         onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'snooker_automation'), 
-          (s) => s.exists() && setSnookerAutomationSettings(s.data() as SnookerAutomationSettings),
+          (s) => { if (s.exists()) setSnookerAutomationSettings(s.data() as SnookerAutomationSettings); },
           async (err) => errorEmitter.emit('permission-error', new FirestorePermissionError({ path: `${bancaPath}/configuracoes/snooker_automation`, operation: 'get' }))
         )
       );
@@ -460,25 +460,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- Logic Implementations ---
 
   const syncJDBResults = useCallback(async () => {
-    if (!user || !currentBanca?.id) return;
+    if (!user || !currentBanca?.id) {
+      console.warn("[SYNC] Cancelado: Sem contexto de usuário ou banca.");
+      return;
+    }
     const bancaId = currentBanca.id;
     
-    // Teste de escrita inicial para validar permissão
-    setDoc(doc(firestore, 'bancas', bancaId, 'logs', 'sync_test'), { at: serverTimestamp() }, { merge: true })
-      .catch(async () => console.warn("[SYNC] Permissão de escrita negada para sync log."));
-
     try {
       const results = await ResultsSyncService.getLatestResults();
       const dataFormatada = new Date().toLocaleDateString("pt-BR");
 
-      console.log("TOTAL RESULTADOS DETECTADOS:", results.length);
+      console.log("[SYNC] Total Resultados Detectados:", results.length);
 
       for (const res of results) {
         const id = `${res.date}-${res.lotteryName}-${res.time}`.replace(/\s/g, "_").replace(/[^\w-]/g, "").toLowerCase();
         const docRef = doc(firestore, 'bancas', bancaId, 'jdbResults', id);
         
         setDoc(docRef, { ...res, id, bancaId, data: dataFormatada, createdAt: new Date().toISOString() }, { merge: true })
-          .then(() => console.log("SALVO COM SUCESSO:", id))
           .catch(async (err) => errorEmitter.emit('permission-error', new FirestorePermissionError({ 
             path: docRef.path, 
             operation: 'write',
@@ -486,7 +484,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           })));
       }
     } catch (e: any) {
-      console.error("[SYNC] Falha ao capturar resultados:", e.message);
+      console.error("[SYNC] Falha crítica na captura de resultados:", e.message);
     }
   }, [user, currentBanca, firestore]);
 

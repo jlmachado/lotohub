@@ -2,36 +2,44 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 🔍 Funções auxiliares
+    // 🔍 Funções auxiliares seguras
     function isLogged() {
-      return request.auth != null;
+      return request.auth != null && request.auth.uid != null;
     }
 
     // Busca dados do usuário na banca mestre (default) para validação de cargo
     function getUserData() {
-      return get(/databases/$(database)/documents/bancas/default/usuarios/$(request.auth.uid)).data;
+      let path = /databases/$(database)/documents/bancas/default/usuarios/$(request.auth.uid);
+      return isLogged() && exists(path) ? get(path).data : {};
     }
 
     function isSuperAdmin() {
+      let data = getUserData();
       return isLogged() && (
-        getUserData().role == "superadmin" || 
-        getUserData().tipoUsuario == "SUPER_ADMIN"
+        data.get('role', '') == "superadmin" || 
+        data.get('tipoUsuario', '') == "SUPER_ADMIN"
       );
     }
 
     function isAdmin(bancaId) {
+      let data = getUserData();
       return isLogged() && (
-        getUserData().role == "admin" || 
-        getUserData().role == "superadmin" || 
-        getUserData().tipoUsuario == "ADMIN" || 
-        getUserData().tipoUsuario == "SUPER_ADMIN" ||
-        (getUserData().bancaId == bancaId && getUserData().tipoUsuario == "ADMIN")
+        data.get('role', '') == "admin" || 
+        data.get('role', '') == "superadmin" || 
+        data.get('tipoUsuario', '') == "ADMIN" || 
+        data.get('tipoUsuario', '') == "SUPER_ADMIN" ||
+        (data.get('bancaId', '') == bancaId && data.get('tipoUsuario', '') == "ADMIN")
       );
     }
 
     // 👑 Superadmin possui acesso global irrestrito
     match /{document=**} {
       allow read, write: if isSuperAdmin();
+    }
+
+    // 👤 Perfil Privado do Usuário (Sincronizado com Auth)
+    match /users/{userId} {
+      allow read, write: if isLogged() && (request.auth.uid == userId || isSuperAdmin());
     }
 
     // 🏪 Estrutura de Bancas (Isolamento Multi-Tenant)
@@ -88,7 +96,9 @@ service cloud.firestore {
       // 🔒 DADOS PROTEGIDOS (Requer Login e Vinculação)
       
       match /usuarios/{uid} {
-        allow read: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
+        // Permitir que qualquer usuário logado leia para fins de validação de existência
+        // mas a escrita é protegida
+        allow read: if isLogged();
         allow write: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
       }
 

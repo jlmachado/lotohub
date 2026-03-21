@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview Autenticação Multi-Tenant com Sincronização Firestore.
- * Versão V9: Adição de controle de acesso administrativo e auto-seeding de SuperAdmin.
+ * Versão V10: Correção de permissões e segurança na consulta de SuperAdmin.
  */
 
 import { 
@@ -41,11 +41,14 @@ export function canAccessAdmin(user: any): boolean {
   if (!user) return false;
 
   const role = user.role;
+  const tipo = user.tipoUsuario;
 
   return (
     role === "superadmin" ||
     role === "admin" ||
-    role === "cambista"
+    tipo === "SUPER_ADMIN" ||
+    tipo === "ADMIN" ||
+    tipo === "CAMBISTA"
   );
 }
 
@@ -95,10 +98,17 @@ export const login = async (terminalOrEmail: string, password: string): Promise<
 
     if (!userDoc.exists()) {
       // 4. Lógica de Auto-Promoção (Se não existe nenhum superadmin, o primeiro login vira um)
+      // Nota: Esta query requer permissão de 'list' na coleção usuarios
       const usuariosRef = collection(firestore, `bancas/default/usuarios`);
       const q = query(usuariosRef, where("role", "==", "superadmin"), limit(1));
-      const superadminSnapshot = await getDocs(q);
-      const isFirstAdmin = superadminSnapshot.empty;
+      
+      let isFirstAdmin = false;
+      try {
+        const superadminSnapshot = await getDocs(q);
+        isFirstAdmin = superadminSnapshot.empty;
+      } catch (e) {
+        console.warn("[AUTH] Falha ao verificar existência de admin, assumindo não-admin:", e);
+      }
 
       const newUserProfile = {
         id: uid,
@@ -170,8 +180,14 @@ export const register = async (userData: { nome: string; cpf: string; cidade: st
     // 1. Verificar se existe algum superadmin na banca mestre
     const usuariosRef = collection(firestore, `bancas/${bancaId}/usuarios`);
     const q = query(usuariosRef, where("role", "==", "superadmin"), limit(1));
-    const superadminSnapshot = await getDocs(q);
-    const isFirstUser = superadminSnapshot.empty;
+    
+    let isFirstUser = false;
+    try {
+      const superadminSnapshot = await getDocs(q);
+      isFirstUser = superadminSnapshot.empty;
+    } catch (e) {
+      console.warn("[AUTH] Erro ao verificar superadmin durante registro:", e);
+    }
 
     // 2. Criar usuário no Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, systemEmail, password);
