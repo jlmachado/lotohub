@@ -49,7 +49,6 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
 
       // 🔓 DADOS PÚBLICOS (Configurações, Resultados, Banners, Notícias, Sorteios)
-      // Visitantes podem ver o que está acontecendo
       match /configuracoes/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /banners/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /popups/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
@@ -58,9 +57,12 @@ service cloud.firestore {
       match /snooker/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /bingo_draws/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /snooker_scoreboards/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
+      
+      // ⚽ FUTEBOL (Novas subcoleções granulares)
+      match /football_leagues/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
+      match /football_matches/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
 
       // 🔒 DADOS PROTEGIDOS (Apostas, Financeiro, Usuários, Chat)
-      // Exige login
       match /usuarios/{uid} {
         allow read: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
         allow write: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
@@ -113,6 +115,7 @@ service cloud.firestore {
 
     // 🔄 Compatibilidade com Coleções Globais (Legado)
     match /jdbResults/{id} { allow read: if true; allow write: if isSuperAdmin(); }
+    match /football_leagues/{id} { allow read: if true; allow write: if isSuperAdmin(); }
     match /apostas/{id} { allow read, write: if isSuperAdmin(); }
     match /ledgerEntries/{id} { allow read, write: if isSuperAdmin(); }
   }
