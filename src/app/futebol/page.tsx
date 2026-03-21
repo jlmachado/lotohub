@@ -31,11 +31,16 @@ export default function FootballDashboard() {
   [footballData.unifiedMatches]);
 
   const filteredUpcoming = useMemo(() => 
-    upcomingMatches.filter(m => 
-      m.homeTeam.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      m.awayTeam.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.league.toLowerCase().includes(searchTerm.toLowerCase())
-    ), 
+    upcomingMatches.filter(m => {
+      const homeName = (typeof m.homeTeam === 'object' ? m.homeTeam?.name : m.homeTeam) || '';
+      const awayName = (typeof m.awayTeam === 'object' ? m.awayTeam?.name : m.awayTeam) || '';
+      const leagueName = m.league || m.leagueName || '';
+      const term = searchTerm.toLowerCase();
+
+      return homeName.toLowerCase().includes(term) || 
+             awayName.toLowerCase().includes(term) ||
+             leagueName.toLowerCase().includes(term);
+    }), 
   [upcomingMatches, searchTerm]);
 
   const stats = useMemo(() => ({
@@ -80,9 +85,9 @@ export default function FootballDashboard() {
     addBetToSlip({
       id: `${match.id}-${market.replace(/ /g, '_')}-${selection}`,
       matchId: match.id,
-      matchName: `${match.homeTeam} vs ${match.awayTeam}`,
-      homeTeam: match.homeTeam,
-      awayTeam: match.awayTeam,
+      matchName: `${typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam} vs ${typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam}`,
+      homeTeam: typeof match.homeTeam === 'object' ? match.homeTeam.name : match.homeTeam,
+      awayTeam: typeof match.awayTeam === 'object' ? match.awayTeam.name : match.awayTeam,
       market,
       selection,
       pickLabel: selection,
