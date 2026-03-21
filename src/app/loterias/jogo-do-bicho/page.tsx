@@ -12,7 +12,6 @@ import { X, ChevronLeft, MapPin } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { TicketDialog } from '@/components/ticket-dialog';
-import { Switch } from '@/components/ui/switch';
 import { LotteryBetSlip } from '@/components/LotteryBetSlip';
 
 // Define the type for a single bet item
@@ -32,34 +31,6 @@ interface ApostaItem {
   retornoPossivel: number;
 }
 
-const gruposDoBicho = [
-  { grupo: '01', animal: 'Avestruz', dezenas: ['01', '02', '03', '04'] },
-  { grupo: '02', animal: 'Águia', dezenas: ['05', '06', '07', '08'] },
-  { grupo: '03', animal: 'Burro', dezenas: ['09', '10', '11', '12'] },
-  { grupo: '04', animal: 'Borboleta', dezenas: ['13', '14', '15', '16'] },
-  { grupo: '05', animal: 'Cachorro', dezenas: ['17', '18', '19', '20'] },
-  { grupo: '06', animal: 'Cabra', dezenas: ['21', '22', '23', '24'] },
-  { grupo: '07', animal: 'Carneiro', dezenas: ['25', '26', '27', '28'] },
-  { grupo: '08', animal: 'Camelo', dezenas: ['29', '30', '31', '32'] },
-  { grupo: '09', animal: 'Cobra', dezenas: ['33', '34', '35', '36'] },
-  { grupo: '10', animal: 'Coelho', dezenas: ['37', '38', '39', '40'] },
-  { grupo: '11', animal: 'Cavalo', dezenas: ['41', '42', '43', '44'] },
-  { grupo: '12', animal: 'Elefante', dezenas: ['45', '46', '47', '48'] },
-  { grupo: '13', animal: 'Galo', dezenas: ['49', '50', '51', '52'] },
-  { grupo: '14', animal: 'Gato', dezenas: ['53', '54', '55', '56'] },
-  { grupo: '15', animal: 'Jacaré', dezenas: ['57', '58', '59', '60'] },
-  { grupo: '16', animal: 'Leão', dezenas: ['61', '62', '63', '64'] },
-  { grupo: '17', animal: 'Macaco', dezenas: ['65', '66', '67', '68'] },
-  { grupo: '18', animal: 'Porco', dezenas: ['69', '70', '71', '72'] },
-  { grupo: '19', animal: 'Pavão', dezenas: ['73', '74', '75', '76'] },
-  { grupo: '20', animal: 'Peru', dezenas: ['77', '78', '79', '80'] },
-  { grupo: '21', animal: 'Touro', dezenas: ['81', '82', '83', '84'] },
-  { grupo: '22', animal: 'Tigre', dezenas: ['85', '86', '87', '88'] },
-  { grupo: '23', animal: 'Urso', dezenas: ['89', '90', '91', '92'] },
-  { grupo: '24', animal: 'Veado', dezenas: ['93', '94', '95', '96'] },
-  { grupo: '25', animal: 'Vaca', dezenas: ['97', '98', '99', '00'] }
-];
-
 const modalidadesBase = [
     { nome: 'Grupo', id: 'grupo', multiplicador: '18x', numeroCount: 1, digitLength: 2 },
     { nome: 'Milhar', id: 'milhar', multiplicador: '5000x', numeroCount: 1, digitLength: 4 },
@@ -77,7 +48,7 @@ const modalidadesBase = [
 
 export default function JogoDoBichoPage() {
   const [step, setStep] = useState(1);
-  const { handleFinalizarAposta, jdbLoterias } = useAppContext();
+  const { handleFinalizarAposta, jdbLoterias = [] } = useAppContext();
   const { toast } = useToast();
 
   const [apostaData, setApostaData] = useState<'hoje' | 'amanha' | undefined>();
@@ -89,7 +60,6 @@ export default function JogoDoBichoPage() {
   const [numeroInput, setNumeroInput] = useState('');
   const [numeros, setNumeros] = useState<string[]>([]);
   const [valor, setValor] = useState('');
-  const [divideValor, setDivideValor] = useState(true);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [bilhete, setBilhete] = useState<ApostaItem[]>([]);
   
@@ -98,7 +68,7 @@ export default function JogoDoBichoPage() {
   const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
 
   const loteriasEnriquecidas = useMemo(() => {
-    return jdbLoterias.map(l => {
+    return (jdbLoterias || []).map(l => {
       let state = l.stateName || '';
       if (!state) {
         const nomeLower = l.nome.toLowerCase();
@@ -129,10 +99,10 @@ export default function JogoDoBichoPage() {
     return loteriasEnriquecidas.filter(l => l.stateName === estadoSelecionado);
   }, [loteriasEnriquecidas, estadoSelecionado]);
 
-  const selectedJDBLoteria = useMemo(() => jdbLoterias.find(l => l.id === loteria), [jdbLoterias, loteria]);
+  const selectedJDBLoteria = useMemo(() => (jdbLoterias || []).find(l => l.id === loteria), [jdbLoterias, loteria]);
 
   const modalidades = useMemo(() => {
-    if (!selectedJDBLoteria) return [];
+    if (!selectedJDBLoteria) return modalidadesBase;
     return modalidadesBase.map(baseMod => {
       const customMod = selectedJDBLoteria.modalidades.find(m => m.nome.toLowerCase() === baseMod.nome.toLowerCase());
       if (customMod) return { ...baseMod, multiplicador: `${customMod.multiplicador}x` };
@@ -170,19 +140,6 @@ export default function JogoDoBichoPage() {
     return allColocacoes;
   }, [selectedModalidade]);
 
-  const handleGrupoClick = (grupo: string) => {
-    if (!selectedModalidade) return;
-    if (numeros.includes(grupo)) {
-      setNumeros(numeros.filter((n) => n !== grupo));
-    } else {
-      if (selectedModalidade.numeroCount === 1 || numeros.length < selectedModalidade.numeroCount) {
-        setNumeros([...numeros, grupo]);
-      } else {
-        toast({ variant: 'destructive', title: 'Limite Atingido' });
-      }
-    }
-  };
-
   const resetFullForm = () => {
     setStep(1);
     setApostaData(undefined);
@@ -200,7 +157,7 @@ export default function JogoDoBichoPage() {
     const valorTotalFloat = parseFloat(valor.replace(',', '.')) || 0;
     const divisorColocacao = colocacao === '1-premio' ? 1 : parseInt(colocacao.match(/\d+/g)?.[1] || '1');
     const multiplicador = parseFloat(selectedModalidade.multiplicador);
-    const valorPorAposta = (divideValor && selectedModalidade.numeroCount === 1 && numeros.length > 1) ? valorTotalFloat / numeros.length : valorTotalFloat;
+    const valorPorAposta = valorTotalFloat;
 
     const novasApostas: ApostaItem[] = (selectedModalidade.numeroCount === 1 ? numeros : [numeros.join(',')]).map(numStr => ({
       id: Date.now() + Math.random(),
@@ -227,21 +184,21 @@ export default function JogoDoBichoPage() {
     if (bilhete.length === 0 || isFinalizing) return;
     setIsFinalizing(true);
     const totalBilheteValue = bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0);
-    const pouleId = handleFinalizarAposta({
+    handleFinalizarAposta({
       loteria: 'Jogo do Bicho',
       concurso: 'Manual',
       data: new Date().toLocaleString('pt-BR'),
       valor: `R$ ${totalBilheteValue.toFixed(2).replace('.', ',')}`,
       numeros: bilhete.map(b => `${b.modalidadeLabel}: ${b.numeros.join(',')}`).join('; '),
       detalhes: bilhete,
-    }, totalBilheteValue);
-
-    if (pouleId) {
-      setGeneratedTicketId(pouleId);
-      setTicketGenerationTime(new Date().toLocaleString('pt-BR'));
-      setIsTicketDialogOpen(true);
-    }
-    setIsFinalizing(false);
+    }, totalBilheteValue).then(pouleId => {
+      if (pouleId) {
+        setGeneratedTicketId(pouleId);
+        setTicketGenerationTime(new Date().toLocaleString('pt-BR'));
+        setIsTicketDialogOpen(true);
+      }
+      setIsFinalizing(false);
+    });
   };
 
   const getStepDescription = (stepNum: number) => {

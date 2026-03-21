@@ -4,7 +4,7 @@
  * @fileOverview AppContext Professional - Motor Multi-Banca em Tempo Real com Fallback Híbrido.
  */
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getSession, logout as authLogout } from '@/utils/auth';
@@ -19,18 +19,28 @@ import { LedgerService } from '@/services/ledger-service';
 import { generatePoule } from '@/utils/generatePoule';
 import { JDBNormalizedResult } from '@/types/result-types';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
-import { SnookerSyncService } from '@/services/snooker-sync-service';
-import { ResultsSyncService } from '@/services/results-sync-service';
-import { filterProfanity } from '@/utils/profanity-filter';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { MigrationService } from '@/services/migration-service';
-import { espnService } from '@/services/espn-api-service';
-import { MatchMapperService } from '@/services/match-mapper-service';
-import { FootballOddsEngine } from '@/services/football-odds-engine';
-import { FootballMarketsEngine } from '@/services/football-markets-engine';
 
 // --- Interfaces ---
+export interface JDBLoteria {
+  id: string;
+  bancaId: string;
+  nome: string;
+  stateName?: string;
+  stateCode?: string;
+  modalidades: { nome: string; multiplicador: string }[];
+  dias: Record<string, { selecionado: boolean; horarios: string[] }>;
+}
+
+export interface GenericLotteryConfig {
+  id: string;
+  nome: string;
+  status: 'Ativa' | 'Inativa';
+  horarios: { dia: string; horas: string }[];
+  multiplicadores: { modalidade: string; multiplicador: string }[];
+}
+
 export interface Banner { id: string; title: string; imageUrl: string; active: boolean; position: number; bancaId: string; content?: string; linkUrl?: string; startAt?: string; endAt?: string; thumbUrl?: string; imageMeta?: any; }
 export interface Popup { id: string; title: string; imageUrl: string; active: boolean; priority: number; bancaId: string; description?: string; linkUrl?: string; buttonText?: string; startAt?: string; endAt?: string; thumbUrl?: string; imageMeta?: any; }
 export interface NewsMessage { id: string; text: string; order: number; active: boolean; bancaId: string; }
@@ -182,6 +192,8 @@ interface AppContextType {
   apostas: any[]; snookerChannels: any[];
   jdbResults: JDBNormalizedResult[];
   postedResults: JDBNormalizedResult[];
+  jdbLoterias: JDBLoteria[];
+  genericLotteryConfigs: GenericLotteryConfig[];
   allUsers: any[];
   
   // Football
@@ -252,12 +264,8 @@ interface AppContextType {
   updateBingoSettings: (cfg: BingoSettings) => void;
   createBingoDraw: (data: any) => void;
   startBingoDraw: (id: string) => void;
-  drawBingoBall: (id: string) => void;
   finishBingoDraw: (id: string) => void;
-  cancelBingoDraw: (id: string, reason: string) => void;
   buyBingoTickets: (drawId: string, count: number) => boolean;
-  refundBingoTicket: (id: string) => void;
-  payBingoPayout: (id: string) => void;
 
   // Casino Actions
   updateCasinoSettings: (cfg: CasinoSettings) => void;
@@ -308,6 +316,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [ledger, setLedger] = useState<any[]>([]);
   const [apostas, setApostas] = useState<any[]>([]);
   const [jdbResults, setJdbResults] = useState<JDBNormalizedResult[]>([]);
+  const [jdbLoterias, setJdbLoterias] = useState<JDBLoteria[]>([]);
+  const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<GenericLotteryConfig[]>([]);
   
   // Football
   const [footballLeagues, setFootballLeagues] = useState<ESPNLeagueConfig[]>([]);
@@ -349,12 +359,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const unsubUser = onSnapshot(userRef, (snap) => {
         if (snap.exists()) {
           setUser({ id: snap.id, ...snap.data() });
-        } else {
-          console.warn("[Auth] User document not found in banca:", bancaId);
         }
         setIsLoading(false);
       }, (err) => {
-        console.error("[Auth] User snapshot error:", err);
         setIsLoading(false);
       });
       return () => unsubUser();
@@ -371,24 +378,40 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const unsubscribers: any[] = [];
 
-    // --- Public Listeners (Should not fail for anyone) ---
+    // --- Public Listeners ---
     try {
       unsubscribers.push(
         onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), 
           (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner))),
-          (err) => console.warn("[Snapshot] Banners blocked (likely missing document)", err.message)),
+          (err) => console.warn("[Snapshot] Banners blocked")),
         onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), 
           (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup))),
-          (err) => console.warn("[Snapshot] Popups blocked", err.message)),
+          (err) => console.warn("[Snapshot] Popups blocked")),
         onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), 
           (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage))),
-          (err) => console.warn("[Snapshot] News blocked", err.message)),
+          (err) => console.warn("[Snapshot] News blocked")),
         onSnapshot(collection(firestore, bancaPath, 'snooker'), 
           (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))),
-          (err) => console.warn("[Snapshot] Snooker blocked", err.message)),
+          (err) => console.warn("[Snapshot] Snooker blocked")),
         onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
           (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
-          (err) => console.warn("[Snapshot] JDB Results blocked", err.message)),
+          (err) => console.warn("[Snapshot] JDB Results blocked")),
+        onSnapshot(collection(firestore, 'jdbResults'), // Fallback global
+          (s) => {
+            const globalResults = s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult));
+            setJdbResults(prev => {
+              const map = new Map();
+              prev.forEach(r => map.set(r.id, r));
+              globalResults.forEach(r => map.set(r.id, r));
+              return Array.from(map.values()).sort((a,b) => b.time.localeCompare(a.time));
+            });
+          }),
+        onSnapshot(collection(firestore, bancaPath, 'jdbLoterias'), 
+          (s) => setJdbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBLoteria))),
+          (err) => console.warn("[Snapshot] JDB Loterias blocked")),
+        onSnapshot(collection(firestore, bancaPath, 'genericLotteryConfigs'), 
+          (s) => setGenericLotteryConfigs(s.docs.map(d => ({ id: d.id, ...d.data() } as GenericLotteryConfig))),
+          (err) => console.warn("[Snapshot] Generic Loterias blocked")),
         onSnapshot(collection(firestore, bancaPath, 'football_leagues'), (s) => {
           const loaded = s.docs.map(d => ({ id: d.id, ...d.data() } as ESPNLeagueConfig));
           if (loaded.length === 0) setFootballLeagues(ESPN_LEAGUE_CATALOG);
@@ -400,29 +423,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               return Array.from(map.values()).sort((a,b) => a.priority - b.priority);
             });
           }
-        }, (err) => console.warn("[Snapshot] Football leagues blocked", err.message)),
+        }),
         onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
-          (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings),
-          (err) => console.warn("[Snapshot] Casino settings blocked", err.message)),
+          (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings)),
         onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), 
-          (s) => s.exists() && setBingoSettings(s.data() as BingoSettings),
-          (err) => console.warn("[Snapshot] Bingo settings blocked", err.message)),
+          (s) => s.exists() && setBingoSettings(s.data() as BingoSettings)),
         onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'snooker_live_config'), 
-          (s) => s.exists() && setSnookerLiveConfig(s.data() as SnookerLiveConfig),
-          (err) => console.warn("[Snapshot] Snooker config blocked", err.message)),
+          (s) => s.exists() && setSnookerLiveConfig(s.data() as SnookerLiveConfig)),
         onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'mini_player'), 
-          (s) => s.exists() && setLiveMiniPlayerConfig(s.data()),
-          (err) => console.warn("[Snapshot] Mini player config blocked", err.message))
+          (s) => s.exists() && setLiveMiniPlayerConfig(s.data()))
       );
     } catch (e) {
       console.warn("[Snapshot] Setup error:", e);
     }
 
-    // --- Protected Listeners (Only for logged-in users) ---
+    // --- Protected Listeners ---
     if (user) {
       const isPrivileged = user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN';
       
-      // Filter bets and ledger by userId if not an admin to satisfy security rules and avoid permission errors
       const apostasQuery = isPrivileged 
         ? query(collection(firestore, bancaPath, 'apostas'), orderBy('createdAt', 'desc'), limit(50))
         : query(collection(firestore, bancaPath, 'apostas'), where('userId', '==', user.id), orderBy('createdAt', 'desc'), limit(50));
@@ -431,71 +449,40 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         ? query(collection(firestore, bancaPath, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100))
         : query(collection(firestore, bancaPath, 'ledgerEntries'), where('userId', '==', user.id), orderBy('createdAt', 'desc'), limit(100));
 
-      const snookerBetsQuery = isPrivileged
-        ? collection(firestore, bancaPath, 'snooker_bets')
-        : query(collection(firestore, bancaPath, 'snooker_bets'), where('userId', '==', user.id));
-
       unsubscribers.push(
-        onSnapshot(apostasQuery, (s) => setApostas(s.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.error("[Snapshot Error] apostas", err)),
-        onSnapshot(ledgerQuery, (s) => setLedger(s.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.error("[Snapshot Error] ledger", err)),
-        onSnapshot(snookerBetsQuery, (s) => setSnookerBets(s.docs.map(d => ({ id: d.id, ...d.data() } as SnookerBet))), (err) => console.error("[Snapshot Error] snooker_bets", err))
+        onSnapshot(apostasQuery, (s) => setApostas(s.docs.map(d => ({ id: d.id, ...d.data() })))),
+        onSnapshot(ledgerQuery, (s) => setLedger(s.docs.map(d => ({ id: d.id, ...d.data() })))),
+        onSnapshot(collection(firestore, bancaPath, 'snooker_bets'), (s) => setSnookerBets(s.docs.map(d => ({ id: d.id, ...d.data() } as SnookerBet))))
       );
 
       if (isPrivileged) {
-        unsubscribers.push(onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.error("[Snapshot Error] usuarios", err)));
+        unsubscribers.push(onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() })))) );
       }
     }
 
     return () => unsubscribers.forEach(unsub => { if (typeof unsub === 'function') unsub(); });
   }, [firestore, user, contextTicker]);
 
-  // --- Futebol Logic ---
-
-  const syncFootballAll = async (force = false) => {
-    if (syncStatus === 'syncing') return;
-    setSyncStatus('syncing');
+  const addJDBLoteria = (loteria: any) => {
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
-
-    try {
-      console.log(`[Football Sync] Iniciando para banca: ${bancaId}`);
-      for (const league of ESPN_LEAGUE_CATALOG) {
-        const docRef = doc(firestore, `bancas/${bancaId}/football_leagues`, league.id);
-        await setDoc(docRef, league, { merge: true });
-      }
-      
-      setLastSyncAt(new Date().toISOString());
-      setSyncStatus('idle');
-      toast({ title: "Sincronização concluída" });
-    } catch (e) {
-      console.error("[Football Sync] Erro:", e);
-      setSyncStatus('error');
-    }
+    setDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, loteria.id), loteria, { merge: true });
   };
 
-  const updateLeagueConfig = async (id: string, updates: Partial<ESPNLeagueConfig>) => {
+  const updateJDBLoteria = (loteria: any) => {
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
-    const docRef = doc(firestore, `bancas/${bancaId}/football_leagues`, id);
-    try {
-      await setDoc(docRef, updates, { merge: true });
-      toast({ title: "Configuração atualizada" });
-    } catch (e) {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'update' }));
-    }
+    setDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, loteria.id), loteria, { merge: true });
   };
 
-  // --- Bingo Logic ---
-  const updateBingoSettings = (cfg: BingoSettings) => {
+  const deleteJDBLoteria = (id: string) => {
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
-    setDoc(doc(firestore, `bancas/${bancaId}/configuracoes/bingo_settings`), cfg, { merge: true });
+    deleteDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, id));
   };
 
-  // --- Casino Logic ---
-  const updateCasinoSettings = (cfg: CasinoSettings) => {
+  const updateGenericLottery = (cfg: any) => {
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
-    setDoc(doc(firestore, `bancas/${bancaId}/configuracoes/casino_settings`), cfg, { merge: true });
+    setDoc(doc(firestore, `bancas/${bancaId}/genericLotteryConfigs`, cfg.id), cfg, { merge: true });
   };
 
-  // --- Authentication & Utils ---
   const logout = () => { authLogout(); setUser(null); router.push('/login'); };
 
   const handleFinalizarAposta = async (aposta: any, valorTotal: number) => {
@@ -522,30 +509,38 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return null;
   };
 
+  const syncFootballAll = async (force = false) => {
+    if (syncStatus === 'syncing') return;
+    setSyncStatus('syncing');
+    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+    try {
+      for (const league of footballLeagues) {
+        const docRef = doc(firestore, `bancas/${bancaId}/football_leagues`, league.id);
+        await setDoc(docRef, league, { merge: true });
+      }
+      setLastSyncAt(new Date().toISOString());
+      setSyncStatus('idle');
+      toast({ title: "Sincronização concluída" });
+    } catch (e) {
+      setSyncStatus('error');
+    }
+  };
+
   const value: AppContextType = {
     user, allUsers, isLoading, currentBanca, subdomain: currentBanca?.subdomain || null,
     balance: user?.saldo || 0,
     bonus: user?.bonus || 0,
     ledger, banners, popups, news, apostas, 
-    jdbResults, 
-    postedResults: jdbResults,
+    jdbResults, postedResults: jdbResults, jdbLoterias, genericLotteryConfigs,
     
-    // Football
-    footballData: { 
-      leagues: footballLeagues, 
-      matches: footballMatches, 
-      unifiedMatches: footballMatches, 
-      syncStatus, 
-      lastSyncAt 
-    },
-    footballBets: [], 
-    betSlip,
+    footballData: { leagues: footballLeagues, matches: footballMatches, unifiedMatches: footballMatches, syncStatus, lastSyncAt },
+    footballBets: [], betSlip,
     syncFootballAll,
     addBetToSlip: (item) => setBetSlip(prev => [...prev, item]),
     removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)),
     clearBetSlip: () => setBetSlip([]),
     placeFootballBet: async () => null,
-    updateLeagueConfig,
+    updateLeagueConfig: (id, updates) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/football_leagues`, id), updates, { merge: true }),
 
     snookerPresence: {}, snookerSyncState, celebrationTrigger: false, snookerLiveConfig,
     snookerBets, snookerFinancialHistory: [], snookerChatMessages: [], snookerCashOutLog: [],
@@ -557,9 +552,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     liveMiniPlayerConfig,
     
     refreshData: () => setContextTicker(t => t + 1), 
-    logout, 
-    handleFinalizarAposta,
-    processarResultados: async () => {},
+    logout, handleFinalizarAposta,
+    processarResultados: async (data) => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      const id = `manual-${data.loteria}-${data.data}-${data.horario}`;
+      await setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, id), { ...data, id, status: 'PUBLICADO', importedAt: new Date().toISOString() }, { merge: true });
+    },
     syncSnookerFromYoutube: async () => {}, joinChannel: () => {}, leaveChannel: () => {}, 
     clearCelebration: () => {}, sendSnookerChatMessage: () => {}, sendSnookerReaction: () => {}, 
     placeSnookerBet: () => false, cashOutSnookerBet: () => {}, settleSnookerRound: () => {}, 
@@ -568,11 +566,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     updateSnookerScoreRecognitionSettings: () => {}, updateSnookerAutomationSettings: () => {},
     updateSnookerAutomationSource: () => {}, toggleSnookerSource: () => {}, approveAutoSnookerChannel: () => {}, 
     archiveAutoSnookerChannel: () => {}, clearSnookerSyncLogs: () => {}, setManualPrimarySnookerChannel: () => {},
-    updateBingoSettings,
+    updateBingoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/bingo_settings`), cfg, { merge: true }),
     createBingoDraw: () => {}, startBingoDraw: () => {}, drawBingoBall: () => {}, 
-    finishBingoDraw: () => {}, cancelBingoDraw: () => {}, buyBingoTickets: () => true, refundBingoTicket: () => {}, 
-    payBingoPayout: () => {}, 
-    updateCasinoSettings,
+    finishBingoDraw: () => {}, buyBingoTickets: () => true,
+    updateCasinoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/casino_settings`), cfg, { merge: true }),
     updateBanner: (b) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', b.id), b, { merge: true }),
     addBanner: (b) => { const id = `banner-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id), { ...b, id }, { merge: true }); },
     deleteBanner: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id)),
@@ -583,16 +580,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     addNews: (n) => { const id = `news-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id), { ...n, id }, { merge: true }); },
     deleteNews: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id)),
     updateLiveMiniPlayerConfig: (cfg) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'configuracoes', 'mini_player'), cfg, { merge: true }),
-    syncJDBResults: async () => {},
-    deleteJDBResult: async () => {},
-    publishJDBResult: async () => {},
+    syncJDBResults: async () => {}, deleteJDBResult: async () => {}, publishJDBResult: async () => {},
     fullLedger: ledger,
-    genericLotteryConfigs: [],
-    updateGenericLottery: () => {},
-    activeBancaId: user?.bancaId || getCurrentBancaId() || 'default',
-    addJDBLoteria: () => {},
-    updateJDBLoteria: () => {},
-    deleteJDBLoteria: () => {}
+    updateGenericLottery, activeBancaId: user?.bancaId || getCurrentBancaId() || 'default',
+    addJDBLoteria, updateJDBLoteria, deleteJDBLoteria
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
