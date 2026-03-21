@@ -30,8 +30,8 @@ export interface NormalizedESPNMatch {
     score: number;
     winner?: boolean;
   };
-  venue?: string;
-  broadcast?: string;
+  venue?: string | null;
+  broadcast?: string | null;
 }
 
 export interface NormalizedESPNStanding {
@@ -68,35 +68,36 @@ export const normalizeESPNScoreboard = (data: any, leagueSlug: string): Normaliz
     if (statusType === 'STATUS_POSTPONED') internalStatus = 'POSTPONED';
     if (statusType === 'STATUS_CANCELED') internalStatus = 'CANCELLED';
 
+    // Higienização de dados: Firestore não aceita 'undefined'. Usar fallback para null ou string.
     return {
       id: event.id,
       leagueSlug,
       leagueName,
-      name: event.name,
-      shortName: event.shortName,
+      name: event.name || 'Unknown Match',
+      shortName: event.shortName || 'Unknown',
       date: event.date,
       status: internalStatus,
       statusDetail: event.status?.type?.detail || '',
-      period: event.status?.period,
-      clock: event.status?.displayClock,
+      period: event.status?.period || 0,
+      clock: event.status?.displayClock || '',
       homeTeam: {
-        id: homeCompetitor?.team?.id,
-        name: homeCompetitor?.team?.displayName,
-        abbreviation: homeCompetitor?.team?.abbreviation,
+        id: homeCompetitor?.team?.id || '0',
+        name: homeCompetitor?.team?.displayName || 'Home Team',
+        abbreviation: homeCompetitor?.team?.abbreviation || 'HOM',
         logo: homeCompetitor?.team?.logo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png',
         score: parseInt(homeCompetitor?.score || '0'),
-        winner: homeCompetitor?.winner
+        winner: homeCompetitor?.winner || false
       },
       awayTeam: {
-        id: awayCompetitor?.team?.id,
-        name: awayCompetitor?.team?.displayName,
-        abbreviation: awayCompetitor?.team?.abbreviation,
+        id: awayCompetitor?.team?.id || '0',
+        name: awayCompetitor?.team?.displayName || 'Away Team',
+        abbreviation: awayCompetitor?.team?.abbreviation || 'AWY',
         logo: awayCompetitor?.team?.logo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png',
         score: parseInt(awayCompetitor?.score || '0'),
-        winner: awayCompetitor?.winner
+        winner: awayCompetitor?.winner || false
       },
-      venue: competition?.venue?.fullName,
-      broadcast: competition?.broadcasts?.[0]?.names?.[0]
+      venue: competition?.venue?.fullName || null,
+      broadcast: competition?.broadcasts?.[0]?.names?.[0] || null
     };
   });
 };
