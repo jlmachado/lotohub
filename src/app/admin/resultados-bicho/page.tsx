@@ -24,11 +24,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { downloadCSV } from '@/utils/csvUtils';
 
 export default function AdminJDBResultsProfessionalPage() {
-  const { jdbResults, publishJDBResult, deleteJDBResult } = useAppContext();
+  const { jdbResults, deleteJDBResult, syncJDBResults } = useAppContext();
   const { toast } = useToast();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
+  const [dateFilter, setDateFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('all');
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedResult, setSelectedResult] = useState<JDBNormalizedResult | null>(null);
@@ -37,6 +37,9 @@ export default function AdminJDBResultsProfessionalPage() {
   const [autoSyncCfg, setAutoSyncCfg] = useState<AutoSyncConfig>(ResultsAutoSyncService.getConfig());
 
   useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    setDateFilter(today);
+    
     const handleDataChange = () => {
       setAutoSyncCfg(ResultsAutoSyncService.getConfig());
     };
@@ -52,9 +55,10 @@ export default function AdminJDBResultsProfessionalPage() {
   }), [jdbResults, dateFilter]);
 
   const filteredResults = useMemo(() => {
-    return jdbResults
+    console.log(`[Admin] Filtering jdbResults: ${jdbResults.length} total items`);
+    const filtered = jdbResults
       .filter(r => {
-        const matchDate = r.date === dateFilter;
+        const matchDate = r.date === dateFilter || !dateFilter;
         const matchState = stateFilter === 'all' || r.stateCode === stateFilter;
         const matchSearch = r.lotteryName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                             r.extractionName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -62,18 +66,19 @@ export default function AdminJDBResultsProfessionalPage() {
         return matchDate && matchState && matchSearch;
       })
       .sort((a, b) => b.time.localeCompare(a.time));
+    
+    console.log(`[Admin] Displaying ${filtered.length} filtered results`);
+    return filtered;
   }, [jdbResults, dateFilter, stateFilter, searchTerm]);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
     try {
-      const summary = await ResultsAutoSyncService.forceRun();
-      if (summary) {
-        toast({ 
-          title: "Sincronização Finalizada", 
-          description: `${summary.news} novos resultados foram publicados automaticamente.` 
-        });
-      }
+      await syncJDBResults();
+      toast({ 
+        title: "Sincronização Finalizada", 
+        description: "Os resultados foram atualizados a partir do scraper." 
+      });
     } catch (e) {
       toast({ variant: "destructive", title: "Erro no Sync" });
     } finally {
@@ -94,20 +99,20 @@ export default function AdminJDBResultsProfessionalPage() {
 
     const exportData = filteredResults.map(res => {
       const row: any = {
-        'Data': new Date(res.date + 'T12:00:00').toLocaleDateString('pt-BR'),
+        'Data': res.date,
         'Hora': res.time,
         'Estado': res.stateName,
         'Banca': res.extractionName,
         'Status': res.status,
       };
       
-      // Exporta até 10 prêmios dinamicamente
+      const prizes = Array.isArray(res.prizes) ? res.prizes : [];
       for (let i = 1; i <= 10; i++) {
-        const p = res.prizes.find(p => p.position === i);
-        row[`${i}º prêmio`] = p ? `${p.milhar} - Gr. ${p.grupo} - ${p.animal}` : '';
+        const p = prizes.find((p: any) => (p.position || p.pos) === i);
+        row[`${i}º prêmio`] = p ? `${p.milhar || p.valor} - Gr. ${p.grupo} - ${p.animal || p.bicho}` : '';
       }
       
-      row['Capturado em'] = new Date(res.importedAt).toLocaleString('pt-BR');
+      row['Capturado em'] = res.importedAt;
       return row;
     });
 
@@ -209,7 +214,7 @@ export default function AdminJDBResultsProfessionalPage() {
             </TableHeader>
             <TableBody>
               {filteredResults.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum resultado.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">Nenhum resultado encontrado para este filtro.</TableCell></TableRow>
               ) : (
                 filteredResults.map(result => (
                   <TableRow key={result.id} className="border-white/5 hover:bg-white/5 transition-colors">
@@ -222,10 +227,10 @@ export default function AdminJDBResultsProfessionalPage() {
                     </TableCell>
                     <TableCell>
                       <div className="grid grid-cols-5 gap-1 max-w-[250px]">
-                        {result.prizes.map((p, i) => (
+                        {(Array.isArray(result.prizes) ? result.prizes : []).slice(0, 5).map((p: any, i: number) => (
                           <div key={i} className="flex flex-col items-center bg-black/20 border border-white/5 rounded px-1 py-0.5 min-w-[42px]">
-                            <span className="text-[9px] font-black text-white font-mono leading-none">{p.milhar}</span>
-                            <span className="text-[6px] font-bold text-primary uppercase leading-tight">{p.animal}</span>
+                            <span className="text-[9px] font-black text-white font-mono leading-none">{p.milhar || p.valor}</span>
+                            <span className="text-[6px] font-bold text-primary uppercase leading-tight">{p.animal || p.bicho}</span>
                           </div>
                         ))}
                       </div>
@@ -260,15 +265,15 @@ export default function AdminJDBResultsProfessionalPage() {
           {selectedResult && (
             <div className="space-y-6 py-4">
               <div className="bg-black/30 p-4 rounded-2xl border border-white/10">
-                <h4 className="text-[10px] font-black uppercase text-primary tracking-widest mb-4">Prêmios ({selectedResult.prizes.length})</h4>
+                <h4 className="text-[10px] font-black uppercase text-primary tracking-widest mb-4">Prêmios ({(selectedResult.prizes || []).length})</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {selectedResult.prizes.map((p, idx) => (
+                  {(Array.isArray(selectedResult.prizes) ? selectedResult.prizes : []).map((p: any, idx: number) => (
                     <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-white/5 border border-white/5">
-                      <span className="text-[10px] font-black text-slate-500">{p.position}º</span>
+                      <span className="text-[10px] font-black text-slate-500">{p.position || p.pos}º</span>
                       <div className="flex items-center gap-4">
-                        <span className="font-mono text-lg font-black text-white">{p.milhar}</span>
+                        <span className="font-mono text-lg font-black text-white">{p.milhar || p.valor}</span>
                         <div className="w-20 text-right">
-                          <p className="text-[10px] font-black text-primary uppercase italic leading-none">{p.animal}</p>
+                          <p className="text-[10px] font-black text-primary uppercase italic leading-none">{p.animal || p.bicho}</p>
                           <p className="text-[8px] text-muted-foreground font-bold uppercase">Gr: {p.grupo}</p>
                         </div>
                       </div>

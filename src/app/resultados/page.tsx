@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Header } from '@/components/header';
@@ -16,7 +15,7 @@ import { JDB_STATES } from '@/utils/jdb-constants';
 import { cn } from '@/lib/utils';
 
 export default function ResultadosPublicPage() {
-  const { jdbResults, refreshData, syncJDBResults } = useAppContext();
+  const { jdbResults, syncJDBResults } = useAppContext();
   const { toast } = useToast();
 
   const [date, setDate] = useState('');
@@ -25,7 +24,6 @@ export default function ResultadosPublicPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
-  // Initialize data and mount state on client side only to avoid hydration mismatch
   useEffect(() => {
     setIsMounted(true);
     const today = new Date().toISOString().split('T')[0];
@@ -52,14 +50,18 @@ export default function ResultadosPublicPage() {
     if (!isMounted || !date) return [];
     
     const localeDate = formattedDateLabel;
+    console.log(`[UI] Filtering results for date: ${date} (${localeDate})`);
 
-    return jdbResults.filter(r => {
-      // Filtro por data formatada PT-BR ou ISO
+    const filtered = jdbResults.filter(r => {
+      // Robust date match: PT-BR or ISO
       const matchDate = r.data === localeDate || r.date === date;
       const matchState = selectedState === 'all' || r.stateCode === selectedState;
       const matchTime = selectedTime === 'all' || r.time === selectedTime;
       return matchDate && matchState && matchTime;
     }).sort((a, b) => b.time.localeCompare(a.time));
+
+    console.log(`[UI] Found ${filtered.length} matching results`);
+    return filtered;
   }, [jdbResults, date, formattedDateLabel, selectedState, selectedTime, isMounted]);
 
   const handleSearchResults = async () => {
@@ -76,14 +78,15 @@ export default function ResultadosPublicPage() {
   };
 
   const handlePrint = (result: any) => {
-    const firstPrize = result.prizes.find((p: any) => p.position === 1);
+    const prizes = Array.isArray(result.prizes) ? result.prizes : [];
+    const firstPrize = prizes.find((p: any) => p.position === 1 || p.pos === 1);
     
     const ticketData = {
       banca: 'LOTOHUB',
       title: 'RESULTADO OFICIAL',
       ticketId: 'RES-' + result.id.split('-').pop()?.substring(0, 8),
       terminal: 'SINC QUADRO',
-      datetime: `${result.data} ${result.time}`,
+      datetime: `${result.data || result.date} ${result.time}`,
       estado: result.stateName,
       loteria: result.extractionName,
       horario: result.time,
@@ -91,15 +94,15 @@ export default function ResultadosPublicPage() {
       cliente: 'Público',
       vendedor: 'Sistema LotoHub',
       firstPrize: firstPrize ? {
-        milhar: firstPrize.milhar,
-        centena: firstPrize.milhar.slice(-3),
-        dezena: firstPrize.milhar.slice(-2),
+        milhar: firstPrize.milhar || firstPrize.valor,
+        centena: (firstPrize.milhar || firstPrize.valor || '').slice(-3),
+        dezena: (firstPrize.milhar || firstPrize.valor || '').slice(-2),
         grupo: firstPrize.grupo,
-        animal: firstPrize.animal
+        animal: firstPrize.animal || firstPrize.bicho
       } : null,
-      apostas: result.prizes.map((p: any) => ({
-        modalidade: `${p.position}º`,
-        numero: `${p.milhar} | Gr. ${p.grupo} - ${p.animal.toUpperCase()}`,
+      apostas: prizes.map((p: any) => ({
+        modalidade: `${p.position || p.pos}º`,
+        numero: `${p.milhar || p.valor} | Gr. ${p.grupo} - ${(p.animal || p.bicho || '').toUpperCase()}`,
         valor: `Gr. ${p.grupo}`
       })),
       total: 'RESULTADO PUBLICADO',
@@ -194,14 +197,14 @@ export default function ResultadosPublicPage() {
                 </div>
                 <CardContent className="p-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {res.prizes.map((p: any, idx: number) => (
+                    {(Array.isArray(res.prizes) ? res.prizes : []).map((p: any, idx: number) => (
                       <div key={`${res.id}-${idx}`} className="flex items-center justify-between p-3 bg-black/20 border border-white/5 rounded-xl">
                         <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-black text-slate-500 w-5">{p.position}º</span>
-                          <span className="text-xl font-black font-mono text-white tracking-tighter">{p.milhar}</span>
+                          <span className="text-[10px] font-black text-slate-500 w-5">{p.position || p.pos}º</span>
+                          <span className="text-xl font-black font-mono text-white tracking-tighter">{p.milhar || p.valor}</span>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-primary uppercase italic leading-none">{p.animal}</p>
+                          <p className="text-[10px] font-black text-primary uppercase italic leading-none">{p.animal || p.bicho}</p>
                           <p className="text-[8px] text-muted-foreground font-bold uppercase mt-1">Gr: {p.grupo}</p>
                         </div>
                       </div>

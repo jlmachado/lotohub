@@ -275,6 +275,8 @@ interface AppContextType {
   
   // Sync
   syncJDBResults: () => Promise<void>;
+  deleteJDBResult: (id: string) => Promise<void>;
+  publishJDBResult: (id: string) => Promise<void>;
   fullLedger: any[];
 }
 
@@ -377,11 +379,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         (err) => handlePermError(`${bancaPath}/snooker`, 'list')
       ),
       onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
-        (s) => setTenantJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
+        (s) => {
+          console.log(`[JDB] Tenant results updated: ${s.docs.length}`);
+          setTenantJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult)));
+        },
         (err) => handlePermError(`${bancaPath}/jdbResults`, 'list')
       ),
       onSnapshot(collection(firestore, 'jdbResults'), 
-        (s) => setGlobalJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
+        (s) => {
+          console.log(`[JDB] Global results updated: ${s.docs.length}`);
+          setGlobalJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult)));
+        },
         (err) => handlePermError(`jdbResults`, 'list')
       ),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
@@ -472,14 +480,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Consolidar resultados para a UI
   const jdbResults = React.useMemo(() => {
     const map = new Map<string, JDBNormalizedResult>();
+    
+    // Merge global first, then tenant (tenant overrides)
     globalJdbResults.forEach(r => map.set(r.id, r));
     tenantJdbResults.forEach(r => map.set(r.id, r));
     
-    return Array.from(map.values()).sort((a, b) => {
+    const results = Array.from(map.values()).sort((a, b) => {
       const dateCompare = b.date.localeCompare(a.date);
       if (dateCompare !== 0) return dateCompare;
       return b.time.localeCompare(a.time);
     });
+
+    console.log(`[JDB] Context Merged Results: ${results.length}`);
+    return results;
   }, [globalJdbResults, tenantJdbResults]);
 
   const logout = () => {
@@ -532,6 +545,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       await setDoc(docRef, result);
+      console.log(`[JDB] Manual result published: ${id}`);
       toast({ title: "Resultado publicado!" });
     } catch (e: any) {
       handlePermError(docRef.path, 'write');
@@ -541,14 +555,44 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const syncJDBResults = useCallback(async () => {
     if (!user) return;
     const bancaId = user.bancaId || 'default';
+    console.log(`[JDB] Initiating sync for banca: ${bancaId}`);
     try {
       const imported = await ResultsSyncService.getLatestResults();
+      console.log(`[JDB] Scraper returned ${imported.length} items`);
+      
       for (const res of imported) {
         const docRef = doc(firestore, 'bancas', bancaId, 'jdbResults', res.id);
-        setDoc(docRef, { ...res, bancaId }, { merge: true }).catch(e => {});
+        setDoc(docRef, { ...res, bancaId }, { merge: true })
+          .then(() => console.log(`[JDB] Saved: ${res.id}`))
+          .catch(e => console.error(`[JDB] Failed to save ${res.id}:`, e));
       }
-    } catch (e: any) {}
+    } catch (e: any) {
+      console.error("[JDB] Sync error:", e);
+    }
   }, [user, firestore]);
+
+  const deleteJDBResult = async (id: string) => {
+    const bancaId = user?.bancaId || 'default';
+    try {
+      await deleteDoc(doc(firestore, 'bancas', bancaId, 'jdbResults', id));
+      toast({ title: "Resultado removido" });
+    } catch (e) {
+      toast({ variant: 'destructive', title: "Erro ao excluir" });
+    }
+  };
+
+  const publishJDBResult = async (id: string) => {
+    const bancaId = user?.bancaId || 'default';
+    try {
+      await updateDoc(doc(firestore, 'bancas', bancaId, 'jdbResults', id), {
+        status: 'PUBLICADO',
+        publishedAt: new Date().toISOString()
+      });
+      toast({ title: "Resultado publicado" });
+    } catch (e) {
+      toast({ variant: 'destructive', title: "Erro ao publicar" });
+    }
+  };
 
   const value: AppContextType = {
     user, allUsers, isLoading, currentBanca, subdomain: currentBanca?.subdomain || null,
@@ -594,6 +638,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     deleteNews: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id)),
     updateLiveMiniPlayerConfig: (cfg) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'configuracoes', 'mini_player'), cfg),
     syncJDBResults,
+    deleteJDBResult,
+    publishJDBResult,
     fullLedger: ledger
   };
 
