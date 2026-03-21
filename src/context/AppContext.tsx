@@ -312,7 +312,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [snookerLiveConfig, setSnookerLiveConfig] = useState<SnookerLiveConfig | null>(null);
   const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<any>(null);
 
-  const activeBancaIdRef = useRef<string>('default');
+  // Ticker de contexto para forçar re-render de listeners
+  const [contextTicker, setContextTicker] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setContextTicker(t => t + 1);
+    window.addEventListener('banca-context-updated', handleUpdate);
+    window.addEventListener('app:data-changed', handleUpdate);
+    return () => {
+      window.removeEventListener('banca-context-updated', handleUpdate);
+      window.removeEventListener('app:data-changed', handleUpdate);
+    };
+  }, []);
 
   // --- Multi-Tenant Context Resolution ---
 
@@ -322,8 +333,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const session = getSession();
-    const bancaId = getCurrentBancaId();
-    activeBancaIdRef.current = bancaId;
     setCurrentBanca(resolveCurrentBanca());
 
     if (session?.userId) {
@@ -332,7 +341,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (snap.exists()) {
           const userData = snap.data();
           setUser({ id: snap.id, ...userData });
-          activeBancaIdRef.current = userData.bancaId || bancaId;
         }
         setIsLoading(false);
       }, (err) => {
@@ -343,82 +351,82 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } else {
       setIsLoading(false);
     }
-  }, [firestore]);
+  }, [firestore, contextTicker]);
 
   // --- Real-time Listeners Híbridos (Global + Tenant) ---
 
   useEffect(() => {
-    const bancaId = activeBancaIdRef.current;
+    if (!firestore) return;
+
+    // Resolução REATIVA da Banca
+    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
     const bancaPath = `bancas/${bancaId}`;
 
-    console.log(`[Multi-Banca] Sincronizando dados em: ${bancaPath}`);
+    console.log(`[JDB Debug] BancaPath Ativo: ${bancaPath} | User: ${user?.terminal || 'Visitante'}`);
 
     const handlePermError = (path: string, op: string) => {
-      // Only emit if user is logged in, otherwise it's expected during initial load
       if (user) {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path, operation: op as any }));
       }
     };
 
     const unsubscribers = [
-      // 🔓 DADOS PÚBLICOS
+      // 🔓 DADOS PÚBLICOS (Sempre monitorados)
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), 
         (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner))),
-        (err) => handlePermError(`${bancaPath}/banners`, 'list')
+        (err) => console.log(`[AppContext] Waiting for banners in ${bancaPath}...`)
       ),
       onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), 
         (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup))),
-        (err) => handlePermError(`${bancaPath}/popups`, 'list')
+        (err) => {}
       ),
       onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), 
         (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage))),
-        (err) => handlePermError(`${bancaPath}/news_messages`, 'list')
+        (err) => {}
       ),
       onSnapshot(collection(firestore, bancaPath, 'snooker'), 
         (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))),
-        (err) => handlePermError(`${bancaPath}/snooker`, 'list')
+        (err) => {}
       ),
+      
+      // 🎲 RESULTADOS JDB (CRÍTICO)
       onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
         (s) => {
-          console.log(`[JDB] Tenant results updated: ${s.docs.length}`);
+          console.log(`[JDB] Tenant results found: ${s.docs.length} in ${bancaPath}`);
           setTenantJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult)));
         },
-        (err) => handlePermError(`${bancaPath}/jdbResults`, 'list')
+        (err) => console.warn(`[JDB] Tenant listener failed for ${bancaPath}:`, err.message)
       ),
       onSnapshot(collection(firestore, 'jdbResults'), 
         (s) => {
-          console.log(`[JDB] Global results updated: ${s.docs.length}`);
+          console.log(`[JDB] Global results found: ${s.docs.length}`);
           setGlobalJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult)));
         },
-        (err) => handlePermError(`jdbResults`, 'list')
+        (err) => console.warn(`[JDB] Global listener failed:`, err.message)
       ),
+
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
         (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings),
-        (err) => handlePermError(`${bancaPath}/configuracoes/casino_settings`, 'get')
+        (err) => {}
       ),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), 
         (s) => s.exists() && setBingoSettings(s.data() as BingoSettings),
-        (err) => handlePermError(`${bancaPath}/configuracoes/bingo_settings`, 'get')
+        (err) => {}
       ),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'snooker_live_config'), 
         (s) => s.exists() && setSnookerLiveConfig(s.data() as SnookerLiveConfig),
-        (err) => handlePermError(`${bancaPath}/configuracoes/snooker_live_config`, 'get')
+        (err) => {}
       ),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'mini_player'), 
         (s) => s.exists() && setLiveMiniPlayerConfig(s.data()),
-        (err) => handlePermError(`${bancaPath}/configuracoes/mini_player`, 'get')
+        (err) => {}
       ),
       onSnapshot(collection(firestore, bancaPath, 'snooker_scoreboards'), 
         (s) => {
           const boards: Record<string, any> = {};
           s.docs.forEach(d => { boards[d.id] = d.data(); });
           setSnookerScoreboards(boards);
-        },
-        (err) => handlePermError(`${bancaPath}/snooker_scoreboards`, 'list')
-      ),
-      onSnapshot(collection(firestore, bancaPath, 'bingo_draws'), 
-        (s) => { /* setBingoDraws(s.docs.map(d => ({id: d.id, ...d.data()}))) */ },
-        (err) => handlePermError(`${bancaPath}/bingo_draws`, 'list')
+        }
       )
     ];
 
@@ -436,34 +444,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         onSnapshot(collection(firestore, bancaPath, 'snooker_bets'), 
           (s) => setSnookerBets(s.docs.map(d => ({ id: d.id, ...d.data() } as SnookerBet))),
           (err) => handlePermError(`${bancaPath}/snooker_bets`, 'list')
-        ),
-        onSnapshot(collection(firestore, bancaPath, 'football_bets'), 
-          (s) => { /* setFootballBets(...) */ },
-          (err) => handlePermError(`${bancaPath}/football_bets`, 'list')
-        ),
-        onSnapshot(collection(firestore, bancaPath, 'bingo_tickets'), 
-          (s) => { /* setBingoTickets(...) */ },
-          (err) => handlePermError(`${bancaPath}/bingo_tickets`, 'list')
-        ),
-        onSnapshot(collection(firestore, bancaPath, 'snooker_chat'), 
-          (s) => { /* setSnookerChatMessages(...) */ },
-          (err) => handlePermError(`${bancaPath}/snooker_chat`, 'list')
-        ),
-        onSnapshot(collection(firestore, bancaPath, 'snooker_presence'), 
-          (s) => { /* setSnookerPresence(...) */ },
-          (err) => handlePermError(`${bancaPath}/snooker_presence`, 'list')
-        ),
-        onSnapshot(collection(firestore, bancaPath, 'snooker_sync_logs'), 
-          (s) => { /* setSnookerSyncLogs(...) */ },
-          (err) => handlePermError(`${bancaPath}/snooker_sync_logs`, 'list')
-        ),
-        onSnapshot(collection(firestore, bancaPath, 'snooker_cashout_log'), 
-          (s) => { /* setSnookerCashOutLog(...) */ },
-          (err) => handlePermError(`${bancaPath}/snooker_cashout_log`, 'list')
         )
       );
 
-      // Listen to users if Admin
       if (user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN') {
         unsubscribers.push(
           onSnapshot(collection(firestore, bancaPath, 'usuarios'), 
@@ -475,7 +458,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return () => unsubscribers.forEach(unsub => unsub());
-  }, [firestore, user, currentBanca]);
+  }, [firestore, user, contextTicker]);
 
   // Consolidar resultados para a UI
   const jdbResults = React.useMemo(() => {
@@ -486,12 +469,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     tenantJdbResults.forEach(r => map.set(r.id, r));
     
     const results = Array.from(map.values()).sort((a, b) => {
-      const dateCompare = b.date.localeCompare(a.date);
+      const dateA = a.date || "";
+      const dateB = b.date || "";
+      const dateCompare = dateB.localeCompare(dateA);
       if (dateCompare !== 0) return dateCompare;
-      return b.time.localeCompare(a.time);
+      return (b.time || "").localeCompare(a.time || "");
     });
 
-    console.log(`[JDB] Context Merged Results: ${results.length}`);
+    console.log(`[JDB Merge] Final Count: ${results.length} (Tenant: ${tenantJdbResults.length} | Global: ${globalJdbResults.length})`);
     return results;
   }, [globalJdbResults, tenantJdbResults]);
 
@@ -519,8 +504,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     if (result.success) {
       const docRef = doc(firestore, 'bancas', bancaId, 'apostas', pouleId);
-      setDoc(docRef, { ...aposta, id: pouleId, userId: user.id, bancaId, status: 'aguardando', createdAt: new Date().toISOString() })
-        .catch(async (err) => handlePermError(docRef.path, 'create'));
+      setDoc(docRef, { ...aposta, id: pouleId, userId: user.id, bancaId, status: 'aguardando', createdAt: new Date().toISOString() });
       return pouleId;
     }
     return null;
@@ -545,7 +529,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       await setDoc(docRef, result);
-      console.log(`[JDB] Manual result published: ${id}`);
       toast({ title: "Resultado publicado!" });
     } catch (e: any) {
       handlePermError(docRef.path, 'write');
@@ -555,19 +538,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const syncJDBResults = useCallback(async () => {
     if (!user) return;
     const bancaId = user.bancaId || 'default';
-    console.log(`[JDB] Initiating sync for banca: ${bancaId}`);
+    setSnookerSyncState('syncing');
     try {
       const imported = await ResultsSyncService.getLatestResults();
-      console.log(`[JDB] Scraper returned ${imported.length} items`);
-      
       for (const res of imported) {
         const docRef = doc(firestore, 'bancas', bancaId, 'jdbResults', res.id);
-        setDoc(docRef, { ...res, bancaId }, { merge: true })
-          .then(() => console.log(`[JDB] Saved: ${res.id}`))
-          .catch(e => console.error(`[JDB] Failed to save ${res.id}:`, e));
+        await setDoc(docRef, { ...res, bancaId }, { merge: true });
       }
+      setSnookerSyncState('idle');
     } catch (e: any) {
       console.error("[JDB] Sync error:", e);
+      setSnookerSyncState('error');
     }
   }, [user, firestore]);
 
@@ -613,7 +594,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     snookerSyncLogs: [], snookerBetsFeed: [], snookerActivityFeed: [],
     casinoSettings, bingoSettings, bingoDraws: [], bingoTickets: [], bingoPayouts: [],
     liveMiniPlayerConfig,
-    refreshData: () => {}, logout, handleFinalizarAposta,
+    refreshData: () => setContextTicker(t => t + 1), logout, handleFinalizarAposta,
     processarResultados,
     syncSnookerFromYoutube: async () => {}, joinChannel: () => {}, leaveChannel: () => {}, 
     clearCelebration: () => {}, sendSnookerChatMessage: () => {}, sendSnookerReaction: () => {}, 
