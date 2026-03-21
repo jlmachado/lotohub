@@ -45,7 +45,19 @@ export interface User {
   updatedAt: string;
 }
 
+export interface AdminLog {
+  id: string;
+  adminUser: string;
+  action: string;
+  terminal: string;
+  reason?: string;
+  delta?: number;
+  bancaId?: string;
+  at: string;
+}
+
 const USERS_KEY = 'app:users:v1';
+const AUDIT_LOGS_KEY = 'app:audit_logs:v1';
 
 export const getDefaultPermissions = (type: UserType): UserPermissions => {
   const common = {
@@ -156,4 +168,42 @@ export const generateNextTerminalForBanca = (bancaId: string): string => {
   let next = (terminalNumbers.length > 0 ? Math.max(...terminalNumbers) : base) + 1;
   while (users.some(u => u.terminal === String(next))) next++;
   return String(next);
+};
+
+export const logAdminAction = async (data: Omit<AdminLog, 'id' | 'at'>) => {
+  const { firestore } = initializeFirebase();
+  const bancaId = data.bancaId || 'default';
+  const id = `log-${Date.now()}`;
+  const now = new Date().toISOString();
+  
+  const logEntry = { ...data, id, at: now, bancaId };
+  
+  // Local cache
+  const logs = getStorageItem<AdminLog[]>(AUDIT_LOGS_KEY, []);
+  setStorageItem(AUDIT_LOGS_KEY, [logEntry, ...logs].slice(0, 100));
+
+  // Firestore
+  await setDoc(doc(firestore, `bancas/${bancaId}/auditLogs`, id), logEntry);
+};
+
+export const getAuditLogs = (terminal: string): AdminLog[] => {
+  const logs = getStorageItem<AdminLog[]>(AUDIT_LOGS_KEY, []);
+  return logs.filter(l => l.terminal === terminal);
+};
+
+export const addPromoterCredit = async (terminal: string, amount: number, reason: string) => {
+  const user = getUserByTerminal(terminal);
+  if (!user) return;
+  
+  const newBalance = (user.saldo || 0) + amount;
+  await upsertUser({ terminal, saldo: newBalance });
+  
+  await logAdminAction({
+    adminUser: 'system',
+    action: 'PROMOTER_CREDIT',
+    terminal,
+    delta: amount,
+    reason,
+    bancaId: user.bancaId
+  });
 };
