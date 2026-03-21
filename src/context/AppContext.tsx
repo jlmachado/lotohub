@@ -333,7 +333,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           activeBancaIdRef.current = userData.bancaId || bancaId;
         }
         setIsLoading(false);
-      }, () => setIsLoading(false));
+      }, (err) => {
+        console.warn("[Auth] Fallback session lookup failed:", err.message);
+        setIsLoading(false);
+      });
       return () => unsubUser();
     } else {
       setIsLoading(false);
@@ -348,38 +351,119 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     console.log(`[Multi-Banca] Sincronizando dados em: ${bancaPath}`);
 
+    const handlePermError = (path: string, op: string) => {
+      // Only emit if user is logged in, otherwise it's expected during initial load
+      if (user) {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path, operation: op as any }));
+      }
+    };
+
     const unsubscribers = [
-      // 🔓 DADOS PÚBLICOS / TELA INICIAL
-      onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner)))),
-      onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup)))),
-      onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage)))),
-      onSnapshot(collection(firestore, bancaPath, 'snooker'), (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() })))),
-      
-      // 🔄 RESULTADOS HÍBRIDOS (O segredo da exibição resiliente)
-      onSnapshot(collection(firestore, bancaPath, 'jdbResults'), (s) => {
-        const results = s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult));
-        console.log(`[SYNC] ${results.length} resultados encontrados na banca ${bancaId}`);
-        setTenantJdbResults(results);
-      }),
-      onSnapshot(collection(firestore, 'jdbResults'), (s) => {
-        const results = s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult));
-        console.log(`[SYNC] ${results.length} resultados encontrados no fallback global`);
-        setGlobalJdbResults(results);
-      }),
-      
-      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings)),
-      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), (s) => s.exists() && setBingoSettings(s.data() as BingoSettings)),
-      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'snooker_live_config'), (s) => s.exists() && setSnookerLiveConfig(s.data() as SnookerLiveConfig)),
-      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'mini_player'), (s) => s.exists() && setLiveMiniPlayerConfig(s.data()))
+      // 🔓 DADOS PÚBLICOS
+      onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), 
+        (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner))),
+        (err) => handlePermError(`${bancaPath}/banners`, 'list')
+      ),
+      onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), 
+        (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup))),
+        (err) => handlePermError(`${bancaPath}/popups`, 'list')
+      ),
+      onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), 
+        (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage))),
+        (err) => handlePermError(`${bancaPath}/news_messages`, 'list')
+      ),
+      onSnapshot(collection(firestore, bancaPath, 'snooker'), 
+        (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+        (err) => handlePermError(`${bancaPath}/snooker`, 'list')
+      ),
+      onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
+        (s) => setTenantJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
+        (err) => handlePermError(`${bancaPath}/jdbResults`, 'list')
+      ),
+      onSnapshot(collection(firestore, 'jdbResults'), 
+        (s) => setGlobalJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
+        (err) => handlePermError(`jdbResults`, 'list')
+      ),
+      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
+        (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings),
+        (err) => handlePermError(`${bancaPath}/configuracoes/casino_settings`, 'get')
+      ),
+      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), 
+        (s) => s.exists() && setBingoSettings(s.data() as BingoSettings),
+        (err) => handlePermError(`${bancaPath}/configuracoes/bingo_settings`, 'get')
+      ),
+      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'snooker_live_config'), 
+        (s) => s.exists() && setSnookerLiveConfig(s.data() as SnookerLiveConfig),
+        (err) => handlePermError(`${bancaPath}/configuracoes/snooker_live_config`, 'get')
+      ),
+      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'mini_player'), 
+        (s) => s.exists() && setLiveMiniPlayerConfig(s.data()),
+        (err) => handlePermError(`${bancaPath}/configuracoes/mini_player`, 'get')
+      ),
+      onSnapshot(collection(firestore, bancaPath, 'snooker_scoreboards'), 
+        (s) => {
+          const boards: Record<string, any> = {};
+          s.docs.forEach(d => { boards[d.id] = d.data(); });
+          setSnookerScoreboards(boards);
+        },
+        (err) => handlePermError(`${bancaPath}/snooker_scoreboards`, 'list')
+      ),
+      onSnapshot(collection(firestore, bancaPath, 'bingo_draws'), 
+        (s) => { /* setBingoDraws(s.docs.map(d => ({id: d.id, ...d.data()}))) */ },
+        (err) => handlePermError(`${bancaPath}/bingo_draws`, 'list')
+      )
     ];
 
     // 🔒 DADOS PROTEGIDOS (Apenas Logado)
     if (user) {
       unsubscribers.push(
-        onSnapshot(query(collection(firestore, bancaPath, 'apostas'), orderBy('createdAt', 'desc'), limit(50)), (s) => setApostas(s.docs.map(d => ({ id: d.id, ...d.data() })))),
-        onSnapshot(query(collection(firestore, bancaPath, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100)), (s) => setLedger(s.docs.map(d => ({ id: d.id, ...d.data() })))),
-        onSnapshot(collection(firestore, bancaPath, 'snooker_bets'), (s) => setSnookerBets(s.docs.map(d => ({ id: d.id, ...d.data() } as SnookerBet))))
+        onSnapshot(query(collection(firestore, bancaPath, 'apostas'), orderBy('createdAt', 'desc'), limit(50)), 
+          (s) => setApostas(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+          (err) => handlePermError(`${bancaPath}/apostas`, 'list')
+        ),
+        onSnapshot(query(collection(firestore, bancaPath, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100)), 
+          (s) => setLedger(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+          (err) => handlePermError(`${bancaPath}/ledgerEntries`, 'list')
+        ),
+        onSnapshot(collection(firestore, bancaPath, 'snooker_bets'), 
+          (s) => setSnookerBets(s.docs.map(d => ({ id: d.id, ...d.data() } as SnookerBet))),
+          (err) => handlePermError(`${bancaPath}/snooker_bets`, 'list')
+        ),
+        onSnapshot(collection(firestore, bancaPath, 'football_bets'), 
+          (s) => { /* setFootballBets(...) */ },
+          (err) => handlePermError(`${bancaPath}/football_bets`, 'list')
+        ),
+        onSnapshot(collection(firestore, bancaPath, 'bingo_tickets'), 
+          (s) => { /* setBingoTickets(...) */ },
+          (err) => handlePermError(`${bancaPath}/bingo_tickets`, 'list')
+        ),
+        onSnapshot(collection(firestore, bancaPath, 'snooker_chat'), 
+          (s) => { /* setSnookerChatMessages(...) */ },
+          (err) => handlePermError(`${bancaPath}/snooker_chat`, 'list')
+        ),
+        onSnapshot(collection(firestore, bancaPath, 'snooker_presence'), 
+          (s) => { /* setSnookerPresence(...) */ },
+          (err) => handlePermError(`${bancaPath}/snooker_presence`, 'list')
+        ),
+        onSnapshot(collection(firestore, bancaPath, 'snooker_sync_logs'), 
+          (s) => { /* setSnookerSyncLogs(...) */ },
+          (err) => handlePermError(`${bancaPath}/snooker_sync_logs`, 'list')
+        ),
+        onSnapshot(collection(firestore, bancaPath, 'snooker_cashout_log'), 
+          (s) => { /* setSnookerCashOutLog(...) */ },
+          (err) => handlePermError(`${bancaPath}/snooker_cashout_log`, 'list')
+        )
       );
+
+      // Listen to users if Admin
+      if (user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN') {
+        unsubscribers.push(
+          onSnapshot(collection(firestore, bancaPath, 'usuarios'), 
+            (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+            (err) => handlePermError(`${bancaPath}/usuarios`, 'list')
+          )
+        );
+      }
     }
 
     return () => unsubscribers.forEach(unsub => unsub());
@@ -388,7 +472,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Consolidar resultados para a UI
   const jdbResults = React.useMemo(() => {
     const map = new Map<string, JDBNormalizedResult>();
-    // Prioriza resultados da banca sobre globais se houver colisão de ID
     globalJdbResults.forEach(r => map.set(r.id, r));
     tenantJdbResults.forEach(r => map.set(r.id, r));
     
@@ -424,15 +507,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (result.success) {
       const docRef = doc(firestore, 'bancas', bancaId, 'apostas', pouleId);
       setDoc(docRef, { ...aposta, id: pouleId, userId: user.id, bancaId, status: 'aguardando', createdAt: new Date().toISOString() })
-        .catch(async (err) => errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'create' })));
+        .catch(async (err) => handlePermError(docRef.path, 'create'));
       return pouleId;
     }
     return null;
   };
 
-  /**
-   * Publica ou atualiza resultados oficiais (Lançamento Manual do Admin)
-   */
   const processarResultados = async (data: any) => {
     if (!user) return;
     const bancaId = user.bancaId || 'default';
@@ -441,56 +521,33 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const docRef = doc(firestore, 'bancas', bancaId, 'jdbResults', id);
     
     const result: JDBNormalizedResult = {
-      id,
-      bancaId,
-      stateCode: data.loteria === 'jogo-do-bicho' ? 'RJ' : 'UN',
+      id, bancaId, stateCode: data.loteria === 'jogo-do-bicho' ? 'RJ' : 'UN',
       stateName: data.loteria === 'jogo-do-bicho' ? 'Rio de Janeiro' : 'Nacional',
-      lotteryId: data.loteria,
-      lotteryName: data.loteria,
-      extractionName: data.jogoDoBichoLoteria || 'Oficial',
-      date: data.data,
-      time: data.horario,
-      status: 'PUBLICADO',
-      sourceType: 'MANUAL',
-      sourceName: 'Administrador',
-      prizes: data.resultados,
-      checksum: Date.now().toString(),
-      isDivergent: false,
-      importedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      publishedAt: new Date().toISOString(),
+      lotteryId: data.loteria, lotteryName: data.loteria, extractionName: data.jogoDoBichoLoteria || 'Oficial',
+      date: data.data, time: data.horario, status: 'PUBLICADO', sourceType: 'MANUAL', sourceName: 'Administrador',
+      prizes: data.resultados, checksum: Date.now().toString(), isDivergent: false,
+      importedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), publishedAt: new Date().toISOString(),
       createdBy: user.nome || user.terminal
     };
 
     try {
       await setDoc(docRef, result);
-      toast({ title: "Resultado publicado!", description: "Os bilhetes pendentes serão processados em breve." });
+      toast({ title: "Resultado publicado!" });
     } catch (e: any) {
-      console.error("[SYNC] Falha ao publicar resultado manual:", e.message);
-      toast({ variant: 'destructive', title: "Erro ao publicar", description: e.message });
+      handlePermError(docRef.path, 'write');
     }
   };
 
-  /**
-   * Motor de Sincronização Automática (Scraper)
-   */
   const syncJDBResults = useCallback(async () => {
     if (!user) return;
     const bancaId = user.bancaId || 'default';
-
     try {
       const imported = await ResultsSyncService.getLatestResults();
-      console.log(`[SYNC] Iniciando importação de ${imported.length} resultados...`);
-
       for (const res of imported) {
         const docRef = doc(firestore, 'bancas', bancaId, 'jdbResults', res.id);
-        setDoc(docRef, { ...res, bancaId }, { merge: true });
+        setDoc(docRef, { ...res, bancaId }, { merge: true }).catch(e => {});
       }
-      
-      console.log("[SYNC] Sincronização finalizada.");
-    } catch (e: any) {
-      console.error("[SYNC] Falha crítica no fluxo de sincronização:", e.message);
-    }
+    } catch (e: any) {}
   }, [user, firestore]);
 
   const value: AppContextType = {
@@ -499,7 +556,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     bonus: user?.bonus || 0,
     ledger, banners, popups, news, apostas, 
     jdbResults, 
-    postedResults: jdbResults, // Alias para compatibilidade
+    postedResults: jdbResults,
     footballData: { leagues: [], matches: [], unifiedMatches: [], syncStatus: 'idle', lastSyncAt: null },
     footballBets: [], betSlip: [],
     syncFootballAll: async () => {}, addBetToSlip: () => {}, removeBetFromSlip: () => {}, clearBetSlip: () => {}, 
