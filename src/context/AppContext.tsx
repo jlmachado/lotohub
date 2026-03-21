@@ -349,9 +349,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const unsubUser = onSnapshot(userRef, (snap) => {
         if (snap.exists()) {
           setUser({ id: snap.id, ...snap.data() });
+        } else {
+          console.warn("[Auth] User document not found in banca:", bancaId);
         }
         setIsLoading(false);
-      }, () => setIsLoading(false));
+      }, (err) => {
+        console.error("[Auth] User snapshot error:", err);
+        setIsLoading(false);
+      });
       return () => unsubUser();
     } else {
       setIsLoading(false);
@@ -364,55 +369,84 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
     const bancaPath = `bancas/${bancaId}`;
 
-    const unsubscribers = [
-      onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), 
-        (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner)))),
-      onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), 
-        (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup)))),
-      onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), 
-        (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage)))),
-      onSnapshot(collection(firestore, bancaPath, 'snooker'), 
-        (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() })))),
-      onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
-        (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult)))),
-      
-      // FUTEBOL - Listener granular para ligas
-      onSnapshot(collection(firestore, bancaPath, 'football_leagues'), (s) => {
-        const loaded = s.docs.map(d => ({ id: d.id, ...d.data() } as ESPNLeagueConfig));
-        // Se a banca ainda não tem ligas, carregamos o catálogo padrão como fallback inicial
-        if (loaded.length === 0) {
-          setFootballLeagues(ESPN_LEAGUE_CATALOG);
-        } else {
-          // Merge Inteligente: Catalogo + Firestore
-          setFootballLeagues(prev => {
-            const map = new Map();
-            // 1. Inicia com o catálogo base (para garantir novos IDs)
-            ESPN_LEAGUE_CATALOG.forEach(l => map.set(l.id, l));
-            // 2. Sobrescreve com o que está no Firestore (preferências do admin)
-            loaded.forEach(l => map.set(l.id, l));
-            return Array.from(map.values()).sort((a,b) => a.priority - b.priority);
-          });
-        }
-      }),
+    const unsubscribers: any[] = [];
 
-      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings)),
-      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), (s) => s.exists() && setBingoSettings(s.data() as BingoSettings)),
-      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'snooker_live_config'), (s) => s.exists() && setSnookerLiveConfig(s.data() as SnookerLiveConfig)),
-      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'mini_player'), (s) => s.exists() && setLiveMiniPlayerConfig(s.data()))
-    ];
-
-    if (user) {
+    // --- Public Listeners (Should not fail for anyone) ---
+    try {
       unsubscribers.push(
-        onSnapshot(query(collection(firestore, bancaPath, 'apostas'), orderBy('createdAt', 'desc'), limit(50)), (s) => setApostas(s.docs.map(d => ({ id: d.id, ...d.data() })))),
-        onSnapshot(query(collection(firestore, bancaPath, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100)), (s) => setLedger(s.docs.map(d => ({ id: d.id, ...d.data() })))),
-        onSnapshot(collection(firestore, bancaPath, 'snooker_bets'), (s) => setSnookerBets(s.docs.map(d => ({ id: d.id, ...d.data() } as SnookerBet))))
+        onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), 
+          (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner))),
+          (err) => console.warn("[Snapshot] Banners blocked (likely missing document)", err.message)),
+        onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), 
+          (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup))),
+          (err) => console.warn("[Snapshot] Popups blocked", err.message)),
+        onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), 
+          (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage))),
+          (err) => console.warn("[Snapshot] News blocked", err.message)),
+        onSnapshot(collection(firestore, bancaPath, 'snooker'), 
+          (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+          (err) => console.warn("[Snapshot] Snooker blocked", err.message)),
+        onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
+          (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
+          (err) => console.warn("[Snapshot] JDB Results blocked", err.message)),
+        onSnapshot(collection(firestore, bancaPath, 'football_leagues'), (s) => {
+          const loaded = s.docs.map(d => ({ id: d.id, ...d.data() } as ESPNLeagueConfig));
+          if (loaded.length === 0) setFootballLeagues(ESPN_LEAGUE_CATALOG);
+          else {
+            setFootballLeagues(prev => {
+              const map = new Map();
+              ESPN_LEAGUE_CATALOG.forEach(l => map.set(l.id, l));
+              loaded.forEach(l => map.set(l.id, l));
+              return Array.from(map.values()).sort((a,b) => a.priority - b.priority);
+            });
+          }
+        }, (err) => console.warn("[Snapshot] Football leagues blocked", err.message)),
+        onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
+          (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings),
+          (err) => console.warn("[Snapshot] Casino settings blocked", err.message)),
+        onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), 
+          (s) => s.exists() && setBingoSettings(s.data() as BingoSettings),
+          (err) => console.warn("[Snapshot] Bingo settings blocked", err.message)),
+        onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'snooker_live_config'), 
+          (s) => s.exists() && setSnookerLiveConfig(s.data() as SnookerLiveConfig),
+          (err) => console.warn("[Snapshot] Snooker config blocked", err.message)),
+        onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'mini_player'), 
+          (s) => s.exists() && setLiveMiniPlayerConfig(s.data()),
+          (err) => console.warn("[Snapshot] Mini player config blocked", err.message))
       );
-      if (user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN') {
-        unsubscribers.push(onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() })))));
+    } catch (e) {
+      console.warn("[Snapshot] Setup error:", e);
+    }
+
+    // --- Protected Listeners (Only for logged-in users) ---
+    if (user) {
+      const isPrivileged = user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN';
+      
+      // Filter bets and ledger by userId if not an admin to satisfy security rules and avoid permission errors
+      const apostasQuery = isPrivileged 
+        ? query(collection(firestore, bancaPath, 'apostas'), orderBy('createdAt', 'desc'), limit(50))
+        : query(collection(firestore, bancaPath, 'apostas'), where('userId', '==', user.id), orderBy('createdAt', 'desc'), limit(50));
+
+      const ledgerQuery = isPrivileged
+        ? query(collection(firestore, bancaPath, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100))
+        : query(collection(firestore, bancaPath, 'ledgerEntries'), where('userId', '==', user.id), orderBy('createdAt', 'desc'), limit(100));
+
+      const snookerBetsQuery = isPrivileged
+        ? collection(firestore, bancaPath, 'snooker_bets')
+        : query(collection(firestore, bancaPath, 'snooker_bets'), where('userId', '==', user.id));
+
+      unsubscribers.push(
+        onSnapshot(apostasQuery, (s) => setApostas(s.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.error("[Snapshot Error] apostas", err)),
+        onSnapshot(ledgerQuery, (s) => setLedger(s.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.error("[Snapshot Error] ledger", err)),
+        onSnapshot(snookerBetsQuery, (s) => setSnookerBets(s.docs.map(d => ({ id: d.id, ...d.data() } as SnookerBet))), (err) => console.error("[Snapshot Error] snooker_bets", err))
+      );
+
+      if (isPrivileged) {
+        unsubscribers.push(onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.error("[Snapshot Error] usuarios", err)));
       }
     }
 
-    return () => unsubscribers.forEach(unsub => unsub());
+    return () => unsubscribers.forEach(unsub => { if (typeof unsub === 'function') unsub(); });
   }, [firestore, user, contextTicker]);
 
   // --- Futebol Logic ---
@@ -424,10 +458,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       console.log(`[Football Sync] Iniciando para banca: ${bancaId}`);
-      // Sincroniza cada liga individualmente com merge no Firestore
       for (const league of ESPN_LEAGUE_CATALOG) {
         const docRef = doc(firestore, `bancas/${bancaId}/football_leagues`, league.id);
-        // Usamos setDoc com merge: true para não apagar personalizações (ex: status 'active')
         await setDoc(docRef, league, { merge: true });
       }
       
@@ -502,7 +534,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     footballData: { 
       leagues: footballLeagues, 
       matches: footballMatches, 
-      unifiedMatches: footballMatches, // Simplificado para o protótipo
+      unifiedMatches: footballMatches, 
       syncStatus, 
       lastSyncAt 
     },
