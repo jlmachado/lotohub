@@ -36,7 +36,7 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
-    // 👤 Perfil Privado do Usuário (Localizado dentro da banca ou global)
+    // 👤 Perfil Privado do Usuário
     match /users/{userId} {
       allow read, write: if isLogged() && (request.auth.uid == userId || isSuperAdmin());
     }
@@ -44,11 +44,11 @@ service cloud.firestore {
     // 🏪 Estrutura Multi-Tenant Principal
     match /bancas/{bancaId} {
       
-      // Permite leitura da banca para resolução de contexto público (subdomínio)
+      // Permite leitura da banca para resolução de contexto público
       allow read: if true;
       allow write: if isSuperAdmin();
 
-      // 🔓 DADOS PÚBLICOS DA UNIDADE (Acessíveis para renderizar a UI inicial)
+      // 🔓 DADOS PÚBLICOS (Resultados, Banners, Notícias)
       match /configuracoes/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /banners/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /popups/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
@@ -56,8 +56,7 @@ service cloud.firestore {
       match /jdbResults/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /snooker/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
 
-      // 🔒 DADOS PROTEGIDOS (Isolamento por Banca e UID)
-      
+      // 🔒 DADOS PROTEGIDOS (Apostas, Financeiro, Usuários)
       match /usuarios/{uid} {
         allow read: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
         allow write: if isLogged() && (request.auth.uid == uid || isAdmin(bancaId));
@@ -73,16 +72,11 @@ service cloud.firestore {
         allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
         allow write: if isAdmin(bancaId);
       }
-
-      match /snooker_bets/{id} {
-        allow read: if isLogged() && (resource == null || resource.data.userId == request.auth.uid || isAdmin(bancaId));
-        allow write: if isLogged() && (request.auth.uid == request.resource.data.userId || isAdmin(bancaId));
-      }
     }
 
-    // 🔄 Compatibilidade com Coleções Globais (Legado em transição)
+    // 🔄 Compatibilidade com Coleções Globais (Legado)
+    match /jdbResults/{id} { allow read: if true; allow write: if isSuperAdmin(); }
     match /apostas/{id} { allow read, write: if isSuperAdmin(); }
     match /ledgerEntries/{id} { allow read, write: if isSuperAdmin(); }
-    match /jdbResults/{id} { allow read: if true; allow write: if isSuperAdmin(); }
   }
 }

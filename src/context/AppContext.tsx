@@ -1,8 +1,7 @@
 'use client';
 
 /**
- * @fileOverview AppContext Professional - Motor Multi-Banca em Tempo Real.
- * Centraliza a inteligência de Tenant e sincronização reativa com Firestore.
+ * @fileOverview AppContext Professional - Motor Multi-Banca em Tempo Real com Fallback Híbrido.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
@@ -296,7 +295,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [news, setNews] = useState<NewsMessage[]>([]);
   const [ledger, setLedger] = useState<any[]>([]);
   const [apostas, setApostas] = useState<any[]>([]);
-  const [jdbResults, setJdbResults] = useState<JDBNormalizedResult[]>([]);
+  
+  // Resultados Escopados
+  const [tenantJdbResults, setTenantJdbResults] = useState<JDBNormalizedResult[]>([]);
+  const [globalJdbResults, setGlobalJdbResults] = useState<JDBNormalizedResult[]>([]);
   
   const [snookerChannels, setSnookerChannels] = useState<any[]>([]);
   const [snookerSyncState, setSnookerSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
@@ -313,7 +315,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // --- Multi-Tenant Context Resolution ---
 
   useEffect(() => {
-    // Inicia migração segura se necessário
     if (firestore) {
       MigrationService.syncToCloud(firestore);
     }
@@ -339,21 +340,32 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [firestore]);
 
-  // --- Real-time Listeners Scoped by Banca ---
+  // --- Real-time Listeners Híbridos (Global + Tenant) ---
 
   useEffect(() => {
     const bancaId = activeBancaIdRef.current;
     const bancaPath = `bancas/${bancaId}`;
 
-    console.log(`[Multi-Banca] Conectando ouvintes em: ${bancaPath}`);
+    console.log(`[Multi-Banca] Sincronizando dados em: ${bancaPath}`);
 
     const unsubscribers = [
-      // Configurações e UI
+      // 🔓 DADOS PÚBLICOS / TELA INICIAL
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner)))),
       onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup)))),
       onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage)))),
       onSnapshot(collection(firestore, bancaPath, 'snooker'), (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() })))),
-      onSnapshot(collection(firestore, bancaPath, 'jdbResults'), (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult)))),
+      
+      // 🔄 RESULTADOS HÍBRIDOS (O segredo da exibição resiliente)
+      onSnapshot(collection(firestore, bancaPath, 'jdbResults'), (s) => {
+        const results = s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult));
+        console.log(`[SYNC] ${results.length} resultados encontrados na banca ${bancaId}`);
+        setTenantJdbResults(results);
+      }),
+      onSnapshot(collection(firestore, 'jdbResults'), (s) => {
+        const results = s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult));
+        console.log(`[SYNC] ${results.length} resultados encontrados no fallback global`);
+        setGlobalJdbResults(results);
+      }),
       
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings)),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), (s) => s.exists() && setBingoSettings(s.data() as BingoSettings)),
@@ -361,7 +373,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'mini_player'), (s) => s.exists() && setLiveMiniPlayerConfig(s.data()))
     ];
 
-    // Dados Sensíveis (Apenas Logado)
+    // 🔒 DADOS PROTEGIDOS (Apenas Logado)
     if (user) {
       unsubscribers.push(
         onSnapshot(query(collection(firestore, bancaPath, 'apostas'), orderBy('createdAt', 'desc'), limit(50)), (s) => setApostas(s.docs.map(d => ({ id: d.id, ...d.data() })))),
@@ -372,6 +384,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     return () => unsubscribers.forEach(unsub => unsub());
   }, [firestore, user, currentBanca]);
+
+  // Consolidar resultados para a UI
+  const jdbResults = React.useMemo(() => {
+    const map = new Map<string, JDBNormalizedResult>();
+    // Prioriza resultados da banca sobre globais se houver colisão de ID
+    globalJdbResults.forEach(r => map.set(r.id, r));
+    tenantJdbResults.forEach(r => map.set(r.id, r));
+    
+    return Array.from(map.values()).sort((a, b) => {
+      const dateCompare = b.date.localeCompare(a.date);
+      if (dateCompare !== 0) return dateCompare;
+      return b.time.localeCompare(a.time);
+    });
+  }, [globalJdbResults, tenantJdbResults]);
 
   const logout = () => {
     authLogout();
@@ -404,12 +430,76 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return null;
   };
 
+  /**
+   * Publica ou atualiza resultados oficiais (Lançamento Manual do Admin)
+   */
+  const processarResultados = async (data: any) => {
+    if (!user) return;
+    const bancaId = user.bancaId || 'default';
+    
+    const id = `manual-${data.data}-${data.loteria}-${data.horario}`.replace(/\s/g, '-').toLowerCase();
+    const docRef = doc(firestore, 'bancas', bancaId, 'jdbResults', id);
+    
+    const result: JDBNormalizedResult = {
+      id,
+      bancaId,
+      stateCode: data.loteria === 'jogo-do-bicho' ? 'RJ' : 'UN',
+      stateName: data.loteria === 'jogo-do-bicho' ? 'Rio de Janeiro' : 'Nacional',
+      lotteryId: data.loteria,
+      lotteryName: data.loteria,
+      extractionName: data.jogoDoBichoLoteria || 'Oficial',
+      date: data.data,
+      time: data.horario,
+      status: 'PUBLICADO',
+      sourceType: 'MANUAL',
+      sourceName: 'Administrador',
+      prizes: data.resultados,
+      checksum: Date.now().toString(),
+      isDivergent: false,
+      importedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      publishedAt: new Date().toISOString(),
+      createdBy: user.nome || user.terminal
+    };
+
+    try {
+      await setDoc(docRef, result);
+      toast({ title: "Resultado publicado!", description: "Os bilhetes pendentes serão processados em breve." });
+    } catch (e: any) {
+      console.error("[SYNC] Falha ao publicar resultado manual:", e.message);
+      toast({ variant: 'destructive', title: "Erro ao publicar", description: e.message });
+    }
+  };
+
+  /**
+   * Motor de Sincronização Automática (Scraper)
+   */
+  const syncJDBResults = useCallback(async () => {
+    if (!user) return;
+    const bancaId = user.bancaId || 'default';
+
+    try {
+      const imported = await ResultsSyncService.getLatestResults();
+      console.log(`[SYNC] Iniciando importação de ${imported.length} resultados...`);
+
+      for (const res of imported) {
+        const docRef = doc(firestore, 'bancas', bancaId, 'jdbResults', res.id);
+        setDoc(docRef, { ...res, bancaId }, { merge: true });
+      }
+      
+      console.log("[SYNC] Sincronização finalizada.");
+    } catch (e: any) {
+      console.error("[SYNC] Falha crítica no fluxo de sincronização:", e.message);
+    }
+  }, [user, firestore]);
+
   const value: AppContextType = {
     user, allUsers, isLoading, currentBanca, subdomain: currentBanca?.subdomain || null,
     balance: user?.saldo || 0,
     bonus: user?.bonus || 0,
-    ledger, banners, popups, news, apostas, jdbResults, snookerChannels,
-    postedResults: jdbResults,
+    ledger, banners, popups, news, apostas, 
+    jdbResults, 
+    postedResults: jdbResults, // Alias para compatibilidade
     footballData: { leagues: [], matches: [], unifiedMatches: [], syncStatus: 'idle', lastSyncAt: null },
     footballBets: [], betSlip: [],
     syncFootballAll: async () => {}, addBetToSlip: () => {}, removeBetFromSlip: () => {}, clearBetSlip: () => {}, 
@@ -423,7 +513,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     casinoSettings, bingoSettings, bingoDraws: [], bingoTickets: [], bingoPayouts: [],
     liveMiniPlayerConfig,
     refreshData: () => {}, logout, handleFinalizarAposta,
-    processarResultados: async () => {},
+    processarResultados,
     syncSnookerFromYoutube: async () => {}, joinChannel: () => {}, leaveChannel: () => {}, 
     clearCelebration: () => {}, sendSnookerChatMessage: () => {}, sendSnookerReaction: () => {}, 
     placeSnookerBet: () => false, cashOutSnookerBet: () => {}, settleSnookerRound: () => {}, 
@@ -446,7 +536,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     addNews: (n) => { const id = `news-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id), { ...n, id }); },
     deleteNews: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id)),
     updateLiveMiniPlayerConfig: (cfg) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'configuracoes', 'mini_player'), cfg),
-    syncJDBResults: async () => {},
+    syncJDBResults,
     fullLedger: ledger
   };
 
