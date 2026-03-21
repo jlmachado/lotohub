@@ -14,8 +14,9 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
+      if (!isLogged()) return false;
       let data = getUserData();
-      return isLogged() && data != null && (data.get('role', '') == "superadmin" || data.get('tipoUsuario', '') == "SUPER_ADMIN");
+      return data != null && (data.get('role', '') == "superadmin" || data.get('tipoUsuario', '') == "SUPER_ADMIN");
     }
 
     // Verifica se o usuário é Admin daquela banca específica
@@ -54,6 +55,7 @@ service cloud.firestore {
       match /snooker/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /bingo_draws/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /football_leagues/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
+      match /football_matches/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
 
       // 🔒 DADOS PROTEGIDOS (Apostas, Financeiro, Usuários)
       
@@ -88,7 +90,8 @@ service cloud.firestore {
 
     // 🔄 Compatibilidade com Coleções Globais
     match /jdbResults/{id} { allow read: if true; allow write: if isSuperAdmin(); }
-    match /apostas/{id} { allow read: if isLogged() && (resource.data.userId == request.auth.uid || isSuperAdmin()); allow write: if isSuperAdmin(); }
-    match /ledgerEntries/{id} { allow read: if isLogged() && (resource.data.userId == request.auth.uid || isSuperAdmin()); allow write: if isSuperAdmin(); }
+    match /apostas/{id} { allow read: if isLogged() && (resource != null && resource.data.userId == request.auth.uid || isSuperAdmin()); allow write: if isSuperAdmin(); }
+    match /ledgerEntries/{id} { allow read: if isLogged() && (resource != null && resource.data.userId == request.auth.uid || isSuperAdmin()); allow write: if isSuperAdmin(); }
+    match /football_matches/{id} { allow read: if true; allow write: if isSuperAdmin(); }
   }
 }

@@ -21,6 +21,8 @@ import { JDBNormalizedResult } from '@/types/result-types';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { espnService } from '@/services/espn-api-service';
+import { normalizeESPNScoreboard } from '@/utils/espn-normalizer';
 
 // --- Interfaces ---
 export interface JDBLoteria {
@@ -262,6 +264,7 @@ interface AppContextType {
   updateSnookerLiveConfig: (cfg: SnookerLiveConfig) => void;
   updateSnookerChannel: (channel: any) => void;
   deleteSnookerChannel: (id: string) => void;
+  getMatchesCollection: (id: string) => void;
   addSnookerChannel: (channel: any) => void;
   updateSnookerScoreboard: (channelId: string, scoreboard: any) => void;
   updateSnookerScoreRecognitionSettings: (cfg: any) => void;
@@ -393,8 +396,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribers: any[] = [];
 
     const handleSnapshotError = (collectionName: string) => (err: any) => {
-      // Silencia erros de permissão no console para não travar a aplicação, 
-      // mas registra o aviso para depuração.
       console.warn(`[Snapshot] Access to ${collectionName} denied or pending auth.`);
     };
 
@@ -432,8 +433,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         (s) => {
           const loaded = s.docs.map(d => ({ id: d.id, ...d.data() } as ESPNLeagueConfig));
           if (loaded.length > 0) setFootballLeagues(loaded);
+          else setFootballLeagues(ESPN_LEAGUE_CATALOG);
         },
         handleSnapshotError('football_leagues')),
+
+      onSnapshot(collection(firestore, bancaPath, 'football_matches'), 
+        (s) => {
+          const loaded = s.docs.map(d => ({ id: d.id, ...d.data() }));
+          console.log(`[Snapshot] ${loaded.length} matches loaded for ${bancaId}`);
+          setFootballMatches(loaded);
+        },
+        handleSnapshotError('football_matches')),
 
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
         (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings),
@@ -520,15 +530,46 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (syncStatus === 'syncing') return;
     setSyncStatus('syncing');
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+    
     try {
-      for (const league of footballLeagues) {
+      console.log(`[Sync] Starting Global Football Sync for ${bancaId}...`);
+      
+      // 1. Sync Leagues config first
+      const activeLeagues = footballLeagues.length > 0 ? footballLeagues : ESPN_LEAGUE_CATALOG;
+      for (const league of activeLeagues) {
         await setDoc(doc(firestore, `bancas/${bancaId}/football_leagues`, league.id), league, { merge: true });
+        
+        // 2. Fetch matches for each active league
+        if (league.active) {
+          console.log(`[Sync] Fetching matches for ${league.name} (${league.slug})...`);
+          const rawData = await espnService.getScoreboard(league.slug);
+          if (rawData) {
+            const matches = normalizeESPNScoreboard(rawData, league.slug);
+            console.log(`[Sync] Found ${matches.length} matches for ${league.name}`);
+            
+            // 3. Save each match individually to football_matches subcollection
+            for (const match of matches) {
+              const matchRef = doc(firestore, `bancas/${bancaId}/football_matches`, match.id);
+              await setDoc(matchRef, {
+                ...match,
+                leagueId: league.slug,
+                leagueName: league.name,
+                bancaId,
+                updatedAt: serverTimestamp(),
+                createdAt: serverTimestamp()
+              }, { merge: true });
+            }
+          }
+        }
       }
+
       setLastSyncAt(new Date().toISOString());
       setSyncStatus('idle');
-      toast({ title: "Sincronização concluída" });
-    } catch (e) {
+      toast({ title: "Sincronização concluída", description: "Jogos e ligas atualizados com sucesso." });
+    } catch (e: any) {
+      console.error("[Sync Error]", e);
       setSyncStatus('error');
+      toast({ variant: 'destructive', title: "Erro no Sync", description: e.message });
     }
   };
 
@@ -538,7 +579,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     ledger, banners, popups, news, apostas, 
     jdbResults, postedResults: jdbResults, jdbLoterias, genericLotteryConfigs,
     
-    footballData: { leagues: footballLeagues, matches: footballMatches, unifiedMatches: footballMatches, syncStatus, lastSyncAt },
+    footballData: { 
+      leagues: footballLeagues, 
+      matches: footballMatches, 
+      unifiedMatches: footballMatches, 
+      syncStatus, 
+      lastSyncAt 
+    },
     footballBets: [], betSlip,
     syncFootballAll,
     addBetToSlip: (item) => setBetSlip(prev => [...prev, item]),
