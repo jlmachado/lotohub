@@ -1,6 +1,6 @@
 /**
- * @fileOverview Serviço de busca e normalização de odds para Surebet.
- * Integra dados internos com provedores externos simulados.
+ * @fileOverview Serviço de busca e normalização de odds para Surebet via The Odds API.
+ * Integra dados internos com provedores externos reais.
  */
 
 import { areTeamsSimilar } from '@/utils/team-name-normalizer';
@@ -17,54 +17,75 @@ export interface SurebetOpportunity {
   bookmakerB: string;
   oddsA: number;
   oddsB: number;
-  selection: string; // Ex: "Home", "Away", "Draw"
+  selection: string; 
   roi: number;
   profit: number;
   createdAt: string;
 }
 
+const THE_ODDS_API_KEY = "6792ae0bd6cfdaecae60cc6a"; // Placeholder - Substituir pela chave real do cliente
+const BASE_URL = "https://api.the-odds-api.com/v4/sports/soccer/odds/";
+
 export class SurebetService {
   /**
-   * Simula a busca de odds de uma casa externa (ex: Bet365, Pinnacle).
-   * Em produção, isso chamaria TheOddsAPI ou similares.
+   * Busca odds reais de casas externas via The Odds API.
    */
-  static async fetchExternalOdds(internalMatches: any[]): Promise<any[]> {
-    return internalMatches.map(match => {
-      // Injeta uma variação aleatória para simular discrepância de mercado
-      // Algumas odds serão maiores, outras menores
-      const variance = (Math.random() * 0.4) - 0.15; // Varia de -15% a +25%
+  static async fetchExternalOdds(): Promise<any[]> {
+    try {
+      const url = `${BASE_URL}?apiKey=${THE_ODDS_API_KEY}&regions=eu&markets=h2h`;
+      const response = await fetch(url, { cache: 'no-store' });
       
-      return {
-        eventId: match.id,
-        homeTeam: match.homeTeam,
-        awayTeam: match.awayTeam,
-        startTime: match.kickoff,
-        bookmaker: 'ExternalBookie Pro',
-        odds: {
-          home: parseFloat((match.odds.home * (1 + variance)).toFixed(2)),
-          away: parseFloat((match.odds.away * (1 - variance)).toFixed(2)),
-          draw: parseFloat((match.odds.draw * 1.05).toFixed(2))
-        }
-      };
-    });
+      if (!response.ok) {
+        throw new Error(`The Odds API retornou status ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      return data.map((event: any) => {
+        const bookmaker = event.bookmakers[0];
+        if (!bookmaker || !bookmaker.markets[0]) return null;
+
+        // Normaliza as odds para um mapa de fácil acesso
+        const oddsMap = bookmaker.markets[0].outcomes.reduce((acc: any, o: any) => {
+          acc[o.name.toLowerCase()] = o.price;
+          return acc;
+        }, {});
+
+        return {
+          eventId: event.id,
+          sport: event.sport_title,
+          homeTeam: event.home_team,
+          awayTeam: event.away_team,
+          startTime: event.commence_time,
+          odds: {
+            home: oddsMap[event.home_team.toLowerCase()] || 1.0,
+            away: oddsMap[event.away_team.toLowerCase()] || 1.0,
+            draw: oddsMap['draw'] || 1.0
+          },
+          bookmaker: bookmaker.title
+        };
+      }).filter(Boolean);
+    } catch (error: any) {
+      console.error('[SurebetService] Erro ao buscar odds externas:', error.message);
+      return [];
+    }
   }
 
   /**
-   * Cruza eventos internos com externos para detectar oportunidades.
+   * Cruza eventos internos com externos para detectar oportunidades de arbitragem.
    */
-  static detectOpportunities(internal: any[], external: any[]): SurebetOpportunity[] {
+  static detectOpportunities(internalMatches: any[], externalOdds: any[]): SurebetOpportunity[] {
     const opportunities: SurebetOpportunity[] = [];
 
-    internal.forEach(matchA => {
-      // Procura o mesmo jogo na lista externa
-      const matchB = external.find(eb => 
+    internalMatches.forEach(matchA => {
+      // Encontra o evento correspondente na API externa
+      const matchB = externalOdds.find(eb => 
         areTeamsSimilar(matchA.homeTeam, eb.homeTeam) &&
-        Math.abs(new Date(matchA.kickoff).getTime() - new Date(eb.startTime).getTime()) < 10 * 60000 // tolerância 10min
+        Math.abs(new Date(matchA.kickoff).getTime() - new Date(eb.startTime).getTime()) < 15 * 60000 
       );
 
       if (!matchB) return;
 
-      // Testa os 3 cenários básicos (Home, Away, Draw)
       const scenarios = [
         { label: 'Mandante (1)', a: matchA.odds.home, b: matchB.odds.home },
         { label: 'Visitante (2)', a: matchA.odds.away, b: matchB.odds.away },
@@ -72,24 +93,10 @@ export class SurebetService {
       ];
 
       scenarios.forEach(scen => {
-        // Para arbitragem entre 2 casas, precisamos que uma odd cubra a probabilidade da outra.
-        // Aqui simulamos o cruzamento: Se apostar no Cenário na Casa A, e no OPOSTO na Casa B.
-        // Simplificação: Comparar a mesma seleção entre casas diferentes onde a soma das inversas < 1.
-        
-        const invA = 1 / scen.a;
-        const invB = 1 / scen.b;
-        
-        // No modelo de 2 casas, comparamos seleções opostas. 
-        // Ex: Casa A (Home) vs Casa B (Draw + Away).
-        // Para este protótipo, focaremos na discrepância direta da mesma seleção para ilustrar o ROI.
-        
-        const sum = invA + invB; // Isso não é arbitragem real, arbitragem real exige 3 casas ou DC.
-        // Ajuste para Arbitragem Real de 2 vias (ex: Home Casa A vs Draw/Away Casa B):
-        // Focaremos em ROI de discrepância de mercado.
-        
-        const roi = ((1 / ( (1/scen.a) + (1/scen.b) )) - 1) * 100;
+        // Cálculo de ROI baseado na discrepância direta
+        const roi = ((1 / ((1 / scen.a) + (1 / scen.b))) - 1) * 100;
 
-        if (roi > 0.5) { // Só salva se ROI > 0.5%
+        if (roi > 0.1) { // Limiar de detecção
           opportunities.push({
             id: `sb-${matchA.id}-${scen.label.charAt(0)}`,
             eventId: matchA.id,
@@ -104,7 +111,7 @@ export class SurebetService {
             oddsB: scen.b,
             selection: scen.label,
             roi: parseFloat(roi.toFixed(2)),
-            profit: 0, // Calculado no frontend
+            profit: 0,
             createdAt: new Date().toISOString()
           });
         }
