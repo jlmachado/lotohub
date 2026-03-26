@@ -32,7 +32,7 @@ export const SinucaSidebar = React.memo(({ className, setSheetOpen }: { classNam
         { href: "/loterias", label: "Loterias", icon: PawPrint, enabled: hasAnyLottery },
         { href: "/sinuca/ao-vivo", label: "Sinuca ao Vivo", icon: Video, enabled: modules.sinucaAoVivo },
         { href: "/futebol", label: "Futebol", icon: Goal, enabled: modules.futebol },
-        { href: "/surebet", label: "Surebet", icon: ArrowRightLeft, enabled: modules.futebol },
+        { href: "/surebet", label: "SUREBET", icon: ArrowRightLeft, enabled: modules.futebol },
         { href: "/resultados", label: "Resultados", icon: Search, enabled: true },
         { href: "/premiados", label: "Premiados", icon: Award, enabled: true },
         { href: "/apostas", label: "Apostas", icon: Ticket, enabled: !!user },
@@ -121,7 +121,7 @@ export const SinucaSidebar = React.memo(({ className, setSheetOpen }: { classNam
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="cassino" className="flex-grow overflow-y-auto p-3 space-y-1 custom-scrollbar">
-                    {menuItems.filter(i => !['Sinuca ao Vivo', 'Futebol', 'Surebet'].includes(i.label)).map(item => {
+                    {menuItems.filter(i => !['Sinuca ao Vivo', 'Futebol', 'SUREBET'].includes(i.label)).map(item => {
                         const active = pathname === item.href;
                         return (
                             <Link href={item.href} key={item.label} onClick={() => setSheetOpen?.(false)}>
@@ -220,7 +220,7 @@ export const SinucaSidebar = React.memo(({ className, setSheetOpen }: { classNam
                                   )}
                               >
                                   <ArrowRightLeft className="h-4.5 w-4.5 text-gray-400 dark:text-white/40" />
-                                  Surebet Scanner
+                                  SUREBET
                               </Button>
                           </Link>
                         </>

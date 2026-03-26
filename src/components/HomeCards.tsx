@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { PawPrint, Star, Gem, MessageCircle } from 'lucide-react';
+import { PawPrint, Star, Gem, MessageCircle, ArrowRightLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isModuleEnabled } from '@/utils/bancaContext';
 import { useMemo } from 'react';
@@ -31,6 +31,15 @@ export const HomeCards = () => {
       enabled: isModuleEnabled('bingo')
     },
     {
+      id: 'surebet',
+      title: 'SUREBET',
+      icon: ArrowRightLeft,
+      href: '/surebet',
+      color: 'bg-blue-500',
+      iconColor: 'text-white',
+      enabled: isModuleEnabled('futebol')
+    },
+    {
       id: 'cassino',
       title: 'Cassino',
       icon: Gem,
@@ -54,7 +63,7 @@ export const HomeCards = () => {
   const visibleCards = cards.filter(c => c.enabled);
 
   return (
-    <div className="px-4 grid grid-cols-2 lg:grid-cols-4 gap-4 pb-8">
+    <div className="px-4 grid grid-cols-2 lg:grid-cols-5 gap-4 pb-8">
       {visibleCards.map((card) => (
         <Link 
           key={card.id} 
