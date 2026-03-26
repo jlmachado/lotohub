@@ -6,7 +6,7 @@ import {
   Home, Gem, PawPrint, LifeBuoy, Video, Star, Award, 
   Volume2, VolumeX, Gift, Search, X, Spade, Goal, 
   Ticket, Landmark, QrCode, Banknote, Shield, 
-  LogOut, Coins, Lock, History 
+  LogOut, Coins, Lock, History, ArrowRightLeft
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -31,6 +31,8 @@ export const SinucaSidebar = React.memo(({ className, setSheetOpen }: { classNam
         { href: "/bingo", label: "Bingo", icon: Star, enabled: modules.bingo },
         { href: "/loterias", label: "Loterias", icon: PawPrint, enabled: hasAnyLottery },
         { href: "/sinuca/ao-vivo", label: "Sinuca ao Vivo", icon: Video, enabled: modules.sinucaAoVivo },
+        { href: "/futebol", label: "Futebol", icon: Goal, enabled: modules.futebol },
+        { href: "/surebet", label: "Surebet", icon: ArrowRightLeft, enabled: modules.futebol },
         { href: "/resultados", label: "Resultados", icon: Search, enabled: true },
         { href: "/premiados", label: "Premiados", icon: Award, enabled: true },
         { href: "/apostas", label: "Apostas", icon: Ticket, enabled: !!user },
@@ -84,7 +86,7 @@ export const SinucaSidebar = React.memo(({ className, setSheetOpen }: { classNam
         <aside className={cn("flex flex-col h-full bg-white text-gray-800 dark:bg-black/80 dark:text-white", className)}>
             <div className="flex items-center justify-between p-3.5 border-b border-gray-200 dark:border-white/10">
                 <Link href="/" onClick={() => setSheetOpen?.(false)}>
-                    <Logo width={100} height={24} />
+                    <Logo height={24} />
                 </Link>
                 {setSheetOpen && (
                     <SheetClose asChild className="lg:hidden">
@@ -119,7 +121,7 @@ export const SinucaSidebar = React.memo(({ className, setSheetOpen }: { classNam
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="cassino" className="flex-grow overflow-y-auto p-3 space-y-1 custom-scrollbar">
-                    {menuItems.filter(i => !['Sinuca ao Vivo', 'Futebol'].includes(i.label)).map(item => {
+                    {menuItems.filter(i => !['Sinuca ao Vivo', 'Futebol', 'Surebet'].includes(i.label)).map(item => {
                         const active = pathname === item.href;
                         return (
                             <Link href={item.href} key={item.label} onClick={() => setSheetOpen?.(false)}>
@@ -192,20 +194,36 @@ export const SinucaSidebar = React.memo(({ className, setSheetOpen }: { classNam
                         </Link>
                     )}
                     {modules.futebol && (
-                        <Link href="/futebol" onClick={() => setSheetOpen?.(false)}>
-                            <Button
-                                variant="ghost"
-                                className={cn(
-                                    "w-full justify-start gap-3 text-sm h-10.5 rounded-xl transition-all",
-                                    pathname.startsWith('/futebol') 
-                                        ? "bg-green-50 dark:bg-green-600/10 text-green-600 dark:text-green-400 font-bold" 
-                                        : "text-gray-600 dark:text-white/70 hover:bg-slate-50 dark:hover:bg-white/5"
-                                )}
-                            >
-                                <Goal className="h-4.5 w-4.5 text-gray-400 dark:text-white/40" />
-                                Futebol
-                            </Button>
-                        </Link>
+                        <>
+                          <Link href="/futebol" onClick={() => setSheetOpen?.(false)}>
+                              <Button
+                                  variant="ghost"
+                                  className={cn(
+                                      "w-full justify-start gap-3 text-sm h-10.5 rounded-xl transition-all",
+                                      pathname.startsWith('/futebol') 
+                                          ? "bg-green-50 dark:bg-green-600/10 text-green-600 dark:text-green-400 font-bold" 
+                                          : "text-gray-600 dark:text-white/70 hover:bg-slate-50 dark:hover:bg-white/5"
+                                  )}
+                              >
+                                  <Goal className="h-4.5 w-4.5 text-gray-400 dark:text-white/40" />
+                                  Futebol
+                              </Button>
+                          </Link>
+                          <Link href="/surebet" onClick={() => setSheetOpen?.(false)}>
+                              <Button
+                                  variant="ghost"
+                                  className={cn(
+                                      "w-full justify-start gap-3 text-sm h-10.5 rounded-xl transition-all",
+                                      pathname.startsWith('/surebet') 
+                                          ? "bg-green-50 dark:bg-green-600/10 text-green-600 dark:text-green-400 font-bold" 
+                                          : "text-gray-600 dark:text-white/70 hover:bg-slate-50 dark:hover:bg-white/5"
+                                  )}
+                              >
+                                  <ArrowRightLeft className="h-4.5 w-4.5 text-gray-400 dark:text-white/40" />
+                                  Surebet Scanner
+                              </Button>
+                          </Link>
+                        </>
                     )}
                 </TabsContent>
             </Tabs>

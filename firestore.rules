@@ -44,7 +44,7 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isSuperAdmin();
 
-      // 🔓 DADOS PÚBLICOS (Configurações, Resultados, Banners, Notícias, Sorteios)
+      // 🔓 DADOS PÚBLICOS (Configurações, Resultados, Banners, Notícias, Sorteios, Surebets)
       match /configuracoes/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /banners/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /popups/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
@@ -56,6 +56,7 @@ service cloud.firestore {
       match /bingo_draws/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /football_leagues/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /football_matches/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
+      match /surebets/{id} { allow read: if true; allow write: if isAdmin(bancaId); }
 
       // 🔒 DADOS PROTEGIDOS (Apostas, Financeiro, Usuários)
       
@@ -93,5 +94,6 @@ service cloud.firestore {
     match /apostas/{id} { allow read: if isLogged() && (resource != null && resource.data.userId == request.auth.uid || isSuperAdmin()); allow write: if isSuperAdmin(); }
     match /ledgerEntries/{id} { allow read: if isLogged() && (resource != null && resource.data.userId == request.auth.uid || isSuperAdmin()); allow write: if isSuperAdmin(); }
     match /football_matches/{id} { allow read: if true; allow write: if isSuperAdmin(); }
+    match /surebets/{id} { allow read: if true; allow write: if isSuperAdmin(); }
   }
 }

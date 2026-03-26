@@ -17,7 +17,8 @@ import {
   ShieldCheck,
   TrendingUp,
   CheckCircle2,
-  Zap
+  Zap,
+  ArrowRightLeft
 } from 'lucide-react';
 
 export function getAdminMenuItems(user: any, context: any, modules: any) {
@@ -41,6 +42,7 @@ export function getAdminMenuItems(user: any, context: any, modules: any) {
     items.push({ href: "/admin/futebol/limites", label: "Futebol: Limites", icon: ShieldCheck });
     items.push({ href: "/admin/futebol/risco", label: "Futebol: Risco", icon: TrendingUp });
     items.push({ href: "/admin/futebol/apostas", label: "Futebol: Auditoria", icon: FileBarChart });
+    items.push({ href: "/admin/surebet", label: "Surebet: Monitor", icon: ArrowRightLeft });
   }
   
   if (modules?.sinucaAoVivo) {

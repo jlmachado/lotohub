@@ -2,6 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca em Tempo Real.
+ * Atualizado com suporte ao scanner de Surebet.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -23,6 +24,7 @@ import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { espnService } from '@/services/espn-api-service';
 import { normalizeESPNScoreboard } from '@/utils/espn-normalizer';
+import { SurebetService, SurebetOpportunity } from '@/services/surebet-service';
 
 // --- Interfaces ---
 export interface JDBLoteria {
@@ -162,44 +164,6 @@ export interface SnookerLiveConfig {
   profanityFilterEnabled: boolean;
 }
 
-export interface SnookerAutomationSettings {
-  enabled: boolean;
-  intervalMinutes: number;
-  sources: any[];
-  manualPrimaryChannelId: string | null;
-  status: 'idle' | 'running' | 'error';
-}
-
-export interface SnookerSyncLog {
-  id: string;
-  message: string;
-  status: 'success' | 'error' | 'warning';
-  sourceName?: string;
-  createdAt: string;
-}
-
-export interface SnookerScoreRecognitionSettings {
-  enabled: boolean;
-  mode: 'manual' | 'auto_assistido';
-  autoApplyScore: boolean;
-  minConfidenceToAutoApply: number;
-  requiredStableReads: number;
-  captureIntervalSeconds: number;
-}
-
-export interface BingoWinner {
-  id: string;
-  drawId: string;
-  userId: string;
-  userName: string;
-  terminalId: string;
-  category: 'quadra' | 'kina' | 'keno';
-  winAmount: number;
-  winningNumbers: number[];
-  wonAt: string;
-  type: 'USER_WIN' | 'BOT_WIN';
-}
-
 interface AppContextType {
   user: any; isLoading: boolean; balance: number; bonus: number;
   currentBanca: any; subdomain: string | null;
@@ -232,12 +196,6 @@ interface AppContextType {
   snookerChatMessages: any[];
   snookerCashOutLog: any[];
   snookerScoreboards: Record<string, any>;
-  snookerScoreRecognitionSettings: SnookerScoreRecognitionSettings;
-  snookerAutomationSettings: SnookerAutomationSettings;
-  snookerPrimaryChannelId: string | null;
-  snookerSyncLogs: SnookerSyncLog[];
-  snookerBetsFeed: any[];
-  snookerActivityFeed: any[];
   
   // Bingo & Casino
   casinoSettings: CasinoSettings | null;
@@ -245,6 +203,9 @@ interface AppContextType {
   bingoDraws: BingoDraw[];
   bingoTickets: BingoTicket[];
   bingoPayouts: any[];
+
+  // Surebet
+  surebets: SurebetOpportunity[];
 
   // Utils
   refreshData: () => void; logout: () => void;
@@ -264,17 +225,8 @@ interface AppContextType {
   updateSnookerLiveConfig: (cfg: SnookerLiveConfig) => void;
   updateSnookerChannel: (channel: any) => void;
   deleteSnookerChannel: (id: string) => void;
-  getMatchesCollection: (id: string) => void;
   addSnookerChannel: (channel: any) => void;
   updateSnookerScoreboard: (channelId: string, scoreboard: any) => void;
-  updateSnookerScoreRecognitionSettings: (cfg: any) => void;
-  updateSnookerAutomationSettings: (cfg: any) => void;
-  updateSnookerAutomationSource: (id: string, source: any) => void;
-  toggleSnookerSource: (id: string, enabled: boolean) => void;
-  approveAutoSnookerChannel: (id: string) => void;
-  archiveAutoSnookerChannel: (id: string) => void;
-  clearSnookerSyncLogs: () => void;
-  setManualPrimarySnookerChannel: (id: string | null) => void;
 
   // Bingo Actions
   updateBingoSettings: (cfg: BingoSettings) => void;
@@ -349,10 +301,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [snookerBets, setSnookerBets] = useState<SnookerBet[]>([]);
   const [snookerScoreboards, setSnookerScoreboards] = useState<Record<string, any>>({});
   const [snookerPresence, setSnookerPresence] = useState<any>({});
-  const [snookerSyncLogs, setSnookerSyncLogs] = useState<SnookerSyncLog[]>([]);
-  const [snookerBetsFeed, setSnookerBetsFeed] = useState<any[]>([]);
-  const [snookerActivityFeed, setSnookerActivityFeed] = useState<any[]>([]);
   
+  // Surebet
+  const [surebets, setSurebets] = useState<SurebetOpportunity[]>([]);
+
   const [casinoSettings, setCasinoSettings] = useState<CasinoSettings | null>(null);
   const [bingoSettings, setBingoSettings] = useState<BingoSettings | null>(null);
   const [snookerLiveConfig, setSnookerLiveConfig] = useState<SnookerLiveConfig | null>(null);
@@ -440,10 +392,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(collection(firestore, bancaPath, 'football_matches'), 
         (s) => {
           const loaded = s.docs.map(d => ({ id: d.id, ...d.data() }));
-          console.log(`[Snapshot] ${loaded.length} matches loaded for ${bancaId}`);
           setFootballMatches(loaded);
         },
         handleSnapshotError('football_matches')),
+
+      onSnapshot(collection(firestore, bancaPath, 'surebets'), 
+        (s) => setSurebets(s.docs.map(d => ({ id: d.id, ...d.data() } as SurebetOpportunity))),
+        handleSnapshotError('surebets')),
 
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
         (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings),
@@ -486,14 +441,40 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       if (isPrivileged) {
         unsubscribers.push(
-          onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('all_users')),
-          onSnapshot(collection(firestore, bancaPath, 'snooker_sync_logs'), (s) => setSnookerSyncLogs(s.docs.map(d => ({ id: d.id, ...d.data() } as SnookerSyncLog))), handleSnapshotError('sync_logs'))
+          onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('all_users'))
         );
       }
     }
 
     return () => unsubscribers.forEach(unsub => unsub());
   }, [firestore, user, contextTicker]);
+
+  // Surebet Automator (Job)
+  useEffect(() => {
+    if (!user || (user.tipoUsuario !== 'ADMIN' && user.tipoUsuario !== 'SUPER_ADMIN')) return;
+
+    const runSurebetScan = async () => {
+      const bancaId = user.bancaId || 'default';
+      const activeMatches = footballMatches.filter(m => m.status === 'SCHEDULED' || m.status === 'LIVE').slice(0, 20);
+      
+      if (activeMatches.length === 0) return;
+
+      try {
+        const externalOdds = await SurebetService.fetchExternalOdds(activeMatches);
+        const opportunities = SurebetService.detectOpportunities(activeMatches, externalOdds);
+
+        // Salva as principais no Firestore
+        for (const opp of opportunities.slice(0, 5)) {
+          await setDoc(doc(firestore, `bancas/${bancaId}/surebets`, opp.id), opp, { merge: true });
+        }
+      } catch (e) {
+        console.warn("[Surebet Scan Error]", e);
+      }
+    };
+
+    const interval = setInterval(runSurebetScan, 10000); // 10s
+    return () => clearInterval(interval);
+  }, [user, footballMatches, firestore]);
 
   // Actions
   const addJDBLoteria = (loteria: any) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, loteria.id), loteria, { merge: true });
@@ -532,22 +513,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
     
     try {
-      console.log(`[Sync] Starting Global Football Sync for ${bancaId}...`);
-      
-      // 1. Sync Leagues config first
       const activeLeagues = footballLeagues.length > 0 ? footballLeagues : ESPN_LEAGUE_CATALOG;
       for (const league of activeLeagues) {
         await setDoc(doc(firestore, `bancas/${bancaId}/football_leagues`, league.id), league, { merge: true });
-        
-        // 2. Fetch matches for each active league
         if (league.active) {
-          console.log(`[Sync] Fetching matches for ${league.name} (${league.slug})...`);
           const rawData = await espnService.getScoreboard(league.slug);
           if (rawData) {
             const matches = normalizeESPNScoreboard(rawData, league.slug);
-            console.log(`[Sync] Found ${matches.length} matches for ${league.name}`);
-            
-            // 3. Save each match individually to football_matches subcollection
             for (const match of matches) {
               const matchRef = doc(firestore, `bancas/${bancaId}/football_matches`, match.id);
               await setDoc(matchRef, {
@@ -562,12 +534,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           }
         }
       }
-
       setLastSyncAt(new Date().toISOString());
       setSyncStatus('idle');
-      toast({ title: "Sincronização concluída", description: "Jogos e ligas atualizados com sucesso." });
+      toast({ title: "Sincronização concluída" });
     } catch (e: any) {
-      console.error("[Sync Error]", e);
       setSyncStatus('error');
       toast({ variant: 'destructive', title: "Erro no Sync", description: e.message });
     }
@@ -596,11 +566,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     snookerPresence, snookerSyncState, celebrationTrigger: false, snookerLiveConfig,
     snookerBets, snookerFinancialHistory: [], snookerChatMessages: [], snookerCashOutLog: [],
-    snookerScoreboards, snookerSyncLogs, snookerBetsFeed, snookerActivityFeed,
-    snookerScoreRecognitionSettings: { enabled: false, mode: 'manual', autoApplyScore: false, minConfidenceToAutoApply: 0.8, requiredStableReads: 3, captureIntervalSeconds: 10 }, 
-    snookerAutomationSettings: { enabled: true, intervalMinutes: 5, sources: [], manualPrimaryChannelId: null, status: 'idle' }, 
-    snookerPrimaryChannelId: null,
+    snookerScoreboards,
     
+    surebets,
+
     casinoSettings, bingoSettings, bingoDraws: [], bingoTickets: [], bingoPayouts: [],
     liveMiniPlayerConfig,
     
@@ -616,9 +585,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     placeSnookerBet: () => false, cashOutSnookerBet: () => {}, settleSnookerRound: () => {}, 
     updateSnookerLiveConfig: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/snooker_live_config`), cfg, { merge: true }), 
     updateSnookerChannel: () => {}, deleteSnookerChannel: () => {}, addSnookerChannel: () => {}, updateSnookerScoreboard: () => {},
-    updateSnookerScoreRecognitionSettings: () => {}, updateSnookerAutomationSettings: () => {},
-    updateSnookerAutomationSource: () => {}, toggleSnookerSource: () => {}, approveAutoSnookerChannel: () => {}, 
-    archiveAutoSnookerChannel: () => {}, clearSnookerSyncLogs: () => {}, setManualPrimarySnookerChannel: () => {},
     updateBingoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/bingo_settings`), cfg, { merge: true }),
     createBingoDraw: () => {}, startBingoDraw: () => {}, finishBingoDraw: () => {}, buyBingoTickets: () => true,
     updateCasinoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/casino_settings`), cfg, { merge: true }),
