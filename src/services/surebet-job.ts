@@ -1,10 +1,10 @@
 /**
  * @fileOverview Job de Automação Surebet.
- * Realiza a varredura e persistência de oportunidades no Firestore.
+ * Realiza a varredura e persistência de oportunidades no Firestore respeitando taxas administrativas.
  */
 
 import { initializeFirebase } from '@/firebase';
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import { SurebetService } from './surebet-service';
 import { ArbitrageEngine } from '@/utils/arbitrage-engine';
 import { matchEvents } from '@/utils/matchEvents';
@@ -18,26 +18,46 @@ export class SurebetJob {
     const { firestore } = initializeFirebase();
     
     try {
-      // 1. Busca odds de múltiplos provedores
+      // 1. Busca configurações da banca
+      const settingsRef = doc(firestore, `bancas/${bancaId}/configuracoes/surebet_settings`);
+      const settingsSnap = await getDoc(settingsRef);
+      const settings = settingsSnap.exists() ? settingsSnap.data() : { 
+        enabled: true, 
+        depositFee: 0, 
+        withdrawFee: 0, 
+        minRoi: 0.5 
+      };
+
+      if (!settings.enabled) return [];
+
+      // 2. Busca odds de múltiplos provedores
       const odds = await SurebetService.fetchExternalOdds();
       if (!odds || odds.length === 0) return [];
 
       const opportunities: any[] = [];
 
-      // 2. Cruzamento quadrático para encontrar janelas de lucro
+      // 3. Cruzamento quadrático para encontrar janelas de lucro
       for (let i = 0; i < odds.length; i++) {
         for (let j = i + 1; j < odds.length; j++) {
-          // Só compara se for o mesmo jogo real
           if (!matchEvents(odds[i], odds[j])) continue;
 
           // Cenário: Casa na Bookmaker A vs Fora na Bookmaker B
-          const res = ArbitrageEngine.calculate(odds[i].odds.home, odds[j].odds.away, 1000);
-          if (res && res.roi > 0.5) { // ROI mínimo de 0.5% para ser listado
+          // Aplica as taxas configuradas no painel admin
+          const res = ArbitrageEngine.calculate(
+            odds[i].odds.home, 
+            odds[j].odds.away, 
+            1000, 
+            { deposit: settings.depositFee, withdraw: settings.withdrawFee }
+          );
+
+          if (res && res.roi >= settings.minRoi) { 
             opportunities.push({
               id: `sb-${odds[i].eventId}-${i}-${j}`,
               event: `${odds[i].homeTeam} vs ${odds[i].awayTeam}`,
               homeTeam: odds[i].homeTeam,
               awayTeam: odds[i].awayTeam,
+              league: odds[i].league || 'Sportsbook',
+              startTime: odds[i].startTime,
               selection: 'Casa / Fora',
               ...res,
               bookmakerA: odds[i].bookmaker,
@@ -49,15 +69,16 @@ export class SurebetJob {
         }
       }
 
-      // 3. Persistência Cloud (Filtra as 10 melhores para performance)
-      const topOpps = opportunities.sort((a, b) => b.roi - a.roi).slice(0, 10);
+      // 4. Persistência Cloud (Filtra as 15 melhores para performance)
+      const topOpps = opportunities.sort((a, b) => b.roi - a.roi).slice(0, 15);
       const surebetsCol = collection(firestore, `bancas/${bancaId}/surebets`);
 
+      // Limpeza de oportunidades antigas (opcional, aqui apenas sobrescrevemos/adicionamos)
       for (const opp of topOpps) {
         await setDoc(doc(surebetsCol, opp.id), opp, { merge: true });
       }
 
-      console.log(`[Surebet Scheduler] Ciclo concluído: ${topOpps.length} oportunidades salvas.`);
+      console.log(`[Surebet Job][${bancaId}] Ciclo concluído: ${topOpps.length} oportunidades salvas com ROI >= ${settings.minRoi}%`);
       return topOpps;
 
     } catch (error: any) {

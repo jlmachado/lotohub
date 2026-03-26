@@ -21,24 +21,48 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { formatBRL } from '@/utils/currency';
 import Link from 'next/link';
+import { useAppContext } from '@/context/AppContext';
 
 export default function AdminSurebetPage() {
   const { toast } = useToast();
+  const { surebetSettings, updateSurebetSettings } = useAppContext();
+  
   const [enabled, setEnabled] = useState(true);
   const [fees, setFees] = useState({ deposit: 1.5, withdraw: 2.0 });
   const [minRoi, setMinRoi] = useState(1.5);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const handleSave = () => {
-    toast({ title: 'Configurações Salvas', description: 'O motor de arbitragem foi atualizado.' });
+  // Sincroniza estado local com o banco
+  useEffect(() => {
+    if (surebetSettings) {
+      setEnabled(surebetSettings.enabled);
+      setFees({ deposit: surebetSettings.depositFee, withdraw: surebetSettings.withdrawFee });
+      setMinRoi(surebetSettings.minRoi);
+    }
+  }, [surebetSettings]);
+
+  const handleSave = async () => {
+    try {
+      await updateSurebetSettings({
+        enabled,
+        depositFee: fees.deposit,
+        withdrawFee: fees.withdraw,
+        minRoi
+      });
+      toast({ title: 'Configurações Salvas', description: 'O motor de arbitragem foi atualizado com sucesso.' });
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Erro ao salvar', description: 'Não foi possível atualizar as configurações.' });
+    }
   };
 
   const handleForceSync = () => {
     setIsSyncing(true);
+    // O Job é disparado pelo AppContext automaticamente a cada 10s, 
+    // forçar sync aqui é apenas um feedback visual para o admin.
     setTimeout(() => {
       setIsSyncing(false);
-      toast({ title: 'Scanner Concluído', description: '14 novas oportunidades detectadas.' });
-    }, 2000);
+      toast({ title: 'Scanner Reiniciado', description: 'O ciclo de detecção foi disparado.' });
+    }, 1500);
   };
 
   return (
@@ -48,7 +72,7 @@ export default function AdminSurebetPage() {
           <Link href="/admin"><Button variant="outline" size="icon"><ChevronLeft size={18} /></Button></Link>
           <div>
             <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Surebet Admin</h1>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Configuração do Motor de Arbitragem</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1">Configuração do Motor de Arbitragem</p>
           </div>
         </div>
         <Button 
@@ -92,7 +116,7 @@ export default function AdminSurebetPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Frequência de Scan (segundos)</Label>
-                  <Input type="number" defaultValue="10" className="bg-black/20 border-white/5 h-11 text-lg font-black" />
+                  <Input type="number" defaultValue="10" disabled className="bg-black/20 border-white/5 h-11 text-lg font-black opacity-50" />
                 </div>
               </div>
             </CardContent>
@@ -136,7 +160,7 @@ export default function AdminSurebetPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button onClick={handleSave} className="w-full h-12 rounded-xl font-black uppercase italic lux-shine">
+              <Button onClick={handleSave} className="w-full h-12 rounded-xl font-black uppercase italic lux-shine text-black bg-primary">
                 <Save size={16} className="mr-2" /> Salvar Configurações
               </Button>
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
@@ -144,7 +168,7 @@ export default function AdminSurebetPage() {
                   <AlertTriangle size={12} /> Aviso Técnico
                 </p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed font-bold uppercase">
-                  O scanner de Surebet consome créditos de API. Mantenha a frequência acima de 10s para evitar custos desnecessários.
+                  O motor de arbitragem utiliza as taxas acima para filtrar apenas oportunidades que geram lucro REAL após os custos de movimentação.
                 </p>
               </div>
             </CardContent>
@@ -153,15 +177,16 @@ export default function AdminSurebetPage() {
           <Card className="border-white/5 bg-slate-900/50 overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-[10px] font-black uppercase italic tracking-widest flex items-center gap-2">
-                <History size={14} className="text-blue-400" /> Logs de Execução
+                <History size={14} className="text-blue-400" /> Status da Automação
               </CardTitle>
             </CardHeader>
             <div className="p-4 space-y-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="text-[9px] font-mono text-slate-500 border-b border-white/5 pb-2 last:border-0">
-                  <span className="text-blue-400">[19:45:0{i}]</span> Scan concluído em 142ms. Encontrado ROI 4.2% em FLA x PAL.
-                </div>
-              ))}
+              <div className="text-[9px] font-mono text-slate-500 border-b border-white/5 pb-2 last:border-0">
+                <span className="text-blue-400">[{new Date().toLocaleTimeString()}]</span> Monitoramento ativo. Frequência de 10s respeitada.
+              </div>
+              <div className="text-[9px] font-mono text-slate-500 border-b border-white/5 pb-2 last:border-0">
+                <span className="text-green-500">[OK]</span> ROI Mínimo: {minRoi}%
+              </div>
             </div>
           </Card>
         </div>

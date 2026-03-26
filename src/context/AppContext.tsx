@@ -164,6 +164,13 @@ export interface SnookerLiveConfig {
   profanityFilterEnabled: boolean;
 }
 
+export interface SurebetSettings {
+  enabled: boolean;
+  depositFee: number;
+  withdrawFee: number;
+  minRoi: number;
+}
+
 interface AppContextType {
   user: any; isLoading: boolean; balance: number; bonus: number;
   currentBanca: any; subdomain: string | null;
@@ -206,6 +213,8 @@ interface AppContextType {
 
   // Surebet
   surebets: SurebetOpportunity[];
+  surebetSettings: SurebetSettings | null;
+  updateSurebetSettings: (cfg: SurebetSettings) => Promise<void>;
 
   // Utils
   refreshData: () => void; logout: () => void;
@@ -258,12 +267,11 @@ interface AppContextType {
   deleteJDBResult: (id: string) => Promise<void>;
   publishJDBResult: (id: string) => Promise<void>;
   fullLedger: any[];
-  genericLotteryConfigs: any[];
-  updateGenericLottery: (cfg: any) => void;
   activeBancaId: string;
   addJDBLoteria: (loteria: any) => void;
   updateJDBLoteria: (loteria: any) => void;
   deleteJDBLoteria: (id: string) => void;
+  updateGenericLottery: (cfg: any) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -304,6 +312,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   
   // Surebet
   const [surebets, setSurebets] = useState<SurebetOpportunity[]>([]);
+  const [surebetSettings, setSurebetSettings] = useState<SurebetSettings | null>(null);
 
   const [casinoSettings, setCasinoSettings] = useState<CasinoSettings | null>(null);
   const [bingoSettings, setBingoSettings] = useState<BingoSettings | null>(null);
@@ -396,6 +405,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         (s) => setSurebets(s.docs.map(d => ({ id: d.id, ...d.data() } as SurebetOpportunity))),
         handleSnapshotError('surebets')),
 
+      onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'surebet_settings'), 
+        (s) => s.exists() && setSurebetSettings(s.data() as SurebetSettings),
+        handleSnapshotError('surebet_settings')),
+
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), 
         (s) => s.exists() && setCasinoSettings(s.data() as CasinoSettings),
         handleSnapshotError('casino_settings')),
@@ -445,9 +458,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribers.forEach(unsub => unsub());
   }, [firestore, user, contextTicker]);
 
-  // SUREBET SCHEDULER (Acts as the internal scheduler)
+  // SUREBET SCHEDULER
   useEffect(() => {
-    // Only run the scheduler if an Admin/SuperAdmin is active
     if (!user || (user.tipoUsuario !== 'ADMIN' && user.tipoUsuario !== 'SUPER_ADMIN')) return;
 
     const runJob = async () => {
@@ -459,16 +471,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    // Run every 10 seconds as requested
     const interval = setInterval(runJob, 10000);
-    
-    // Initial run
     runJob();
-
     return () => clearInterval(interval);
   }, [user, firestore]);
 
   // Actions
+  const updateSurebetSettings = async (cfg: SurebetSettings) => {
+    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+    await setDoc(doc(firestore, `bancas/${bancaId}/configuracoes/surebet_settings`), cfg, { merge: true });
+  };
+
   const addJDBLoteria = (loteria: any) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, loteria.id), loteria, { merge: true });
   const updateJDBLoteria = (loteria: any) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, loteria.id), loteria, { merge: true });
   const deleteJDBLoteria = (id: string) => deleteDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, id));
@@ -560,6 +573,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     snookerScoreboards,
     
     surebets,
+    surebetSettings,
+    updateSurebetSettings,
 
     casinoSettings, bingoSettings, bingoDraws: [], bingoTickets: [], bingoPayouts: [],
     liveMiniPlayerConfig,
