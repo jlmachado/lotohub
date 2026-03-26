@@ -2,7 +2,6 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca em Tempo Real.
- * Atualizado com suporte ao scanner de Surebet.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -352,7 +351,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       console.warn(`[Snapshot] Access to ${collectionName} denied or pending auth.`);
     };
 
-    // --- Public Listeners ---
     unsubscribers.push(
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), 
         (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner))),
@@ -391,10 +389,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         handleSnapshotError('football_leagues')),
 
       onSnapshot(collection(firestore, bancaPath, 'football_matches'), 
-        (s) => {
-          const loaded = s.docs.map(d => ({ id: d.id, ...d.data() }));
-          setFootballMatches(loaded);
-        },
+        (s) => setFootballMatches(s.docs.map(d => ({ id: d.id, ...d.data() }))),
         handleSnapshotError('football_matches')),
 
       onSnapshot(collection(firestore, bancaPath, 'surebets'), 
@@ -418,21 +413,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         handleSnapshotError('mini_player'))
     );
 
-    // --- Protected Listeners (Apenas se logado) ---
     if (user) {
       const isPrivileged = user.tipoUsuario === 'ADMIN' || user.tipoUsuario === 'SUPER_ADMIN';
+      const bancaPathUser = `bancas/${user.bancaId || 'default'}`;
       
       const apostasQuery = isPrivileged 
-        ? query(collection(firestore, bancaPath, 'apostas'), orderBy('createdAt', 'desc'), limit(50))
-        : query(collection(firestore, bancaPath, 'apostas'), where('userId', '==', user.id), orderBy('createdAt', 'desc'), limit(50));
+        ? query(collection(firestore, bancaPathUser, 'apostas'), orderBy('createdAt', 'desc'), limit(50))
+        : query(collection(firestore, bancaPathUser, 'apostas'), where('userId', '==', user.id), orderBy('createdAt', 'desc'), limit(50));
 
       const ledgerQuery = isPrivileged
-        ? query(collection(firestore, bancaPath, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100))
-        : query(collection(firestore, bancaPath, 'ledgerEntries'), where('userId', '==', user.id), orderBy('createdAt', 'desc'), limit(100));
+        ? query(collection(firestore, bancaPathUser, 'ledgerEntries'), orderBy('createdAt', 'desc'), limit(100))
+        : query(collection(firestore, bancaPathUser, 'ledgerEntries'), where('userId', '==', user.id), orderBy('createdAt', 'desc'), limit(100));
 
       const snookerBetsQuery = isPrivileged
-        ? collection(firestore, bancaPath, 'snooker_bets')
-        : query(collection(firestore, bancaPath, 'snooker_bets'), where('userId', '==', user.id));
+        ? collection(firestore, bancaPathUser, 'snooker_bets')
+        : query(collection(firestore, bancaPathUser, 'snooker_bets'), where('userId', '==', user.id));
 
       unsubscribers.push(
         onSnapshot(apostasQuery, (s) => setApostas(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('apostas')),
@@ -442,7 +437,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       if (isPrivileged) {
         unsubscribers.push(
-          onSnapshot(collection(firestore, bancaPath, 'usuarios'), (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('all_users'))
+          onSnapshot(collection(firestore, bancaPathUser, 'usuarios'), (s) => setAllUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('all_users'))
         );
       }
     }
@@ -450,17 +445,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribers.forEach(unsub => unsub());
   }, [firestore, user, contextTicker]);
 
-  // Surebet Job Automator
+  // SUREBET SCHEDULER (Acts as the internal scheduler)
   useEffect(() => {
+    // Only run the scheduler if an Admin/SuperAdmin is active
     if (!user || (user.tipoUsuario !== 'ADMIN' && user.tipoUsuario !== 'SUPER_ADMIN')) return;
 
-    const interval = setInterval(() => {
-      const bancaId = user.bancaId || 'default';
-      SurebetJob.run(bancaId).catch(err => console.warn("[Surebet Job Error]", err.message));
-    }, 10000); // 10s
+    const runJob = async () => {
+      const bancaId = user.bancaId || getCurrentBancaId() || 'default';
+      try {
+        await SurebetJob.run(bancaId);
+      } catch (e: any) {
+        console.warn("[Surebet Scheduler Error]", e.message);
+      }
+    };
+
+    // Run every 10 seconds as requested
+    const interval = setInterval(runJob, 10000);
+    
+    // Initial run
+    runJob();
 
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, firestore]);
 
   // Actions
   const addJDBLoteria = (loteria: any) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, loteria.id), loteria, { merge: true });
@@ -513,8 +519,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 leagueId: league.slug,
                 leagueName: league.name,
                 bancaId,
-                updatedAt: serverTimestamp(),
-                createdAt: serverTimestamp()
+                updatedAt: serverTimestamp()
               }, { merge: true });
             }
           }

@@ -1,6 +1,5 @@
 /**
  * @fileOverview Serviço de busca e normalização de odds para Surebet via The Odds API.
- * Integra dados internos com provedores externos reais.
  */
 
 import { areTeamsSimilar } from '@/utils/team-name-normalizer';
@@ -21,15 +20,18 @@ export interface SurebetOpportunity {
   roi: number;
   profit: number;
   createdAt: string;
+  stakeA?: number;
+  stakeB?: number;
 }
 
+// Chave de demonstração (substituir por env real em produção)
 const THE_ODDS_API_KEY = "6792ae0bd6cfdaecae60cc6a"; 
 const BASE_URL = "https://api.the-odds-api.com/v4/sports/soccer/odds/";
 
 export class SurebetService {
   /**
-   * Busca odds reais de casas externas via The Odds API.
-   * Retorna uma lista "flat" de eventos vinculados a seus respectivos bookmakers.
+   * Busca odds reais de casas externas.
+   * Normaliza os dados para o formato exigido pelo motor de arbitragem.
    */
   static async fetchExternalOdds(): Promise<any[]> {
     try {
@@ -37,10 +39,12 @@ export class SurebetService {
       const response = await fetch(url, { cache: 'no-store' });
       
       if (!response.ok) {
-        throw new Error(`The Odds API retornou status ${response.status}`);
+        throw new Error(`API Error: ${response.status}`);
       }
 
       const data = await response.json();
+
+      if (!Array.isArray(data)) return [];
 
       return data.flatMap((event: any) => {
         if (!event.bookmakers || !Array.isArray(event.bookmakers)) return [];
@@ -49,7 +53,6 @@ export class SurebetService {
           const market = bm.markets.find((m: any) => m.key === 'h2h');
           if (!market) return null;
 
-          // Normaliza as odds para um mapa de fácil acesso
           const oddsMap = market.outcomes.reduce((acc: any, o: any) => {
             acc[o.name.toLowerCase()] = o.price;
             return acc;
@@ -72,57 +75,8 @@ export class SurebetService {
         }).filter(Boolean);
       });
     } catch (error: any) {
-      console.error('[SurebetService] Erro ao buscar odds externas:', error.message);
+      console.error('[SurebetService] Erro ao buscar odds:', error.message);
       return [];
     }
-  }
-
-  /**
-   * Cruza eventos internos com externos para detectar oportunidades de arbitragem.
-   * @deprecated Use o SurebetJob para varredura completa.
-   */
-  static detectOpportunities(internalMatches: any[], externalOdds: any[]): SurebetOpportunity[] {
-    const opportunities: SurebetOpportunity[] = [];
-
-    internalMatches.forEach(matchA => {
-      const matchB = externalOdds.find(eb => 
-        areTeamsSimilar(matchA.homeTeam, eb.homeTeam) &&
-        Math.abs(new Date(matchA.kickoff).getTime() - new Date(eb.startTime).getTime()) < 15 * 60000 
-      );
-
-      if (!matchB) return;
-
-      const scenarios = [
-        { label: 'Mandante (1)', a: matchA.odds.home, b: matchB.odds.home },
-        { label: 'Visitante (2)', a: matchA.odds.away, b: matchB.odds.away },
-        { label: 'Empate (X)', a: matchA.odds.draw, b: matchB.odds.draw }
-      ];
-
-      scenarios.forEach(scen => {
-        const roi = ((1 / ((1 / scen.a) + (1 / scen.b))) - 1) * 100;
-
-        if (roi > 0.1) {
-          opportunities.push({
-            id: `sb-${matchA.id}-${scen.label.charAt(0)}`,
-            eventId: matchA.id,
-            sport: 'Futebol',
-            league: matchA.league,
-            homeTeam: matchA.homeTeam,
-            awayTeam: matchA.awayTeam,
-            startTime: matchA.kickoff,
-            bookmakerA: 'LotoHub',
-            bookmakerB: matchB.bookmaker,
-            oddsA: scen.a,
-            oddsB: scen.b,
-            selection: scen.label,
-            roi: parseFloat(roi.toFixed(2)),
-            profit: 0,
-            createdAt: new Date().toISOString()
-          });
-        }
-      });
-    });
-
-    return opportunities.sort((a, b) => b.roi - a.roi);
   }
 }
