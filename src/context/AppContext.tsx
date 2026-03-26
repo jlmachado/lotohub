@@ -25,6 +25,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { espnService } from '@/services/espn-api-service';
 import { normalizeESPNScoreboard } from '@/utils/espn-normalizer';
 import { SurebetService, SurebetOpportunity } from '@/services/surebet-service';
+import { SurebetJob } from '@/services/surebet-job';
 
 // --- Interfaces ---
 export interface JDBLoteria {
@@ -449,32 +450,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribers.forEach(unsub => unsub());
   }, [firestore, user, contextTicker]);
 
-  // Surebet Automator (Job)
+  // Surebet Job Automator
   useEffect(() => {
     if (!user || (user.tipoUsuario !== 'ADMIN' && user.tipoUsuario !== 'SUPER_ADMIN')) return;
 
-    const runSurebetScan = async () => {
+    const interval = setInterval(() => {
       const bancaId = user.bancaId || 'default';
-      const activeMatches = footballMatches.filter(m => m.status === 'SCHEDULED' || m.status === 'LIVE').slice(0, 20);
-      
-      if (activeMatches.length === 0) return;
+      SurebetJob.run(bancaId).catch(err => console.warn("[Surebet Job Error]", err.message));
+    }, 10000); // 10s
 
-      try {
-        const externalOdds = await SurebetService.fetchExternalOdds(activeMatches);
-        const opportunities = SurebetService.detectOpportunities(activeMatches, externalOdds);
-
-        // Salva as principais no Firestore
-        for (const opp of opportunities.slice(0, 5)) {
-          await setDoc(doc(firestore, `bancas/${bancaId}/surebets`, opp.id), opp, { merge: true });
-        }
-      } catch (e) {
-        console.warn("[Surebet Scan Error]", e);
-      }
-    };
-
-    const interval = setInterval(runSurebetScan, 10000); // 10s
     return () => clearInterval(interval);
-  }, [user, footballMatches, firestore]);
+  }, [user]);
 
   // Actions
   const addJDBLoteria = (loteria: any) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, loteria.id), loteria, { merge: true });

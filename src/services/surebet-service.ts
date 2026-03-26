@@ -23,12 +23,13 @@ export interface SurebetOpportunity {
   createdAt: string;
 }
 
-const THE_ODDS_API_KEY = "6792ae0bd6cfdaecae60cc6a"; // Placeholder - Substituir pela chave real do cliente
+const THE_ODDS_API_KEY = "6792ae0bd6cfdaecae60cc6a"; 
 const BASE_URL = "https://api.the-odds-api.com/v4/sports/soccer/odds/";
 
 export class SurebetService {
   /**
    * Busca odds reais de casas externas via The Odds API.
+   * Retorna uma lista "flat" de eventos vinculados a seus respectivos bookmakers.
    */
   static async fetchExternalOdds(): Promise<any[]> {
     try {
@@ -41,30 +42,35 @@ export class SurebetService {
 
       const data = await response.json();
 
-      return data.map((event: any) => {
-        const bookmaker = event.bookmakers[0];
-        if (!bookmaker || !bookmaker.markets[0]) return null;
+      return data.flatMap((event: any) => {
+        if (!event.bookmakers || !Array.isArray(event.bookmakers)) return [];
 
-        // Normaliza as odds para um mapa de fácil acesso
-        const oddsMap = bookmaker.markets[0].outcomes.reduce((acc: any, o: any) => {
-          acc[o.name.toLowerCase()] = o.price;
-          return acc;
-        }, {});
+        return event.bookmakers.map((bm: any) => {
+          const market = bm.markets.find((m: any) => m.key === 'h2h');
+          if (!market) return null;
 
-        return {
-          eventId: event.id,
-          sport: event.sport_title,
-          homeTeam: event.home_team,
-          awayTeam: event.away_team,
-          startTime: event.commence_time,
-          odds: {
-            home: oddsMap[event.home_team.toLowerCase()] || 1.0,
-            away: oddsMap[event.away_team.toLowerCase()] || 1.0,
-            draw: oddsMap['draw'] || 1.0
-          },
-          bookmaker: bookmaker.title
-        };
-      }).filter(Boolean);
+          // Normaliza as odds para um mapa de fácil acesso
+          const oddsMap = market.outcomes.reduce((acc: any, o: any) => {
+            acc[o.name.toLowerCase()] = o.price;
+            return acc;
+          }, {});
+
+          return {
+            eventId: event.id,
+            sport: event.sport_title,
+            league: event.league_title || event.sport_key,
+            homeTeam: event.home_team,
+            awayTeam: event.away_team,
+            startTime: event.commence_time,
+            odds: {
+              home: oddsMap[event.home_team.toLowerCase()] || 1.0,
+              away: oddsMap[event.away_team.toLowerCase()] || 1.0,
+              draw: oddsMap['draw'] || 1.0
+            },
+            bookmaker: bm.title
+          };
+        }).filter(Boolean);
+      });
     } catch (error: any) {
       console.error('[SurebetService] Erro ao buscar odds externas:', error.message);
       return [];
@@ -73,12 +79,12 @@ export class SurebetService {
 
   /**
    * Cruza eventos internos com externos para detectar oportunidades de arbitragem.
+   * @deprecated Use o SurebetJob para varredura completa.
    */
   static detectOpportunities(internalMatches: any[], externalOdds: any[]): SurebetOpportunity[] {
     const opportunities: SurebetOpportunity[] = [];
 
     internalMatches.forEach(matchA => {
-      // Encontra o evento correspondente na API externa
       const matchB = externalOdds.find(eb => 
         areTeamsSimilar(matchA.homeTeam, eb.homeTeam) &&
         Math.abs(new Date(matchA.kickoff).getTime() - new Date(eb.startTime).getTime()) < 15 * 60000 
@@ -93,10 +99,9 @@ export class SurebetService {
       ];
 
       scenarios.forEach(scen => {
-        // Cálculo de ROI baseado na discrepância direta
         const roi = ((1 / ((1 / scen.a) + (1 / scen.b))) - 1) * 100;
 
-        if (roi > 0.1) { // Limiar de detecção
+        if (roi > 0.1) {
           opportunities.push({
             id: `sb-${matchA.id}-${scen.label.charAt(0)}`,
             eventId: matchA.id,
