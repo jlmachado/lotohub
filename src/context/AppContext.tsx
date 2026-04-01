@@ -193,6 +193,7 @@ interface AppContextType {
   
   // Football
   footballData: FootballData;
+  footballMatches: any[];
   footballBets: FootballBet[];
   betSlip: BetSlipItem[];
   syncFootballAll: (force?: boolean) => Promise<void>;
@@ -413,6 +414,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))),
         handleSnapshotError('snooker')),
       
+      onSnapshot(collection(firestore, bancaPath, 'jdbLoterias'),
+        (s) => setJdbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBLoteria))),
+        handleSnapshotError('jdbLoterias')),
+
       onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
         (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
         handleSnapshotError('jdbResults')),
@@ -510,9 +515,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await setDoc(doc(firestore, `bancas/${bancaId}/configuracoes/surebet_settings`), cfg, { merge: true });
   };
 
-  const addJDBLoteria = (loteria: any) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, loteria.id), loteria, { merge: true });
-  const updateJDBLoteria = (loteria: any) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, loteria.id), loteria, { merge: true });
-  const deleteJDBLoteria = (id: string) => deleteDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/jdbLoterias`, id));
+  const addJDBLoteria = async (loteria: any) => {
+    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+    await setDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, loteria.id), { ...loteria, bancaId }, { merge: true });
+  };
+  const updateJDBLoteria = async (loteria: any) => {
+    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+    await setDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, loteria.id), { ...loteria, bancaId }, { merge: true });
+  };
+  const deleteJDBLoteria = async (id: string) => {
+    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+    await deleteDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, id));
+  };
   const updateGenericLottery = (cfg: any) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/genericLotteryConfigs`, cfg.id), cfg, { merge: true });
 
   const logout = () => { authLogout(); setUser(null); router.push('/login'); };
@@ -588,6 +602,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       syncStatus, 
       lastSyncAt 
     },
+    footballMatches,
     footballBets: [], betSlip,
     syncFootballAll,
     addBetToSlip: (item) => setBetSlip(prev => [...prev, item]),
