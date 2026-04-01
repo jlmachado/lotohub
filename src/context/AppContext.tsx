@@ -188,7 +188,7 @@ interface AppContextType {
   jdbResults: JDBNormalizedResult[];
   postedResults: JDBNormalizedResult[];
   jdbLoterias: JDBLoteria[];
-  dbLoterias: LotteryDefinition[]; // Nova coleção consolidada
+  dbLoterias: LotteryDefinition[]; 
   genericLotteryConfigs: GenericLotteryConfig[];
   allUsers: any[];
   
@@ -362,8 +362,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Real-time Listeners
   useEffect(() => {
     if (!firestore) return;
-    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+    const bancaId = getCurrentBancaId();
     const bancaPath = `bancas/${bancaId}`;
+    const defaultPath = `bancas/default`;
 
     const unsubscribers: any[] = [];
 
@@ -371,6 +372,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       console.warn(`[Snapshot] Access to ${collectionName} denied or pending auth.`);
     };
 
+    // Listeners Globais (Banners, Popups, etc.)
     unsubscribers.push(
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), 
         (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner))),
@@ -384,6 +386,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage))),
         handleSnapshotError('news')),
       
+      // Loterias Consolidadas (Herança: local ou default)
+      onSnapshot(collection(firestore, bancaPath, 'loterias'), (s) => {
+        if (!s.empty) {
+          setDbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as LotteryDefinition)));
+        } else if (bancaId !== 'default') {
+          // Se local estiver vazio, busca do default
+          getDocs(collection(firestore, defaultPath, 'loterias')).then(snap => {
+            setDbLoterias(snap.docs.map(d => ({ id: d.id, ...d.data() } as LotteryDefinition)));
+          });
+        }
+      }, handleSnapshotError('loterias')),
+
+      onSnapshot(collection(firestore, bancaPath, 'genericLotteryConfigs'), (s) => {
+        if (!s.empty) {
+          setGenericLotteryConfigs(s.docs.map(d => ({ id: d.id, ...d.data() } as GenericLotteryConfig)));
+        } else if (bancaId !== 'default') {
+          getDocs(collection(firestore, defaultPath, 'genericLotteryConfigs')).then(snap => {
+            setGenericLotteryConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() } as GenericLotteryConfig)));
+          });
+        }
+      }, handleSnapshotError('genericLotteryConfigs')),
+
       onSnapshot(collection(firestore, bancaPath, 'snooker'), 
         (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))),
         handleSnapshotError('snooker')),
@@ -391,18 +415,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
         (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
         handleSnapshotError('jdbResults')),
-      
-      onSnapshot(collection(firestore, bancaPath, 'loterias'), 
-        (s) => setDbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as LotteryDefinition))),
-        handleSnapshotError('loterias')),
-
-      onSnapshot(collection(firestore, bancaPath, 'jdbLoterias'), 
-        (s) => setJdbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBLoteria))),
-        handleSnapshotError('jdbLoterias')),
-      
-      onSnapshot(collection(firestore, bancaPath, 'genericLotteryConfigs'), 
-        (s) => setGenericLotteryConfigs(s.docs.map(d => ({ id: d.id, ...d.data() } as GenericLotteryConfig))),
-        handleSnapshotError('genericLotteryConfigs')),
       
       onSnapshot(collection(firestore, bancaPath, 'football_leagues'), 
         (s) => {

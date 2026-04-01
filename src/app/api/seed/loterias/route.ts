@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { initializeFirebase } from '@/firebase';
 import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { INITIAL_JDB_LOTERIAS } from '@/constants/lottery-configs';
+import { INITIAL_JDB_LOTERIAS, INITIAL_GENERIC_LOTTERIES } from '@/constants/lottery-configs';
 
 /**
  * @fileOverview Motor de Seed para Loterias.
@@ -12,13 +12,13 @@ import { INITIAL_JDB_LOTERIAS } from '@/constants/lottery-configs';
 export async function GET() {
   const { firestore } = initializeFirebase();
   const bancaId = 'default'; // Seed inicial na banca mestre
-  const loteriasCol = collection(firestore, `bancas/${bancaId}/loterias`);
-
+  
   try {
     const results = [];
 
+    // 1. Seed de Loterias do Jogo do Bicho (Estrutura por Estado)
+    const loteriasCol = collection(firestore, `bancas/${bancaId}/loterias`);
     for (const lot of INITIAL_JDB_LOTERIAS) {
-      // 1. Extrair horários únicos de todos os dias
       const uniqueHoras = new Set<string>();
       Object.values(lot.dias).forEach(d => {
         if (d.selecionado) {
@@ -26,25 +26,31 @@ export async function GET() {
         }
       });
 
-      // 2. Mapear para o formato obrigatório
-      const horariosPadronizados = Array.from(uniqueHoras).sort().map(h => ({
-        nome: `Sorteio ${h}`,
-        hora: h,
-        ativo: true
-      }));
-
       const docData = {
         nome: lot.nome,
         estado: lot.stateCode || (lot.stateName === 'Rio de Janeiro' ? 'RJ' : 'SP'),
         ativo: true,
-        horarios: horariosPadronizados,
+        horarios: Array.from(uniqueHoras).sort().map(h => ({
+          nome: `Sorteio ${h}`,
+          hora: h,
+          ativo: true
+        })),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
 
-      const docId = lot.id;
-      await setDoc(doc(loteriasCol, docId), docData, { merge: true });
-      results.push({ id: docId, nome: lot.nome });
+      await setDoc(doc(loteriasCol, lot.id), docData, { merge: true });
+      results.push({ id: lot.id, nome: lot.nome, type: 'JDB' });
+    }
+
+    // 2. Seed de Loterias Genéricas (Seninha, Quininha, etc.)
+    const genericCol = collection(firestore, `bancas/${bancaId}/genericLotteryConfigs`);
+    for (const gen of INITIAL_GENERIC_LOTTERIES) {
+      await setDoc(doc(genericCol, gen.id), {
+        ...gen,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      results.push({ id: gen.id, nome: gen.nome, type: 'GENERIC' });
     }
 
     return NextResponse.json({
