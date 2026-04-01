@@ -16,6 +16,24 @@ import { useAppContext, JDBLoteria, JDBModalidade, JDBDia } from '@/context/AppC
 import { MODALIDADES_PADRAO } from '@/constants/loterias';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
+const JDB_ESTADOS_PADRAO = [
+  { stateName: 'Rio de Janeiro',       stateCode: 'RJ', horarios: ['09:15', '11:15', '14:15', '16:15', '18:15', '21:15'] },
+  { stateName: 'São Paulo',            stateCode: 'SP', horarios: ['09:15', '11:15', '14:15', '16:15', '18:15', '21:15'] },
+  { stateName: 'Bahia',                stateCode: 'BA', horarios: ['10:00', '12:00', '15:00', '19:00', '21:00'] },
+  { stateName: 'Goiás',               stateCode: 'GO', horarios: ['11:00', '14:00', '16:00', '18:00', '21:00'] },
+  { stateName: 'Brasília',             stateCode: 'DF', horarios: ['08:30', '10:30', '12:30', '14:30', '16:30', '18:30', '20:30'] },
+  { stateName: 'Paraíba',              stateCode: 'PB', horarios: ['10:00', '13:00', '15:00', '17:00', '19:00'] },
+  { stateName: 'Minas Gerais',         stateCode: 'MG', horarios: ['12:00', '15:00', '18:00', '21:00'] },
+  { stateName: 'Ceará',                stateCode: 'CE', horarios: ['14:00', '19:00'] },
+  { stateName: 'Paraná',               stateCode: 'PR', horarios: ['11:00', '14:00', '18:00', '21:00'] },
+  { stateName: 'Pernambuco',           stateCode: 'PE', horarios: ['11:00', '12:40', '14:00', '15:40', '17:00', '18:40'] },
+  { stateName: 'Rio Grande do Norte',  stateCode: 'RN', horarios: ['11:00', '14:00', '18:00'] },
+  { stateName: 'Rio Grande do Sul',    stateCode: 'RS', horarios: ['11:00', '14:00', '18:00'] },
+  { stateName: 'Sergipe',              stateCode: 'SE', horarios: ['11:00', '14:00', '18:00'] },
+];
+
+const DIAS_SEMANA_TODOS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
 interface ModalidadeForm extends JDBModalidade {
   id: number; // Temporary ID for form handling
 }
@@ -42,6 +60,34 @@ export default function GerenciarJogoDoBichoPage() {
     // Deleting state
     const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
     const [loteriaParaExcluir, setLoteriaParaExcluir] = useState<string | null>(null);
+
+    const handleImportarPadrao = () => {
+        const jaExistentes = new Set(jdbLoterias.map((l: any) => l.stateCode));
+        let criadas = 0;
+        JDB_ESTADOS_PADRAO.forEach(estado => {
+            if (jaExistentes.has(estado.stateCode)) return;
+            const diasObj = DIAS_SEMANA_TODOS.reduce((acc: any, dia) => ({
+                ...acc,
+                [dia]: { selecionado: true, horarios: estado.horarios }
+            }), {});
+            const novaLoteria = {
+                id: `jdb-${estado.stateCode.toLowerCase()}`,
+                nome: estado.stateName,
+                stateName: estado.stateName,
+                stateCode: estado.stateCode,
+                modalidades: MODALIDADES_PADRAO,
+                dias: diasObj,
+                bancaId: activeBancaId,
+            };
+            addJDBLoteria(novaLoteria);
+            criadas++;
+        });
+        if (criadas > 0) {
+            toast({ title: 'Importação concluída', description: `${criadas} loterias criadas com os estados padrão do scraper.` });
+        } else {
+            toast({ title: 'Nada a importar', description: 'Todos os estados já estão cadastrados.' });
+        }
+    };
 
     const handleSetPadrao = () => {
         const modalidadesComId = MODALIDADES_PADRAO.map(m => ({ ...m, id: Date.now() + Math.random() }));
@@ -137,11 +183,16 @@ export default function GerenciarJogoDoBichoPage() {
 
     return (
         <main className="p-4 md:p-8 space-y-6">
-            <div className="flex items-center gap-4">
-                <Link href="/admin/loterias">
-                    <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
-                </Link>
-                <h1 className="text-3xl font-bold">Gerenciar Jogo do Bicho</h1>
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <Link href="/admin/loterias">
+                        <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
+                    </Link>
+                    <h1 className="text-3xl font-bold">Gerenciar Jogo do Bicho</h1>
+                </div>
+                <Button variant="outline" onClick={handleImportarPadrao}>
+                    Importar padrão do scraper
+                </Button>
             </div>
 
             <Card>

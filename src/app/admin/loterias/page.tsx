@@ -48,9 +48,22 @@ export default function AdminLoteriasPage() {
     const [isConferenciaOpen, setIsConferenciaOpen] = useState(false);
     const [conferenciaResultados, setConferenciaResultados] = useState<any>(null);
 
+    const LOTERIAS_FIXAS = [
+        { id: 'jogo-do-bicho',   nome: 'Jogo do Bicho'    },
+        { id: 'loteria-uruguai', nome: 'Loteria Uruguai'  },
+        { id: 'seninha',         nome: 'Seninha'          },
+        { id: 'quininha',        nome: 'Quininha'         },
+        { id: 'lotinha',         nome: 'Lotinha'          },
+    ];
+
     const availableLoterias = useMemo(() => {
-        const configs = [...genericLotteryConfigs.map(c => ({ id: c.id, nome: c.nome })), { id: 'jogo-do-bicho', nome: 'Jogo do Bicho' }];
-        return configs.filter(c => isModuleEnabled(loteriasBaseConfig[c.id]?.module as any));
+        return LOTERIAS_FIXAS.filter(l => {
+            if (!isModuleEnabled(loteriasBaseConfig[l.id]?.module as any)) return false;
+            return true;
+        }).map(l => {
+            const found = genericLotteryConfigs.find(c => c.id === l.id);
+            return found ? { id: found.id, nome: found.nome } : { id: l.id, nome: l.nome };
+        });
     }, [genericLotteryConfigs]);
 
     const config = loteriasBaseConfig[loteria];
