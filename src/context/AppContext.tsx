@@ -632,7 +632,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     addNews: (n) => { const id = n.id || `news-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id), { ...n, id }, { merge: true }); },
     deleteNews: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id)),
     updateLiveMiniPlayerConfig: (cfg) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'configuracoes', 'mini_player'), cfg, { merge: true }),
-    syncJDBResults: async () => {}, deleteJDBResult: async () => {}, publishJDBResult: async () => {},
+    syncJDBResults: async () => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      try {
+        const { PortalBrasilProvider } = await import('@/services/result-providers/portal-brasil-provider');
+        const results = await PortalBrasilProvider.fetchResults();
+        if (!results || results.length === 0) return;
+        const batch = results.map((r: any) =>
+          setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, r.id), { ...r, bancaId, status: 'PUBLICADO', importedAt: new Date().toISOString() }, { merge: true })
+        );
+        await Promise.all(batch);
+      } catch (e) {
+        console.error('[syncJDBResults] Falha ao sincronizar resultados:', e);
+      }
+    },
+    deleteJDBResult: async (id: string) => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      await deleteDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, id));
+    },
+    publishJDBResult: async (id: string) => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      await setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, id), { status: 'PUBLICADO' }, { merge: true });
+    },
     fullLedger: ledger,
     updateGenericLottery, activeBancaId: user?.bancaId || getCurrentBancaId() || 'default',
     addJDBLoteria, updateJDBLoteria, deleteJDBLoteria
