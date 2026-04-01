@@ -49,7 +49,7 @@ const modalidadesBase = [
 
 export default function JogoDoBichoPage() {
   const [step, setStep] = useState(1);
-  const { handleFinalizarAposta, dbLoterias = [], jdbLoterias = [] } = useAppContext();
+  const { handleFinalizarAposta, jdbLoterias = [] } = useAppContext();
   const { toast } = useToast();
 
   const [apostaData, setApostaData] = useState<'hoje' | 'amanha' | undefined>();
@@ -69,16 +69,30 @@ export default function JogoDoBichoPage() {
   const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
 
   const estadosDisponiveis = useMemo(() => {
-    const uniqueStates = new Set(dbLoterias.map(l => l.estado));
+    const uniqueStates = new Set(jdbLoterias.map(l => l.stateName).filter(Boolean));
     return Array.from(uniqueStates).sort();
-  }, [dbLoterias]);
+  }, [jdbLoterias]);
 
   const loteriasDoEstado = useMemo(() => {
     if (!estadoSelecionado) return [];
-    return dbLoterias.filter(l => l.estado === estadoSelecionado && l.ativo);
-  }, [dbLoterias, estadoSelecionado]);
+    return jdbLoterias.filter(l => l.stateName === estadoSelecionado);
+  }, [jdbLoterias, estadoSelecionado]);
 
-  const selectedJDBLoteriaConfig = useMemo(() => (jdbLoterias || []).find(l => l.id === loteria), [jdbLoterias, loteria]);
+  const selectedJDBLoteriaConfig = useMemo(() => jdbLoterias.find(l => l.id === loteria), [jdbLoterias, loteria]);
+
+  const horariosDisponiveis = useMemo(() => {
+    if (!selectedJDBLoteriaConfig || !apostaData) return [];
+    const hoje = new Date();
+    const diaSemana = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][hoje.getDay()];
+    const diaAlvo = apostaData === 'amanha'
+      ? ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][(hoje.getDay() + 1) % 7]
+      : diaSemana;
+    const diaConfig = selectedJDBLoteriaConfig.dias?.[diaAlvo];
+    if (!diaConfig?.selecionado) return [];
+    return diaConfig.horarios
+      .filter(h => h && isHorarioDisponivel(h, apostaData))
+      .sort();
+  }, [selectedJDBLoteriaConfig, apostaData]);
 
   const modalidades = useMemo(() => {
     if (!selectedJDBLoteriaConfig) return modalidadesBase;
@@ -146,7 +160,7 @@ export default function JogoDoBichoPage() {
       colocacao,
       colocacaoLabel: allColocacoes.find(c => c.id === colocacao)?.nome || '',
       loteria,
-      loteriaLabel: dbLoterias.find(l => l.id === loteria)?.nome || '',
+      loteriaLabel: jdbLoterias.find(l => l.id === loteria)?.nome || '',
       estadoLabel: estadoSelecionado || '',
       horario,
       numeros: numStr.split(','),
@@ -247,9 +261,9 @@ export default function JogoDoBichoPage() {
 
               {step === 4 && (
                 <RadioGroup value={horario} onValueChange={(v) => { setHorario(v); setStep(5); }} className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                  {dbLoterias.find(l => l.id === loteria)?.horarios.filter(h => h.ativo && isHorarioDisponivel(h.hora, apostaData!)).map(h => (
-                    <Label key={h.hora} htmlFor={h.hora} className="border border-white/10 bg-white/5 p-3 rounded-xl cursor-pointer text-center hover:border-primary font-mono font-bold text-sm">
-                      {h.hora} <RadioGroupItem value={h.hora} id={h.hora} className="sr-only"/>
+                  {horariosDisponiveis.map(h => (
+                    <Label key={h} htmlFor={h} className="border border-white/10 bg-white/5 p-3 rounded-xl cursor-pointer text-center hover:border-primary font-mono font-bold text-sm">
+                      {h} <RadioGroupItem value={h} id={h} className="sr-only"/>
                     </Label>
                   ))}
                 </RadioGroup>
