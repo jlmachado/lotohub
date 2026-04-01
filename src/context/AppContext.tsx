@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -35,6 +36,14 @@ export interface JDBLoteria {
   stateCode?: string;
   modalidades: { nome: string; multiplicador: string }[];
   dias: Record<string, { selecionado: boolean; horarios: string[] }>;
+}
+
+export interface LotteryDefinition {
+  id: string;
+  nome: string;
+  estado: string;
+  ativo: boolean;
+  horarios: { nome: string; hora: string; ativo: boolean; }[];
 }
 
 export interface GenericLotteryConfig {
@@ -179,6 +188,7 @@ interface AppContextType {
   jdbResults: JDBNormalizedResult[];
   postedResults: JDBNormalizedResult[];
   jdbLoterias: JDBLoteria[];
+  dbLoterias: LotteryDefinition[]; // Nova coleção consolidada
   genericLotteryConfigs: GenericLotteryConfig[];
   allUsers: any[];
   
@@ -293,6 +303,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [apostas, setApostas] = useState<any[]>([]);
   const [jdbResults, setJdbResults] = useState<JDBNormalizedResult[]>([]);
   const [jdbLoterias, setJdbLoterias] = useState<JDBLoteria[]>([]);
+  const [dbLoterias, setDbLoterias] = useState<LotteryDefinition[]>([]);
   const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<GenericLotteryConfig[]>([]);
   
   // Football
@@ -381,6 +392,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
         handleSnapshotError('jdbResults')),
       
+      onSnapshot(collection(firestore, bancaPath, 'loterias'), 
+        (s) => setDbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as LotteryDefinition))),
+        handleSnapshotError('loterias')),
+
       onSnapshot(collection(firestore, bancaPath, 'jdbLoterias'), 
         (s) => setJdbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBLoteria))),
         handleSnapshotError('jdbLoterias')),
@@ -551,7 +566,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     user, allUsers, isLoading, currentBanca, subdomain: currentBanca?.subdomain || null,
     balance: user?.saldo || 0, bonus: user?.bonus || 0,
     ledger, banners, popups, news, apostas, 
-    jdbResults, postedResults: jdbResults, jdbLoterias, genericLotteryConfigs,
+    jdbResults, postedResults: jdbResults, jdbLoterias, dbLoterias, genericLotteryConfigs,
     
     footballData: { 
       leagues: footballLeagues, 

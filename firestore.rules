@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -44,12 +45,13 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isSuperAdmin();
 
-      // 🔓 DADOS PÚBLICOS (Configurações, Resultados, Banners, Notícias, Sorteios, Surebets)
+      // 🔓 DADOS PÚBLICOS (Configurações, Resultados, Banners, Notícias, Sorteios, Surebets, Loterias)
       match /configuracoes/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /banners/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /popups/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /news_messages/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /jdbResults/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
+      match /loterias/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /jdbLoterias/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /genericLotteryConfigs/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }
       match /snooker/{docId} { allow read: if true; allow write: if isAdmin(bancaId); }

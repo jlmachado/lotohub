@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Header } from '@/components/header';
@@ -48,7 +49,7 @@ const modalidadesBase = [
 
 export default function JogoDoBichoPage() {
   const [step, setStep] = useState(1);
-  const { handleFinalizarAposta, jdbLoterias = [] } = useAppContext();
+  const { handleFinalizarAposta, dbLoterias = [], jdbLoterias = [] } = useAppContext();
   const { toast } = useToast();
 
   const [apostaData, setApostaData] = useState<'hoje' | 'amanha' | undefined>();
@@ -67,48 +68,26 @@ export default function JogoDoBichoPage() {
   const [generatedTicketId, setGeneratedTicketId] = useState<string | null>(null);
   const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
 
-  const loteriasEnriquecidas = useMemo(() => {
-    return (jdbLoterias || []).map(l => {
-      let state = l.stateName || '';
-      if (!state) {
-        const nomeLower = l.nome.toLowerCase();
-        if (nomeLower.includes('rio') || nomeLower.includes('rj')) state = 'Rio de Janeiro';
-        else if (nomeLower.includes('são paulo') || nomeLower.includes('sp')) state = 'São Paulo';
-        else if (nomeLower.includes('bahia') || nomeLower.includes('ba')) state = 'Bahia';
-        else if (nomeLower.includes('goiás') || nomeLower.includes('go')) state = 'Goiás';
-        else if (nomeLower.includes('brasília') || nomeLower.includes('df')) state = 'Brasília';
-        else state = 'Nacional / Outros';
-      }
-
-      const horariosUnicos = new Set<string>();
-      Object.values(l.dias).forEach(d => {
-        if (d.selecionado) d.horarios.forEach(h => h && horariosUnicos.add(h));
-      });
-
-      return { ...l, stateName: state, horarios: Array.from(horariosUnicos).sort() };
-    });
-  }, [jdbLoterias]);
-
   const estadosDisponiveis = useMemo(() => {
-    const uniqueStates = new Set(loteriasEnriquecidas.map(l => l.stateName));
+    const uniqueStates = new Set(dbLoterias.map(l => l.estado));
     return Array.from(uniqueStates).sort();
-  }, [loteriasEnriquecidas]);
+  }, [dbLoterias]);
 
   const loteriasDoEstado = useMemo(() => {
     if (!estadoSelecionado) return [];
-    return loteriasEnriquecidas.filter(l => l.stateName === estadoSelecionado);
-  }, [loteriasEnriquecidas, estadoSelecionado]);
+    return dbLoterias.filter(l => l.estado === estadoSelecionado && l.ativo);
+  }, [dbLoterias, estadoSelecionado]);
 
-  const selectedJDBLoteria = useMemo(() => (jdbLoterias || []).find(l => l.id === loteria), [jdbLoterias, loteria]);
+  const selectedJDBLoteriaConfig = useMemo(() => (jdbLoterias || []).find(l => l.id === loteria), [jdbLoterias, loteria]);
 
   const modalidades = useMemo(() => {
-    if (!selectedJDBLoteria) return modalidadesBase;
+    if (!selectedJDBLoteriaConfig) return modalidadesBase;
     return modalidadesBase.map(baseMod => {
-      const customMod = selectedJDBLoteria.modalidades.find(m => m.nome.toLowerCase() === baseMod.nome.toLowerCase());
+      const customMod = selectedJDBLoteriaConfig.modalidades.find(m => m.nome.toLowerCase() === baseMod.nome.toLowerCase());
       if (customMod) return { ...baseMod, multiplicador: `${customMod.multiplicador}x` };
       return baseMod;
     });
-  }, [selectedJDBLoteria]);
+  }, [selectedJDBLoteriaConfig]);
 
   const isHorarioDisponivel = (horarioStr: string, diaAposta: 'hoje' | 'amanha'): boolean => {
     if (!horarioStr || typeof horarioStr !== 'string') return false;
@@ -167,7 +146,7 @@ export default function JogoDoBichoPage() {
       colocacao,
       colocacaoLabel: allColocacoes.find(c => c.id === colocacao)?.nome || '',
       loteria,
-      loteriaLabel: loteriasEnriquecidas.find(l => l.id === loteria)?.nome || '',
+      loteriaLabel: dbLoterias.find(l => l.id === loteria)?.nome || '',
       estadoLabel: estadoSelecionado || '',
       horario,
       numeros: numStr.split(','),
@@ -268,9 +247,9 @@ export default function JogoDoBichoPage() {
 
               {step === 4 && (
                 <RadioGroup value={horario} onValueChange={(v) => { setHorario(v); setStep(5); }} className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                  {loteriasDoEstado.find(l => l.id === loteria)?.horarios.filter(h => isHorarioDisponivel(h, apostaData!)).map(h => (
-                    <Label key={h} htmlFor={h} className="border border-white/10 bg-white/5 p-3 rounded-xl cursor-pointer text-center hover:border-primary font-mono font-bold text-sm">
-                      {h} <RadioGroupItem value={h} id={h} className="sr-only"/>
+                  {dbLoterias.find(l => l.id === loteria)?.horarios.filter(h => h.ativo && isHorarioDisponivel(h.hora, apostaData!)).map(h => (
+                    <Label key={h.hora} htmlFor={h.hora} className="border border-white/10 bg-white/5 p-3 rounded-xl cursor-pointer text-center hover:border-primary font-mono font-bold text-sm">
+                      {h.hora} <RadioGroupItem value={h.hora} id={h.hora} className="sr-only"/>
                     </Label>
                   ))}
                 </RadioGroup>
