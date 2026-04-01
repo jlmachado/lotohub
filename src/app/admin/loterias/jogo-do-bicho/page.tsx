@@ -32,6 +32,7 @@ export default function GerenciarJogoDoBichoPage() {
 
     // Form state
     const [nomeLoteria, setNomeLoteria] = useState('');
+    const [stateName, setStateName] = useState('');
     const [modalidades, setModalidades] = useState<ModalidadeForm[]>([{ id: Date.now(), nome: 'Grupo', multiplicador: '18' }]);
     const [dias, setDias] = useState<Record<string, JDBDia>>(createInitialDiasState());
 
@@ -86,6 +87,7 @@ export default function GerenciarJogoDoBichoPage() {
         const novaLoteria: JDBLoteria = {
             id: editingLoteria ? editingLoteria.id : nomeLoteria.toLowerCase().replace(/\s+/g, '-'),
             nome: nomeLoteria,
+            stateName: stateName,
             modalidades: modalidades.map(({id, ...rest}) => rest), // remove temporary form id
             dias: dias,
             bancaId: activeBancaId
@@ -104,6 +106,7 @@ export default function GerenciarJogoDoBichoPage() {
     const handleEdit = (loteria: JDBLoteria) => {
         setEditingLoteria(loteria);
         setNomeLoteria(loteria.nome);
+        setStateName(loteria.stateName || '');
         setModalidades(loteria.modalidades.map(m => ({ ...m, id: Date.now() + Math.random() })));
         setDias(loteria.dias);
         toast({ title: 'Modo de Edição', description: `Carregando dados para ${loteria.nome}.` });
@@ -126,6 +129,7 @@ export default function GerenciarJogoDoBichoPage() {
 
     const resetForm = () => {
         setNomeLoteria('');
+        setStateName('');
         setModalidades([{ id: Date.now(), nome: 'Grupo', multiplicador: '18' }]);
         setDias(createInitialDiasState());
         setEditingLoteria(null);
@@ -143,12 +147,23 @@ export default function GerenciarJogoDoBichoPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>{editingLoteria ? 'Editar Loteria' : 'Criar Nova Loteria'}</CardTitle>
-                    <CardDescription>Defina nome, modalidades e horários.</CardDescription>
+                    <CardDescription>Defina nome, estado, modalidades e horários.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <div className="grid gap-2">
-                        <Label htmlFor="nome-loteria">Nome da Loteria</Label>
-                        <Input id="nome-loteria" value={nomeLoteria} onChange={(e) => setNomeLoteria(e.target.value)} placeholder="Ex: PT-RIO" />
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor="nome-loteria">Nome da Loteria</Label>
+                            <Input id="nome-loteria" value={nomeLoteria} onChange={(e) => setNomeLoteria(e.target.value)} placeholder="Ex: PT-RIO" />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="state-name">Estado</Label>
+                            <Input 
+                                id="state-name" 
+                                value={stateName} 
+                                onChange={(e) => setStateName(e.target.value)} 
+                                placeholder="Ex: Rio de Janeiro, São Paulo..." 
+                            />
+                        </div>
                     </div>
                     <Separator />
                     <div className="space-y-4">
@@ -210,7 +225,10 @@ export default function GerenciarJogoDoBichoPage() {
                             <AccordionItem value={loteria.id} key={loteria.id}>
                                 <div className="flex w-full items-center">
                                     <AccordionTrigger className="flex-1 text-left">
-                                        <span>{loteria.nome}</span>
+                                        <div className="flex flex-col">
+                                            <span className="font-bold">{loteria.nome}</span>
+                                            <span className="text-[10px] text-muted-foreground uppercase">{loteria.stateName || 'Nacional'}</span>
+                                        </div>
                                     </AccordionTrigger>
                                     <div className="flex gap-2 pr-4">
                                         <Button size="sm" variant="outline" onClick={() => handleEdit(loteria)}><Edit className="mr-2 h-4 w-4"/>Editar</Button>
