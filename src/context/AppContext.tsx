@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -362,7 +361,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Real-time Listeners
   useEffect(() => {
     if (!firestore) return;
-    const bancaId = getCurrentBancaId();
+    
+    // Prioridade total para o objeto user reativo para garantir que bancaId esteja correto após login
+    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
     const bancaPath = `bancas/${bancaId}`;
     const defaultPath = `bancas/default`;
 
