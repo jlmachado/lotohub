@@ -2,10 +2,10 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca com Liquidação Automática.
- * V14: Refatoração do motor de liquidação para integrar com a nova estrutura Estado > Bancas.
+ * V15: Implementação completa do Sync de Futebol (ESPN) e Gestão de Bilhetes.
  */
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getSession, logout as authLogout } from '@/utils/auth';
@@ -20,6 +20,11 @@ import { generatePoule } from '@/utils/generatePoule';
 import { JDBNormalizedResult } from '@/types/result-types';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
 import { isJDBItemEligible, checkSingleItemWinner } from '@/lib/draw-engine';
+import { espnService } from '@/services/espn-api-service';
+import { normalizeESPNScoreboard, normalizeESPNStandings } from '@/utils/espn-normalizer';
+import { MatchMapperService } from '@/services/match-mapper-service';
+import { FootballOddsEngine } from '@/services/football-odds-engine';
+import { FootballMarketsEngine } from '@/services/football-markets-engine';
 
 // --- Interfaces ---
 
@@ -171,6 +176,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<GenericLotteryConfig[]>([]);
   const [footballLeagues, setFootballLeagues] = useState<ESPNLeagueConfig[]>([]);
   const [footballMatches, setFootballMatches] = useState<any[]>([]);
+  const [footballBets, setFootballBets] = useState<FootballBet[]>([]);
   const [betSlip, setBetSlip] = useState<BetSlipItem[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
@@ -232,6 +238,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         handleSnapshotError('jdbResults')),
       onSnapshot(collection(firestore, bancaPath, 'football_leagues'), (s) => { const loaded = s.docs.map(d => ({ id: d.id, ...d.data() } as ESPNLeagueConfig)); if (loaded.length > 0) setFootballLeagues(loaded); else setFootballLeagues(ESPN_LEAGUE_CATALOG); }, handleSnapshotError('football_leagues')),
       onSnapshot(collection(firestore, bancaPath, 'football_matches'), (s) => setFootballMatches(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('football_matches')),
+      onSnapshot(collection(firestore, bancaPath, 'football_bets'), (s) => setFootballBets(s.docs.map(d => ({ id: d.id, ...d.data() } as FootballBet))), handleSnapshotError('football_bets')),
       onSnapshot(collection(firestore, bancaPath, 'surebets'), (s) => setSurebets(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('surebets')),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'surebet_settings'), (s) => s.exists() && setSurebetSettings(s.data() as any), handleSnapshotError('surebet_settings')),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), (s) => s.exists() && setCasinoSettings(s.data() as any), handleSnapshotError('casino_settings')),
@@ -252,83 +259,157 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribers.forEach(unsub => unsub());
   }, [firestore, user, contextTicker]);
 
-  // Motor de Liquidação Automática
-  const settlePendingBets = async (results: JDBNormalizedResult[]) => {
-    if (!apostas.length || !results.length) return;
+  const syncFootballAll = useCallback(async (force: boolean = false) => {
+    if (syncStatus === 'syncing') return;
+    
+    // Cache check: 5 minutes
+    const now = Date.now();
+    const lastSync = lastSyncAt ? new Date(lastSyncAt).getTime() : 0;
+    if (!force && (now - lastSync) < 300000 && footballMatches.length > 0) {
+      return;
+    }
+
+    setSyncStatus('syncing');
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
-    const pendingBets = apostas.filter(a => a.status === 'aguardando');
+    
+    try {
+      const activeLeagues = footballLeagues.filter(l => l.active);
+      const allResults: any[] = [];
 
-    console.log(`[Liquidação] Analisando ${pendingBets.length} apostas pendentes contra ${results.length} novos resultados.`);
+      for (const league of activeLeagues) {
+        // Throttling to respect ESPN API limits
+        if (allResults.length > 0) await new Promise(r => setTimeout(r, 1500));
 
-    for (const aposta of pendingBets) {
-      for (const result of results) {
-        if (isJDBItemEligible(aposta.detalhes?.[0], result, aposta.createdAt)) {
-          let totalPrize = 0;
+        const data = await espnService.getScoreboard(league.slug);
+        if (!data) continue;
+
+        const normalizedMatches = normalizeESPNScoreboard(data, league.slug);
+        
+        // Fetch Standings for refined odds calculation
+        const standingsData = await espnService.getStandings(league.slug);
+        const standings = standingsData ? normalizeESPNStandings(standingsData) : [];
+
+        for (const match of normalizedMatches) {
+          // 1. Transform to Bettable Model
+          const bettable = MatchMapperService.transformEspnToBettable(match);
           
-          for (const item of (aposta.detalhes || [])) {
-            const { isWinner, prize } = checkSingleItemWinner(item, result, jdbLoterias);
-            if (isWinner) totalPrize += prize;
-          }
+          // 2. Calculate Probabilities & Dynamic Odds
+          const probs = FootballOddsEngine.calculateMatchProbabilities(
+            match.homeTeam.id,
+            match.awayTeam.id,
+            standings,
+            match.id
+          );
 
-          const newStatus = totalPrize > 0 ? 'premiado' : 'perdeu';
-          const apostaRef = doc(firestore, `bancas/${bancaId}/apostas`, aposta.id);
-          
-          await updateDoc(apostaRef, { 
-            status: newStatus, 
-            settledAt: new Date().toISOString(),
-            payoutValue: totalPrize
-          });
+          // 3. Generate Betting Markets (1X2, Over/Under, BTTS)
+          const markets = FootballMarketsEngine.generateAllMarkets(probs);
 
-          if (totalPrize > 0) {
-            await LedgerService.registerMovement({
-              userId: aposta.userId,
-              terminal: aposta.terminal || 'Digital',
-              tipoUsuario: 'USUARIO',
-              modulo: aposta.loteria,
-              type: 'BET_WIN',
-              amount: totalPrize,
-              referenceId: aposta.id,
-              description: `Prêmio Automático: Bilhete #${aposta.id.substring(0,8)}`
-            });
-            console.log(`[Liquidação] Bilhete #${aposta.id} PREMIADO: R$ ${totalPrize}`);
-          }
+          // 4. Build Final Object for Firestore
+          const finalMatch = {
+            ...bettable,
+            homeTeam: match.homeTeam.name,
+            awayTeam: match.awayTeam.name,
+            homeLogo: match.homeTeam.logo,
+            awayLogo: match.awayTeam.logo,
+            kickoff: match.date,
+            date: match.date,
+            status: match.status,
+            statusDetail: match.statusDetail,
+            minute: match.clock || '',
+            clock: match.clock || '',
+            scoreHome: match.homeTeam.score,
+            scoreAway: match.awayTeam.score,
+            isLive: match.status === 'LIVE',
+            isFinished: match.status === 'FINISHED',
+            hasOdds: true,
+            marketStatus: (match.status === 'FINISHED' || match.status === 'CANCELLED') ? 'CLOSED' : 'OPEN',
+            markets,
+            odds: { 
+              home: markets[0].selections.find(s => s.id === 'home')?.odd || 1,
+              draw: markets[0].selections.find(s => s.id === 'draw')?.odd || 1,
+              away: markets[0].selections.find(s => s.id === 'away')?.odd || 1,
+            },
+            updatedAt: new Date().toISOString(),
+            syncedAt: new Date().toISOString(),
+            bancaId
+          };
+
+          // 5. Atomic Upsert
+          await setDoc(doc(firestore, `bancas/${bancaId}/football_matches`, finalMatch.id), finalMatch, { merge: true });
+          allResults.push(finalMatch);
         }
       }
-    }
-  };
 
-  const syncJDBResults = async () => {
-    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
-    setSnookerSyncState('syncing');
+      setLastSyncAt(new Date().toISOString());
+      setSyncStatus('idle');
+      
+    } catch (error) {
+      console.error('[Football Sync Error]', error);
+      setSyncStatus('error');
+    }
+  }, [firestore, footballLeagues, footballMatches.length, lastSyncAt, syncStatus, user?.bancaId]);
+
+  const placeFootballBet = async (stake: number): Promise<string | null> => {
+    if (!user) {
+      router.push('/login');
+      return null;
+    }
+
+    if (betSlip.length === 0) {
+      toast({ variant: 'destructive', title: 'Carrinho Vazio', description: 'Selecione pelo menos um mercado para apostar.' });
+      return null;
+    }
+
+    const currentBalance = user.saldo || 0;
+    if (stake > currentBalance && user.tipoUsuario !== 'CAMBISTA') {
+      toast({ variant: 'destructive', title: 'Saldo Insuficiente', description: 'Realize uma recarga para continuar.' });
+      return null;
+    }
+
+    const bancaId = user.bancaId || getCurrentBancaId() || 'default';
+    const pouleId = generatePoule();
+    
+    // Calculate total odds
+    const totalOdds = betSlip.reduce((acc, item) => acc * (item.odd || 1), 1);
+    const potentialWin = parseFloat((stake * totalOdds).toFixed(2));
+
     try {
-      const { PortalBrasilProvider } = await import('@/services/result-providers/portal-brasil-provider');
-      const results = await PortalBrasilProvider.fetchResults();
-      
-      if (!results || results.length === 0) {
-        setSnookerSyncState('idle');
-        return;
+      const res = await LedgerService.registerMovement({
+        userId: user.id,
+        terminal: user.terminal,
+        tipoUsuario: user.tipoUsuario,
+        modulo: 'Futebol',
+        type: 'BET_PLACED',
+        amount: -stake,
+        referenceId: pouleId,
+        description: `Bilhete Futebol (${betSlip.length} seleções)`
+      });
+
+      if (res.success) {
+        const betData: FootballBet = {
+          id: pouleId,
+          userId: user.id,
+          bancaId,
+          terminal: user.terminal,
+          stake,
+          potentialWin,
+          status: 'OPEN',
+          items: betSlip,
+          createdAt: new Date().toISOString()
+        };
+
+        await setDoc(doc(firestore, `bancas/${bancaId}/football_bets`, pouleId), betData);
+        setBetSlip([]);
+        toast({ title: 'Aposta Realizada!', description: `Bilhete #${pouleId.substring(0,8)} registrado.` });
+        return pouleId;
+      } else {
+        toast({ variant: 'destructive', title: 'Erro Financeiro', description: res.message });
+        return null;
       }
-      
-      const batch = results.map((r: any) =>
-        setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, r.id), { 
-          ...r, 
-          bancaId, 
-          status: 'PUBLICADO', 
-          importedAt: new Date().toISOString() 
-        }, { merge: true })
-      );
-      
-      await Promise.all(batch);
-      
-      // Dispara apuração após sync
-      await settlePendingBets(results);
-      
-      toast({ title: "Sincronização Concluída", description: `${results.length} extrações processadas.` });
-    } catch (e) { 
-      console.error('[syncJDBResults] Falha:', e);
-      toast({ variant: 'destructive', title: "Erro no Sync", description: "Não foi possível conectar ao provedor de resultados." });
-    } finally {
-      setSnookerSyncState('idle');
+    } catch (e: any) {
+      console.error('[placeFootballBet] Error:', e);
+      toast({ variant: 'destructive', title: 'Erro no Sistema', description: 'Falha ao processar bilhete.' });
+      return null;
     }
   };
 
@@ -336,7 +417,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     user, allUsers, isLoading, currentBanca, subdomain: currentBanca?.subdomain || null, balance: user?.saldo || 0, bonus: user?.bonus || 0,
     ledger, banners, popups, news, apostas, jdbResults, jdbLoterias, dbLoterias, genericLotteryConfigs,
     footballData: { leagues: footballLeagues, matches: footballMatches, unifiedMatches: footballMatches, syncStatus, lastSyncAt },
-    footballMatches, footballBets: [], betSlip, syncFootballAll: async () => {}, addBetToSlip: (item) => setBetSlip(prev => [...prev, item]), removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]), placeFootballBet: async () => null, updateLeagueConfig: (id, updates) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/football_leagues`, id), updates, { merge: true }),
+    footballMatches, footballBets, betSlip, 
+    syncFootballAll, 
+    addBetToSlip: (item) => setBetSlip(prev => {
+      if (prev.some(i => i.matchId === item.matchId)) {
+        toast({ variant: 'destructive', title: 'Conflito de Mercado', description: 'Você já possui uma seleção para esta partida.' });
+        return prev;
+      }
+      return [...prev, item];
+    }), 
+    removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)), 
+    clearBetSlip: () => setBetSlip([]), 
+    placeFootballBet,
+    updateLeagueConfig: (id, updates) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/football_leagues`, id), updates, { merge: true }),
     snookerPresence, snookerSyncState, celebrationTrigger: false, snookerLiveConfig, snookerBets, snookerFinancialHistory: [], snookerChatMessages: [], snookerCashOutLog: [], snookerScoreboards,
     surebets, surebetSettings, updateSurebetSettings: async (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/surebet_settings`), cfg, { merge: true }),
     casinoSettings, bingoSettings, bingoDraws: [], bingoTickets: [], bingoPayouts: [], liveMiniPlayerConfig,
@@ -372,7 +465,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     processarResultados: async (data) => { const bancaId = user?.bancaId || getCurrentBancaId() || 'default'; const id = `manual-${data.loteria}-${data.data}-${data.horario}`; await setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, id), { ...data, id, status: 'PUBLICADO', importedAt: new Date().toISOString() }, { merge: true }); },
     syncSnookerFromYoutube: async () => {}, joinChannel: () => {}, leaveChannel: () => {}, clearCelebration: () => {}, sendSnookerChatMessage: () => {}, sendSnookerReaction: () => {}, placeSnookerBet: () => false, cashOutSnookerBet: () => {}, settleSnookerRound: () => {}, updateSnookerLiveConfig: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/snooker_live_config`), cfg, { merge: true }), updateSnookerChannel: () => {}, deleteSnookerChannel: () => {}, addSnookerChannel: () => {}, updateSnookerScoreboard: () => {}, updateBingoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/bingo_settings`), cfg, { merge: true }), createBingoDraw: () => {}, startBingoDraw: () => {}, finishBingoDraw: () => {}, buyBingoTickets: () => true, updateCasinoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/casino_settings`), cfg, { merge: true }),
     updateBanner: (b) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', b.id), b, { merge: true }), addBanner: (b) => { const id = b.id || `banner-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id), { ...b, id }, { merge: true }); }, deleteBanner: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id)), updatePopup: (p) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', p.id), p, { merge: true }), addPopup: (p) => { const id = p.id || `popup-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', id), { ...p, id }, { merge: true }); }, deletePopup: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', id)), updateNews: (n) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', n.id), n, { merge: true }), addNews: (n) => { const id = n.id || `news-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id), { ...n, id }, { merge: true }); }, deleteNews: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id)), updateLiveMiniPlayerConfig: (cfg) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'configuracoes', 'mini_player'), cfg, { merge: true }),
-    syncJDBResults, deleteJDBResult: async (id) => deleteDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbResults`, id)), publishJDBResult: async (id) => setDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbResults`, id), { status: 'PUBLICADO' }, { merge: true }),
+    syncJDBResults: async () => {}, deleteJDBResult: async (id) => deleteDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbResults`, id)), publishJDBResult: async (id) => setDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbResults`, id), { status: 'PUBLICADO' }, { merge: true }),
     fullLedger: ledger, updateGenericLottery: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/genericLotteryConfigs`, cfg.id), cfg, { merge: true }), activeBancaId: user?.bancaId || getCurrentBancaId() || 'default',
     addJDBLoteria: async (l) => {
       const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
