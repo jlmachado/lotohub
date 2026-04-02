@@ -2,6 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca com Liquidação Automática.
+ * V12: Refatoração Jogo do Bicho para estrutura Estado > Bancas > Horários.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
@@ -11,28 +12,31 @@ import { getSession, logout as authLogout } from '@/utils/auth';
 import { initializeFirebase } from '@/firebase';
 import { 
   collection, onSnapshot, query, orderBy, limit, doc, setDoc, 
-  deleteDoc, where, serverTimestamp, getDocs
+  deleteDoc, where, serverTimestamp, getDocs, updateDoc
 } from 'firebase/firestore';
 import { resolveCurrentBanca, getCurrentBancaId } from '@/utils/bancaContext';
 import { LedgerService } from '@/services/ledger-service';
 import { generatePoule } from '@/utils/generatePoule';
 import { JDBNormalizedResult } from '@/types/result-types';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
-import { espnService } from '@/services/espn-api-service';
-import { normalizeESPNScoreboard } from '@/utils/espn-normalizer';
-import { SurebetOpportunity, SurebetSettings } from '@/services/surebet-service';
-import { SurebetJob } from '@/services/surebet-job';
 import { isJDBItemEligible, checkSingleItemWinner } from '@/lib/draw-engine';
 
 // --- Interfaces ---
-export interface JDBLoteria {
+
+export interface JDBBanca {
   id: string;
-  bancaId: string;
   nome: string;
-  stateName?: string;
-  stateCode?: string;
-  modalidades: { nome: string; multiplicador: string }[];
   dias: Record<string, { selecionado: boolean; horarios: string[] }>;
+}
+
+export interface JDBEstado {
+  id: string;
+  bancaId: string; // Tenant
+  nome: string;
+  sigla: string;
+  bancas: JDBBanca[];
+  modalidades: { nome: string; multiplicador: number }[];
+  updatedAt?: string;
 }
 
 export interface LotteryDefinition { id: string; nome: string; estado: string; ativo: boolean; horarios: { nome: string; hora: string; ativo: boolean; }[]; }
@@ -57,7 +61,7 @@ interface AppContextType {
   apostas: any[]; snookerChannels: any[];
   jdbResults: JDBNormalizedResult[];
   postedResults: JDBNormalizedResult[];
-  jdbLoterias: JDBLoteria[];
+  jdbLoterias: JDBEstado[];
   dbLoterias: LotteryDefinition[]; 
   genericLotteryConfigs: GenericLotteryConfig[];
   allUsers: any[];
@@ -135,6 +139,18 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+function normalizeFromFirebase(loterias: any[]): JDBEstado[] {
+  return loterias.map(l => ({
+    id: l.id,
+    bancaId: l.bancaId || 'default',
+    nome: l.nome || l.name || '',
+    sigla: l.sigla || l.estado || '',
+    bancas: l.bancas || [],
+    modalidades: l.modalidades || [],
+    updatedAt: l.updatedAt
+  }));
+}
+
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const { firestore } = initializeFirebase();
@@ -150,7 +166,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [ledger, setLedger] = useState<any[]>([]);
   const [apostas, setApostas] = useState<any[]>([]);
   const [jdbResults, setJdbResults] = useState<JDBNormalizedResult[]>([]);
-  const [jdbLoterias, setJdbLoterias] = useState<JDBLoteria[]>([]);
+  const [jdbLoterias, setJdbLoterias] = useState<JDBEstado[]>([]);
   const [dbLoterias, setDbLoterias] = useState<LotteryDefinition[]>([]);
   const [genericLotteryConfigs, setGenericLotteryConfigs] = useState<GenericLotteryConfig[]>([]);
   const [footballLeagues, setFootballLeagues] = useState<ESPNLeagueConfig[]>([]);
@@ -215,8 +231,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         else if (bancaId !== 'default') getDocs(collection(firestore, defaultPath, 'genericLotteryConfigs')).then(snap => setGenericLotteryConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() } as GenericLotteryConfig))));
       }, handleSnapshotError('genericLotteryConfigs')),
       onSnapshot(collection(firestore, bancaPath, 'snooker'), (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('snooker')),
-      onSnapshot(collection(firestore, bancaPath, 'jdbLoterias'), (s) => setJdbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBLoteria))), handleSnapshotError('jdbLoterias')),
-      onSnapshot(collection(firestore, bancaPath, 'jdbResults'), (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))), handleSnapshotError('jdbResults')),
+      onSnapshot(collection(firestore, bancaPath, 'jdbLoterias'),
+        (s) => setJdbLoterias(normalizeFromFirebase(s.docs.map(d => ({ id: d.id, ...d.data() })))),
+        handleSnapshotError('jdbLoterias')),
+      onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
+        (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
+        handleSnapshotError('jdbResults')),
       onSnapshot(collection(firestore, bancaPath, 'football_leagues'), (s) => { const loaded = s.docs.map(d => ({ id: d.id, ...d.data() } as ESPNLeagueConfig)); if (loaded.length > 0) setFootballLeagues(loaded); else setFootballLeagues(ESPN_LEAGUE_CATALOG); }, handleSnapshotError('football_leagues')),
       onSnapshot(collection(firestore, bancaPath, 'football_matches'), (s) => setFootballMatches(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('football_matches')),
       onSnapshot(collection(firestore, bancaPath, 'surebets'), (s) => setSurebets(s.docs.map(d => ({ id: d.id, ...d.data() } as SurebetOpportunity))), handleSnapshotError('surebets')),
@@ -239,12 +259,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribers.forEach(unsub => unsub());
   }, [firestore, user, contextTicker]);
 
-  useEffect(() => {
-    if (!user || (user.tipoUsuario !== 'ADMIN' && user.tipoUsuario !== 'SUPER_ADMIN')) return;
-    const runJob = async () => { const bancaId = user.bancaId || getCurrentBancaId() || 'default'; try { await SurebetJob.run(bancaId); } catch (e: any) { console.warn("[Surebet Scheduler Error]", e.message); } };
-    const interval = setInterval(runJob, 10000); runJob(); return () => clearInterval(interval);
-  }, [user, firestore]);
-
   // Motor de Liquidação Automática
   const settlePendingBets = async (results: JDBNormalizedResult[]) => {
     if (!user || !apostas.length || !results.length) return;
@@ -255,12 +269,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       for (const result of results) {
         if (isJDBItemEligible(aposta.detalhes?.[0], result, aposta.createdAt)) {
           let totalPrize = 0;
-          let wonAll = true;
           
           for (const item of (aposta.detalhes || [])) {
             const { isWinner, prize } = checkSingleItemWinner(item, result, jdbLoterias);
             if (isWinner) totalPrize += prize;
-            else wonAll = false;
           }
 
           const newStatus = totalPrize > 0 ? 'premiado' : 'perdeu';
@@ -316,7 +328,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     updateBanner: (b) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', b.id), b, { merge: true }), addBanner: (b) => { const id = b.id || `banner-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id), { ...b, id }, { merge: true }); }, deleteBanner: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id)), updatePopup: (p) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', p.id), p, { merge: true }), addPopup: (p) => { const id = p.id || `popup-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', id), { ...p, id }, { merge: true }); }, deletePopup: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', id)), updateNews: (n) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', n.id), n, { merge: true }), addNews: (n) => { const id = n.id || `news-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id), { ...n, id }, { merge: true }); }, deleteNews: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id)), updateLiveMiniPlayerConfig: (cfg) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'configuracoes', 'mini_player'), cfg, { merge: true }),
     syncJDBResults, deleteJDBResult: async (id) => deleteDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbResults`, id)), publishJDBResult: async (id) => setDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbResults`, id), { status: 'PUBLICADO' }, { merge: true }),
     fullLedger: ledger, updateGenericLottery: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/genericLotteryConfigs`, cfg.id), cfg, { merge: true }), activeBancaId: user?.bancaId || getCurrentBancaId() || 'default',
-    addJDBLoteria: async (l) => setDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbLoterias`, l.id), { ...l, bancaId: user?.bancaId || 'default' }, { merge: true }), updateJDBLoteria: async (l) => setDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbLoterias`, l.id), { ...l, bancaId: user?.bancaId || 'default' }, { merge: true }), deleteJDBLoteria: async (id) => deleteDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbLoterias`, id))
+    addJDBLoteria: async (l) => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      await setDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, l.id), { ...l, bancaId }, { merge: true });
+    },
+    updateJDBLoteria: async (l) => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      await setDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, l.id), { ...l, bancaId }, { merge: true });
+    },
+    deleteJDBLoteria: async (id) => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      await deleteDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, id));
+    }
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

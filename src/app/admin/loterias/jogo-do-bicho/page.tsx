@@ -7,40 +7,34 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Edit, Plus, ChevronLeft } from 'lucide-react';
+import { Trash2, Edit, Plus, ChevronLeft, Building2, MapPin, PlusCircle, Save } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
-import { useAppContext, JDBLoteria, JDBModalidade, JDBDia } from '@/context/AppContext';
+import { useAppContext, JDBEstado, JDBBanca } from '@/context/AppContext';
 import { MODALIDADES_PADRAO } from '@/constants/loterias';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 const JDB_ESTADOS_PADRAO = [
-  { stateName: 'Rio de Janeiro',       stateCode: 'RJ', horarios: ['09:15', '11:15', '14:15', '16:15', '18:15', '21:15'] },
-  { stateName: 'São Paulo',            stateCode: 'SP', horarios: ['09:15', '11:15', '14:15', '16:15', '18:15', '21:15'] },
-  { stateName: 'Bahia',                stateCode: 'BA', horarios: ['10:00', '12:00', '15:00', '19:00', '21:00'] },
-  { stateName: 'Goiás',               stateCode: 'GO', horarios: ['11:00', '14:00', '16:00', '18:00', '21:00'] },
-  { stateName: 'Brasília',             stateCode: 'DF', horarios: ['08:30', '10:30', '12:30', '14:30', '16:30', '18:30', '20:30'] },
-  { stateName: 'Paraíba',              stateCode: 'PB', horarios: ['10:00', '13:00', '15:00', '17:00', '19:00'] },
-  { stateName: 'Minas Gerais',         stateCode: 'MG', horarios: ['12:00', '15:00', '18:00', '21:00'] },
-  { stateName: 'Ceará',                stateCode: 'CE', horarios: ['14:00', '19:00'] },
-  { stateName: 'Paraná',               stateCode: 'PR', horarios: ['11:00', '14:00', '18:00', '21:00'] },
-  { stateName: 'Pernambuco',           stateCode: 'PE', horarios: ['11:00', '12:40', '14:00', '15:40', '17:00', '18:40'] },
-  { stateName: 'Rio Grande do Norte',  stateCode: 'RN', horarios: ['11:00', '14:00', '18:00'] },
-  { stateName: 'Rio Grande do Sul',    stateCode: 'RS', horarios: ['11:00', '14:00', '18:00'] },
-  { stateName: 'Sergipe',              stateCode: 'SE', horarios: ['11:00', '14:00', '18:00'] },
+  { nome: 'Rio de Janeiro', sigla: 'RJ' },
+  { nome: 'São Paulo', sigla: 'SP' },
+  { nome: 'Bahia', sigla: 'BA' },
+  { nome: 'Goiás', sigla: 'GO' },
+  { nome: 'Brasília', sigla: 'DF' },
+  { nome: 'Paraíba', sigla: 'PB' },
+  { nome: 'Minas Gerais', sigla: 'MG' },
+  { nome: 'Ceará', sigla: 'CE' },
+  { nome: 'Paraná', sigla: 'PR' },
+  { nome: 'Pernambuco', sigla: 'PE' },
+  { nome: 'Rio Grande do Norte', sigla: 'RN' },
+  { nome: 'Rio Grande do Sul', sigla: 'RS' },
+  { nome: 'Sergipe', sigla: 'SE' },
 ];
-
-const DIAS_SEMANA_TODOS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-
-interface ModalidadeForm extends JDBModalidade {
-  id: number; // Temporary ID for form handling
-}
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-const createInitialDiasState = (): Record<string, JDBDia> => {
+const createInitialDiasState = () => {
     return DIAS_SEMANA.reduce((acc, dia) => ({ ...acc, [dia]: { selecionado: false, horarios: [''] } }), {});
 }
 
@@ -48,137 +42,131 @@ export default function GerenciarJogoDoBichoPage() {
     const { toast } = useToast();
     const { jdbLoterias, addJDBLoteria, updateJDBLoteria, deleteJDBLoteria, activeBancaId } = useAppContext();
 
-    // Form state
-    const [nomeLoteria, setNomeLoteria] = useState('');
-    const [stateName, setStateName] = useState('');
-    const [modalidades, setModalidades] = useState<ModalidadeForm[]>([{ id: Date.now(), nome: 'Grupo', multiplicador: '18' }]);
-    const [dias, setDias] = useState<Record<string, JDBDia>>(createInitialDiasState());
+    // UI state
+    const [isEditing, setIsEditing] = useState(false);
+    const [currentEstadoId, setCurrentEstadoId] = useState<string | null>(null);
+    
+    // Form state (Estado)
+    const [nomeEstado, setNomeEstado] = useState('');
+    const [siglaEstado, setSiglaEstado] = useState('');
+    const [modalidades, setModalidades] = useState(MODALIDADES_PADRAO.map(m => ({ ...m, multiplicador: parseInt(m.multiplicador) })));
+    const [bancas, setBancas] = useState<JDBBanca[]>([]);
 
-    // Editing state
-    const [editingLoteria, setEditingLoteria] = useState<JDBLoteria | null>(null);
-
-    // Deleting state
-    const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
-    const [loteriaParaExcluir, setLoteriaParaExcluir] = useState<string | null>(null);
+    // Form state (Adding Bank)
+    const [newBankName, setNewBankName] = useState('');
 
     const handleImportarPadrao = () => {
-        const jaExistentes = new Set(jdbLoterias.map((l: any) => l.stateCode));
+        const jaExistentes = new Set(jdbLoterias.map(l => l.sigla));
         let criadas = 0;
-        JDB_ESTADOS_PADRAO.forEach(estado => {
-            if (jaExistentes.has(estado.stateCode)) return;
-            const diasObj = DIAS_SEMANA_TODOS.reduce((acc: any, dia) => ({
-                ...acc,
-                [dia]: { selecionado: true, horarios: estado.horarios }
-            }), {});
-            const novaLoteria = {
-                id: `jdb-${estado.stateCode.toLowerCase()}`,
-                nome: estado.stateName,
-                stateName: estado.stateName,
-                stateCode: estado.stateCode,
-                modalidades: MODALIDADES_PADRAO,
-                dias: diasObj,
+        JDB_ESTADOS_PADRAO.forEach(est => {
+            if (jaExistentes.has(est.sigla)) return;
+            const id = `jdb-${est.sigla.toLowerCase()}`;
+            const novoEstado: JDBEstado = {
+                id,
                 bancaId: activeBancaId,
+                nome: est.nome,
+                sigla: est.sigla,
+                modalidades: MODALIDADES_PADRAO.map(m => ({ nome: m.nome, multiplicador: parseInt(m.multiplicador) })),
+                bancas: []
             };
-            addJDBLoteria(novaLoteria);
+            addJDBLoteria(novoEstado);
             criadas++;
         });
-        if (criadas > 0) {
-            toast({ title: 'Importação concluída', description: `${criadas} loterias criadas com os estados padrão do scraper.` });
-        } else {
-            toast({ title: 'Nada a importar', description: 'Todos os estados já estão cadastrados.' });
-        }
+        toast({ title: 'Importação concluída', description: `${criadas} estados adicionados.` });
     };
 
-    const handleSetPadrao = () => {
-        const modalidadesComId = MODALIDADES_PADRAO.map(m => ({ ...m, id: Date.now() + Math.random() }));
-        setModalidades(modalidadesComId);
-        toast({ title: 'Modalidades padrão carregadas', description: 'As modalidades e multiplicadores foram preenchidos com os valores padrão.' });
-    };
-
-    // Modalidade handlers
-    const addModalidade = () => setModalidades([...modalidades, { id: Date.now(), nome: '', multiplicador: '' }]);
-    const removeModalidade = (id: number) => setModalidades(modalidades.filter(m => m.id !== id));
-    const updateModalidade = (id: number, field: 'nome' | 'multiplicador', value: string) => {
-        setModalidades(modalidades.map(m => m.id === id ? { ...m, [field]: value } : m));
-    };
-
-    // Day and Time handlers
-    const toggleDia = (dia: string) => {
-        setDias(prev => ({ ...prev, [dia]: { ...prev[dia], selecionado: !prev[dia].selecionado } }));
-    };
-    const addHorario = (dia: string) => {
-        setDias(prev => ({ ...prev, [dia]: { ...prev[dia], horarios: [...prev[dia].horarios, ''] } }));
-    };
-    const removeHorario = (dia: string, index: number) => {
-        setDias(prev => ({ ...prev, [dia]: { ...prev[dia], horarios: prev[dia].horarios.filter((_, i) => i !== index) } }));
-    };
-    const updateHorario = (dia: string, index: number, value: string) => {
-        const novosHorarios = [...dias[dia].horarios];
-        novosHorarios[index] = value;
-        setDias(prev => ({ ...prev, [dia]: { ...prev[dia], horarios: novosHorarios } }));
-    };
-
-    // CRUD handlers
-    const handleSave = () => {
-        if (!nomeLoteria) {
-            toast({ variant: 'destructive', title: 'Erro', description: 'O nome da loteria é obrigatório.' });
+    const handleSaveEstado = () => {
+        if (!nomeEstado || !siglaEstado) {
+            toast({ variant: 'destructive', title: 'Erro', description: 'Nome e Sigla são obrigatórios.' });
             return;
         }
 
-        if (modalidades.length === 0 || modalidades.some(m => !m.nome || !m.multiplicador)) {
-            toast({ variant: 'destructive', title: 'Erro', description: 'Preencha todas as modalidades e multiplicadores.' });
-            return;
-        }
-
-        const novaLoteria: JDBLoteria = {
-            id: editingLoteria ? editingLoteria.id : nomeLoteria.toLowerCase().replace(/\s+/g, '-'),
-            nome: nomeLoteria,
-            stateName: stateName,
-            modalidades: modalidades.map(({id, ...rest}) => rest), // remove temporary form id
-            dias: dias,
-            bancaId: activeBancaId
+        const estadoData: JDBEstado = {
+            id: currentEstadoId || `est-${siglaEstado.toLowerCase()}`,
+            bancaId: activeBancaId,
+            nome: nomeEstado,
+            sigla: siglaEstado.toUpperCase(),
+            modalidades,
+            bancas
         };
 
-        if (editingLoteria) {
-            updateJDBLoteria(novaLoteria);
-            toast({ title: 'Sucesso', description: 'Loteria atualizada com sucesso!' });
+        if (currentEstadoId) {
+            updateJDBLoteria(estadoData);
+            toast({ title: 'Sucesso', description: 'Estado atualizado.' });
         } else {
-            addJDBLoteria(novaLoteria);
-            toast({ title: 'Sucesso', description: 'Loteria criada com sucesso!' });
+            addJDBLoteria(estadoData);
+            toast({ title: 'Sucesso', description: 'Estado criado.' });
         }
         resetForm();
     };
 
-    const handleEdit = (loteria: JDBLoteria) => {
-        setEditingLoteria(loteria);
-        setNomeLoteria(loteria.nome);
-        setStateName(loteria.stateName || '');
-        setModalidades(loteria.modalidades.map(m => ({ ...m, id: Date.now() + Math.random() })));
-        setDias(loteria.dias);
-        toast({ title: 'Modo de Edição', description: `Carregando dados para ${loteria.nome}.` });
+    const resetForm = () => {
+        setIsEditing(false);
+        setCurrentEstadoId(null);
+        setNomeEstado('');
+        setSiglaEstado('');
+        setModalidades(MODALIDADES_PADRAO.map(m => ({ ...m, multiplicador: parseInt(m.multiplicador) })));
+        setBancas([]);
+    };
+
+    const handleEditEstado = (est: JDBEstado) => {
+        setIsEditing(true);
+        setCurrentEstadoId(est.id);
+        setNomeEstado(est.nome);
+        setSiglaEstado(est.sigla);
+        setModalidades(est.modalidades);
+        setBancas(est.bancas || []);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleDeleteClick = (id: string) => {
-        setLoteriaParaExcluir(id);
-        setDeleteAlertOpen(true);
-    };
-    
-    const handleConfirmDelete = () => {
-        if (loteriaParaExcluir) {
-            deleteJDBLoteria(loteriaParaExcluir);
-            toast({ title: 'Sucesso', description: 'Loteria excluída.' });
-            setLoteriaParaExcluir(null);
-        }
-        setDeleteAlertOpen(false);
+    const addBank = () => {
+        if (!newBankName) return;
+        const newBank: JDBBanca = {
+            id: `bank-${Date.now()}`,
+            nome: newBankName,
+            dias: createInitialDiasState()
+        };
+        setBancas([...bancas, newBank]);
+        setNewBankName('');
     };
 
-    const resetForm = () => {
-        setNomeLoteria('');
-        setStateName('');
-        setModalidades([{ id: Date.now(), nome: 'Grupo', multiplicador: '18' }]);
-        setDias(createInitialDiasState());
-        setEditingLoteria(null);
+    const removeBank = (id: string) => {
+        setBancas(bancas.filter(b => b.id !== id));
+    };
+
+    const updateBankSchedule = (bankId: string, dia: string, field: 'selecionado' | 'horarios', value: any) => {
+        setBancas(bancas.map(b => {
+            if (b.id !== bankId) return b;
+            return {
+                ...b,
+                dias: {
+                    ...b.dias,
+                    [dia]: { ...b.dias[dia], [field]: value }
+                }
+            };
+        }));
+    };
+
+    const addTime = (bankId: string, dia: string) => {
+        const bank = bancas.find(b => b.id === bankId);
+        if (!bank) return;
+        const currentTimes = bank.dias[dia].horarios;
+        updateBankSchedule(bankId, dia, 'horarios', [...currentTimes, '']);
+    };
+
+    const updateTime = (bankId: string, dia: string, idx: number, val: string) => {
+        const bank = bancas.find(b => b.id === bankId);
+        if (!bank) return;
+        const currentTimes = [...bank.dias[dia].horarios];
+        currentTimes[idx] = val;
+        updateBankSchedule(bankId, dia, 'horarios', currentTimes);
+    };
+
+    const removeTime = (bankId: string, dia: string, idx: number) => {
+        const bank = bancas.find(b => b.id === bankId);
+        if (!bank) return;
+        const currentTimes = bank.dias[dia].horarios.filter((_, i) => i !== idx);
+        updateBankSchedule(bankId, dia, 'horarios', currentTimes);
     };
 
     return (
@@ -186,140 +174,120 @@ export default function GerenciarJogoDoBichoPage() {
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <Link href="/admin/loterias">
-                        <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
+                        <Button variant="outline" size="icon"><ChevronLeft /></Button>
                     </Link>
-                    <h1 className="text-3xl font-bold">Gerenciar Jogo do Bicho</h1>
+                    <h1 className="text-3xl font-black uppercase italic tracking-tighter">Gerenciar Extrações</h1>
                 </div>
-                <Button variant="outline" onClick={handleImportarPadrao}>
-                    Importar padrão do scraper
-                </Button>
+                {!isEditing && (
+                    <Button variant="outline" onClick={handleImportarPadrao} className="gap-2 font-bold uppercase text-[10px]">
+                        <MapPin size={14} /> Importar Estados Padrão
+                    </Button>
+                )}
             </div>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>{editingLoteria ? 'Editar Loteria' : 'Criar Nova Loteria'}</CardTitle>
-                    <CardDescription>Defina nome, estado, modalidades e horários.</CardDescription>
+            <Card className="border-primary/20 bg-primary/5 shadow-xl overflow-hidden">
+                <CardHeader className="bg-primary/10 border-b border-primary/10">
+                    <CardTitle className="text-sm font-black uppercase italic tracking-widest flex items-center gap-2">
+                        {isEditing ? <Edit size={16}/> : <PlusCircle size={16}/>}
+                        {isEditing ? `Editando: ${nomeEstado}` : 'Novo Estado / Unidade Federativa'}
+                    </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <div className="grid gap-2">
-                            <Label htmlFor="nome-loteria">Nome da Loteria</Label>
-                            <Input id="nome-loteria" value={nomeLoteria} onChange={(e) => setNomeLoteria(e.target.value)} placeholder="Ex: PT-RIO" />
+                <CardContent className="space-y-8 pt-6">
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Nome do Estado</Label>
+                            <Input value={nomeEstado} onChange={e => setNomeEstado(e.target.value)} placeholder="Ex: Rio de Janeiro" className="h-12 bg-black/20 border-white/10 text-lg font-bold" />
                         </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="state-name">Estado</Label>
-                            <Input 
-                                id="state-name" 
-                                value={stateName} 
-                                onChange={(e) => setStateName(e.target.value)} 
-                                placeholder="Ex: Rio de Janeiro, São Paulo..." 
-                            />
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Sigla (UF)</Label>
+                            <Input value={siglaEstado} onChange={e => setSiglaEstado(e.target.value.toUpperCase())} maxLength={2} placeholder="Ex: RJ" className="h-12 bg-black/20 border-white/10 text-lg font-black text-primary text-center" />
                         </div>
                     </div>
-                    <Separator />
+
+                    <Separator className="bg-white/5" />
+
                     <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <Label>Modalidades e Multiplicadores</Label>
-                            <div className="flex items-center gap-2">
-                                <Button size="sm" variant="secondary" onClick={handleSetPadrao}>Usar Padrão</Button>
-                                <Button size="sm" variant="outline" onClick={addModalidade}><Plus className="mr-2 h-4 w-4"/>Adicionar</Button>
-                            </div>
+                        <h3 className="text-lg font-black uppercase italic tracking-widest text-white flex items-center gap-2">
+                            <Building2 size={18} className="text-primary" /> Bancas e Horários
+                        </h3>
+                        
+                        <div className="flex gap-2">
+                            <Input value={newBankName} onChange={e => setNewBankName(e.target.value)} placeholder="Nome da Banca (Ex: PT Rio, Look...)" className="bg-black/20 border-white/10" />
+                            <Button onClick={addBank} className="font-bold"><Plus className="mr-1 h-4 w-4"/> Adicionar</Button>
                         </div>
-                        {modalidades.map((m, index) => (
-                            <div key={m.id} className="flex items-center gap-2">
-                                <Input value={m.nome} onChange={e => updateModalidade(m.id, 'nome', e.target.value)} placeholder={`Ex: Grupo`} />
-                                <Input value={m.multiplicador} onChange={e => updateModalidade(m.id, 'multiplicador', e.target.value)} placeholder="Ex: 18" />
-                                <Button variant="ghost" size="icon" onClick={() => removeModalidade(m.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                            </div>
-                        ))}
-                    </div>
-                    <Separator />
-                    <div className="space-y-4">
-                        <Label>Dias e Horários de Funcionamento</Label>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {DIAS_SEMANA.map(dia => (
-                                <div key={dia} className="p-4 border rounded-lg space-y-3">
-                                    <div className="flex items-center space-x-2">
-                                        <Checkbox id={`dia-${dia}`} checked={dias[dia]?.selecionado || false} onCheckedChange={() => toggleDia(dia)} />
-                                        <Label htmlFor={`dia-${dia}`} className="font-medium">{dia}</Label>
-                                    </div>
-                                    {dias[dia]?.selecionado && (
-                                        <div className="space-y-2">
-                                            {dias[dia].horarios.map((h, index) => (
-                                                <div key={index} className="flex items-center gap-2">
-                                                    <Input type="time" value={h} onChange={(e) => updateHorario(dia, index, e.target.value)} />
-                                                    <Button variant="ghost" size="icon" onClick={() => removeHorario(dia, index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+
+                        <div className="space-y-6">
+                            {bancas.map(bank => (
+                                <Card key={bank.id} className="border-white/5 bg-black/40">
+                                    <CardHeader className="p-4 flex flex-row items-center justify-between border-b border-white/5">
+                                        <CardTitle className="text-xs font-black uppercase text-white">{bank.nome}</CardTitle>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeBank(bank.id)}><Trash2 size={14}/></Button>
+                                    </CardHeader>
+                                    <CardContent className="p-4 overflow-x-auto">
+                                        <div className="flex gap-4 min-w-max pb-2">
+                                            {DIAS_SEMANA.map(dia => (
+                                                <div key={dia} className="w-48 space-y-3 p-3 rounded-xl bg-white/5 border border-white/5">
+                                                    <div className="flex items-center gap-2">
+                                                        <Checkbox 
+                                                            checked={bank.dias[dia].selecionado} 
+                                                            onCheckedChange={(v) => updateBankSchedule(bank.id, dia, 'selecionado', !!v)}
+                                                        />
+                                                        <span className="text-[10px] font-black uppercase text-slate-400">{dia}</span>
+                                                    </div>
+                                                    {bank.dias[dia].selecionado && (
+                                                        <div className="space-y-2">
+                                                            {bank.dias[dia].horarios.map((time, tIdx) => (
+                                                                <div key={tIdx} className="flex gap-1">
+                                                                    <Input 
+                                                                        type="time" 
+                                                                        value={time} 
+                                                                        onChange={e => updateTime(bank.id, dia, tIdx, e.target.value)}
+                                                                        className="h-8 bg-black/20 text-[10px] border-white/10"
+                                                                    />
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/50" onClick={() => removeTime(bank.id, dia, tIdx)}><X size={12}/></Button>
+                                                                </div>
+                                                            ))}
+                                                            <Button variant="outline" size="sm" className="w-full h-7 text-[9px] font-bold uppercase border-dashed" onClick={() => addTime(bank.id, dia)}>+ Hora</Button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
-                                            <Button size="sm" variant="secondary" className="w-full" onClick={() => addHorario(dia)}><Plus className="mr-2 h-4 w-4"/>Horário</Button>
                                         </div>
-                                    )}
-                                </div>
+                                    </CardContent>
+                                </Card>
                             ))}
                         </div>
                     </div>
-                    <Separator />
-                    <div className="flex justify-end gap-2">
-                        {editingLoteria && <Button variant="outline" onClick={resetForm}>Cancelar Edição</Button>}
-                        <Button onClick={handleSave}>{editingLoteria ? 'Salvar Alterações' : 'Criar Loteria'}</Button>
+
+                    <div className="flex justify-end gap-3 pt-4">
+                        <Button variant="ghost" onClick={resetForm} className="font-bold uppercase text-[10px]">Cancelar</Button>
+                        <Button onClick={handleSaveEstado} className="lux-shine px-8 font-black uppercase italic"><Save className="mr-2 h-4 w-4" /> {isEditing ? 'Salvar Alterações' : 'Criar Novo Estado'}</Button>
                     </div>
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Loterias Criadas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Accordion type="single" collapsible className="w-full">
-                       {jdbLoterias.map(loteria => (
-                            <AccordionItem value={loteria.id} key={loteria.id}>
-                                <div className="flex w-full items-center">
-                                    <AccordionTrigger className="flex-1 text-left">
-                                        <div className="flex flex-col">
-                                            <span className="font-bold">{loteria.nome}</span>
-                                            <span className="text-[10px] text-muted-foreground uppercase">{loteria.stateName || 'Nacional'}</span>
-                                        </div>
-                                    </AccordionTrigger>
-                                    <div className="flex gap-2 pr-4">
-                                        <Button size="sm" variant="outline" onClick={() => handleEdit(loteria)}><Edit className="mr-2 h-4 w-4"/>Editar</Button>
-                                        <Button size="sm" variant="destructive" onClick={() => handleDeleteClick(loteria.id)}><Trash2 className="mr-2 h-4 w-4"/>Excluir</Button>
+            <div className="space-y-4">
+                <h2 className="text-xl font-black uppercase italic tracking-widest text-white">Estados Cadastrados</h2>
+                <div className="grid gap-4">
+                    {jdbLoterias.map(est => (
+                        <Card key={est.id} className="border-white/5 bg-slate-900/50 hover:bg-slate-900 transition-colors">
+                            <div className="p-4 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 text-primary font-black italic">{est.sigla}</div>
+                                    <div>
+                                        <h3 className="font-black text-sm uppercase italic text-white">{est.nome}</h3>
+                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{est.bancas?.length || 0} Bancas Vinculadas</p>
                                     </div>
                                 </div>
-                                <AccordionContent>
-                                    <p className="font-semibold">Horários:</p>
-                                    <p className="text-muted-foreground">{
-                                       [...new Set(Object.values(loteria.dias).filter(d => d.selecionado).flatMap(d => d.horarios).filter(Boolean))].sort().join(', ')
-                                    }</p>
-                                    <div className="mt-2">
-                                        <p className="font-semibold text-xs uppercase text-muted-foreground">Modalidades:</p>
-                                        <div className="flex flex-wrap gap-1 mt-1">
-                                            {loteria.modalidades.map((m, i) => (
-                                                <Badge key={i} variant="secondary" className="text-[10px]">{m.nome} (x{m.multiplicador})</Badge>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </AccordionContent>
-                            </AccordionItem>
-                       ))}
-                    </Accordion>
-                </CardContent>
-            </Card>
-
-            <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                        Essa ação não pode ser desfeita. Isso excluirá permanentemente a loteria.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setLoteriaParaExcluir(null)}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+                                <div className="flex gap-2">
+                                    <Button variant="outline" size="sm" className="h-9 px-4 font-bold text-[10px] border-white/10" onClick={() => handleEditEstado(est)}><Edit size={14} className="mr-1.5" /> Editar</Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive/50 hover:text-destructive hover:bg-destructive/10" onClick={() => deleteJDBLoteria(est.id)}><Trash2 size={14}/></Button>
+                                </div>
+                            </div>
+                        </Card>
+                    ))}
+                </div>
+            </div>
         </main>
     );
 }

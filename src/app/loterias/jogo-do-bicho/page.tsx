@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * @fileOverview Página de Aposta Jogo do Bicho Profissional.
+ * Fluxo: Data > Estado > Banca > Horário > Modalidade > Números > Valor.
+ */
+
 import { Header } from '@/components/header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -8,11 +13,12 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { X, ChevronLeft, MapPin } from 'lucide-react';
+import { X, ChevronLeft, MapPin, Building2, Clock, CalendarDays } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { TicketDialog } from '@/components/ticket-dialog';
 import { LotteryBetSlip } from '@/components/LotteryBetSlip';
+import { cn } from '@/lib/utils';
 
 // Define the type for a single bet item
 interface ApostaItem {
@@ -31,19 +37,21 @@ interface ApostaItem {
   retornoPossivel: number;
 }
 
-const modalidadesBase = [
-    { nome: 'Grupo', id: 'grupo', multiplicador: '18x', numeroCount: 1, digitLength: 2 },
-    { nome: 'Milhar', id: 'milhar', multiplicador: '5000x', numeroCount: 1, digitLength: 4 },
-    { nome: 'Centena', id: 'centena', multiplicador: '700x', numeroCount: 1, digitLength: 3 },
-    { nome: 'Milhar e Centena', id: 'milhar-e-centena', multiplicador: '5700x', numeroCount: 1, digitLength: 4 },
-    { nome: 'Dezena', id: 'dezena', multiplicador: '60x', numeroCount: 1, digitLength: 2 },
-    { nome: 'Dupla de Grupo', id: 'dupla-de-grupo', multiplicador: '160x', numeroCount: 2, digitLength: 2 },
-    { nome: 'Terno de Grupo', id: 'terno-de-grupo', multiplicador: '1300x', numeroCount: 3, digitLength: 2 },
-    { nome: 'Passe', id: 'passe', multiplicador: '90x', numeroCount: 2, digitLength: 2 },
-    { nome: 'Passe Seco', id: 'passe-seco', multiplicador: '160x', numeroCount: 2, digitLength: 2 },
-    { nome: 'Passe Vai Vem', id: 'passe-vai-vem', multiplicador: '45x', numeroCount: 2, digitLength: 2 },
-    { nome: 'Duque de Dezena', id: 'duque-de-dezena', multiplicador: '300x', numeroCount: 2, digitLength: 2 },
-    { nome: 'Terno de Dezena', id: 'terno-de-dezena', multiplicador: '5000x', numeroCount: 3, digitLength: 2 },
+const ALL_COLOCACOES = [
+  { nome: '1º PRÊMIO', id: '1-premio' },
+  { nome: '1º ao 2º PRÊMIO', id: '1-ao-2-premio' },
+  { nome: '1º ao 3º PRÊMIO', id: '1-ao-3-premio' },
+  { nome: '1º ao 4º PRÊMIO', id: '1-ao-4-premio' },
+  { nome: '1º ao 5º PRÊMIO', id: '1-ao-5-premio' },
+];
+
+const MODALIDADES_DEFAULTS = [
+    { nome: 'Grupo', id: 'grupo', multiplicador: 18, numeroCount: 1, digitLength: 2 },
+    { nome: 'Milhar', id: 'milhar', multiplicador: 5000, numeroCount: 1, digitLength: 4 },
+    { nome: 'Centena', id: 'centena', multiplicador: 700, numeroCount: 1, digitLength: 3 },
+    { nome: 'Dezena', id: 'dezena', multiplicador: 60, numeroCount: 1, digitLength: 2 },
+    { nome: 'Dupla de Grupo', id: 'dupla-de-grupo', multiplicador: 160, numeroCount: 2, digitLength: 2 },
+    { nome: 'Terno de Grupo', id: 'terno-de-grupo', multiplicador: 1300, numeroCount: 3, digitLength: 2 },
 ];
 
 export default function JogoDoBichoPage() {
@@ -51,137 +59,117 @@ export default function JogoDoBichoPage() {
   const { handleFinalizarAposta, jdbLoterias = [] } = useAppContext();
   const { toast } = useToast();
 
+  // Selections
   const [apostaData, setApostaData] = useState<'hoje' | 'amanha' | undefined>();
-  const [estadoSelecionado, setEstadoSelecionado] = useState<string | undefined>();
-  const [loteria, setLoteria] = useState<string | undefined>();
+  const [estadoId, setEstadoId] = useState<string | undefined>();
+  const [bancaId, setBancaId] = useState<string | undefined>();
   const [horario, setHorario] = useState('');
   const [modalidade, setModalidade] = useState<string | undefined>();
   const [colocacao, setColocacao] = useState<string | undefined>();
+  
+  // Inputs
   const [numeroInput, setNumeroInput] = useState('');
   const [numeros, setNumeros] = useState<string[]>([]);
   const [valor, setValor] = useState('');
+  
+  // Workflow
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [bilhete, setBilhete] = useState<ApostaItem[]>([]);
-  
   const [isTicketDialogOpen, setIsTicketDialogOpen] = useState(false);
   const [generatedTicketId, setGeneratedTicketId] = useState<string | null>(null);
   const [ticketGenerationTime, setTicketGenerationTime] = useState<string | null>(null);
 
-  const estadosDisponiveis = useMemo(() => {
-    const uniqueStates = new Set(jdbLoterias.map(l => l.stateName).filter(Boolean));
-    return Array.from(uniqueStates).sort();
-  }, [jdbLoterias]);
+  // --- Logic ---
 
-  const loteriasDoEstado = useMemo(() => {
-    if (!estadoSelecionado) return [];
-    return jdbLoterias.filter(l => l.stateName === estadoSelecionado);
-  }, [jdbLoterias, estadoSelecionado]);
-
-  const selectedJDBLoteriaConfig = useMemo(() => jdbLoterias.find(l => l.id === loteria), [jdbLoterias, loteria]);
+  const selectedEstado = useMemo(() => jdbLoterias.find(e => e.id === estadoId), [jdbLoterias, estadoId]);
+  const selectedBanca = useMemo(() => selectedEstado?.bancas?.find(b => b.id === bancaId), [selectedEstado, bancaId]);
 
   const horariosDisponiveis = useMemo(() => {
-    if (!selectedJDBLoteriaConfig || !apostaData) return [];
+    if (!selectedBanca || !apostaData) return [];
     const hoje = new Date();
     const diaSemana = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][hoje.getDay()];
     const diaAlvo = apostaData === 'amanha'
       ? ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][(hoje.getDay() + 1) % 7]
       : diaSemana;
-    const diaConfig = selectedJDBLoteriaConfig.dias?.[diaAlvo];
+    
+    const diaConfig = selectedBanca.dias?.[diaAlvo];
     if (!diaConfig?.selecionado) return [];
+
     return diaConfig.horarios
       .filter(h => h && isHorarioDisponivel(h, apostaData))
       .sort();
-  }, [selectedJDBLoteriaConfig, apostaData]);
-
-  const modalidades = useMemo(() => {
-    if (!selectedJDBLoteriaConfig) return modalidadesBase;
-    return modalidadesBase.map(baseMod => {
-      const customMod = selectedJDBLoteriaConfig.modalidades.find(m => m.nome.toLowerCase() === baseMod.nome.toLowerCase());
-      if (customMod) return { ...baseMod, multiplicador: `${customMod.multiplicador}x` };
-      return baseMod;
-    });
-  }, [selectedJDBLoteriaConfig]);
+  }, [selectedBanca, apostaData]);
 
   function isHorarioDisponivel(horarioStr: string, diaAposta: 'hoje' | 'amanha'): boolean {
-    if (!horarioStr || typeof horarioStr !== 'string') return false;
     if (diaAposta === 'amanha') return true;
     const agora = new Date();
     const parts = horarioStr.split(':');
     if (parts.length !== 2) return false;
-    const horas = Number(parts[0]);
-    const minutos = Number(parts[1]);
     const horarioSorteio = new Date();
-    horarioSorteio.setHours(horas, minutos, 0, 0);
-    // Bloqueia 1 minuto antes do sorteio
+    horarioSorteio.setHours(Number(parts[0]), Number(parts[1]), 0, 0);
     return agora.getTime() < (horarioSorteio.getTime() - 60000);
-  };
-  
-  const selectedModalidade = modalidades.find(m => m.id === modalidade);
-  const allColocacoes = [
-    { nome: '1º PRÊMIO', id: '1-premio' },
-    { nome: '1º ao 2º PRÊMIO', id: '1-ao-2-premio' },
-    { nome: '1º ao 3º PRÊMIO', id: '1-ao-3-premio' },
-    { nome: '1º ao 4º PRÊMIO', id: '1-ao-4-premio' },
-    { nome: '1º ao 5º PRÊMIO', id: '1-ao-5-premio' },
-  ];
+  }
 
-  const colocacoes = useMemo(() => {
-    if (!selectedModalidade) return allColocacoes;
-    const { numeroCount } = selectedModalidade;
-    if (numeroCount >= 3) return allColocacoes.filter(c => !['1-premio', '1-ao-2-premio'].includes(c.id));
-    if (numeroCount >= 2) return allColocacoes.filter(c => c.id !== '1-premio');
-    return allColocacoes;
-  }, [selectedModalidade]);
+  const modalidades = useMemo(() => {
+    if (!selectedEstado || !selectedEstado.modalidades?.length) return MODALIDADES_DEFAULTS;
+    return MODALIDADES_DEFAULTS.map(base => {
+      const custom = selectedEstado.modalidades.find(m => m.nome === base.nome);
+      return custom ? { ...base, multiplicador: custom.multiplicador } : base;
+    });
+  }, [selectedEstado]);
+
+  const selectedModObj = modalidades.find(m => m.id === modalidade);
+
+  const availableColocacoes = useMemo(() => {
+    if (!selectedModObj) return ALL_COLOCACOES;
+    if (selectedModObj.numeroCount >= 3) return ALL_COLOCACOES.filter(c => !['1-premio', '1-ao-2-premio'].includes(c.id));
+    if (selectedModObj.numeroCount >= 2) return ALL_COLOCACOES.filter(c => c.id !== '1-premio');
+    return ALL_COLOCACOES;
+  }, [selectedModObj]);
 
   const handleAddAposta = () => {
-    if (!apostaData || !modalidade || !colocacao || !loteria || !horario || !valor || !selectedModalidade) return;
-    
-    // Verificação de segurança de horário final
-    if (!isHorarioDisponivel(horario, apostaData)) {
-      toast({ variant: 'destructive', title: 'Horário Encerrado', description: 'O tempo para apostar nesta extração expirou.' });
-      return;
-    }
+    if (!selectedEstado || !selectedBanca || !horario || !modalidade || !colocacao || !valor || !selectedModObj) return;
 
-    const valorTotalFloat = parseFloat(valor.replace(',', '.')) || 0;
-    const divisorColocacao = colocacao === '1-premio' ? 1 : parseInt(colocacao.match(/\d+/g)?.[1] || '1');
-    const multiplicador = parseFloat(selectedModalidade.multiplicador);
-    const valorPorAposta = valorTotalFloat;
+    const valorFloat = parseFloat(valor.replace(',', '.')) || 0;
+    const divisor = colocacao === '1-premio' ? 1 : parseInt(colocacao.match(/\d+/g)?.[1] || '1');
+    const retorno = (valorFloat * selectedModObj.multiplicador) / divisor;
 
-    const novasApostas: ApostaItem[] = (selectedModalidade.numeroCount === 1 ? numeros : [numeros.join(',')]).map(numStr => ({
+    const novas: ApostaItem[] = (selectedModObj.numeroCount === 1 ? numeros : [numeros.join(',')]).map(nStr => ({
       id: Date.now() + Math.random(),
-      dataAposta: apostaData,
+      dataAposta: apostaData!,
       modalidade,
-      modalidadeLabel: selectedModalidade.nome,
+      modalidadeLabel: selectedModObj.nome,
       colocacao,
-      colocacaoLabel: allColocacoes.find(c => c.id === colocacao)?.nome || '',
-      loteria,
-      loteriaLabel: jdbLoterias.find(l => l.id === loteria)?.nome || '',
-      estadoLabel: estadoSelecionado || '',
+      colocacaoLabel: ALL_COLOCACOES.find(c => c.id === colocacao)?.nome || '',
+      loteria: selectedBanca.id,
+      loteriaLabel: selectedBanca.nome,
+      estadoLabel: selectedEstado.sigla,
       horario,
-      numeros: numStr.split(','),
-      valor: valorPorAposta.toFixed(2).replace('.',','),
-      retornoPossivel: (valorPorAposta * multiplicador) / divisorColocacao,
+      numeros: nStr.split(','),
+      valor: valorFloat.toFixed(2).replace('.', ','),
+      retornoPossivel: retorno
     }));
 
-    setBilhete([...bilhete, ...novasApostas]);
+    setBilhete([...bilhete, ...novas]);
     setModalidade(undefined); setColocacao(undefined); setNumeros([]); setValor('');
     setStep(5);
+    toast({ title: 'Adicionado!', description: `${novas.length} aposta(s) incluída(s) no bilhete.` });
   };
 
   const handleFinalizarBilhete = () => {
     if (bilhete.length === 0 || isFinalizing) return;
     setIsFinalizing(true);
-    const totalBilheteValue = bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0);
+    const total = bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0);
     handleFinalizarAposta({
       loteria: 'Jogo do Bicho',
       concurso: 'Manual',
       data: new Date().toLocaleString('pt-BR'),
-      valor: `R$ ${totalBilheteValue.toFixed(2).replace('.', ',')}`,
+      valor: `R$ ${total.toFixed(2).replace('.', ',')}`,
       numeros: bilhete.map(b => `${b.modalidadeLabel}: ${b.numeros.join(',')}`).join('; '),
       detalhes: bilhete,
-    }, totalBilheteValue).then(pouleId => {
-      if (pouleId) {
-        setGeneratedTicketId(pouleId);
+    }, total).then(id => {
+      if (id) {
+        setGeneratedTicketId(id);
         setTicketGenerationTime(new Date().toLocaleString('pt-BR'));
         setIsTicketDialogOpen(true);
       }
@@ -190,128 +178,183 @@ export default function JogoDoBichoPage() {
   };
 
   return (
-    <div>
+    <div className="min-h-screen bg-background">
       <Header />
-      <main className="p-4 md:p-8 flex flex-col items-center gap-8">
-        <Card className="w-full max-w-3xl shadow-2xl border-primary/10">
-          <CardHeader>
-            <CardTitle className="text-3xl font-black uppercase italic tracking-tighter text-center text-primary">Jogo do Bicho</CardTitle>
-            <CardDescription className="text-center font-bold text-muted-foreground uppercase text-[10px] tracking-widest">Siga os passos para gerar sua pule</CardDescription>
+      <main className="p-4 md:p-8 max-w-4xl mx-auto space-y-8">
+        <Card className="shadow-2xl border-primary/10 overflow-hidden bg-card/50 backdrop-blur-sm">
+          <CardHeader className="bg-primary/5 border-b border-primary/10 pb-6">
+            <CardTitle className="text-4xl font-black uppercase italic tracking-tighter text-center text-primary">Jogo do Bicho</CardTitle>
+            <CardDescription className="text-center font-bold text-muted-foreground uppercase text-[10px] tracking-widest">Extrações Oficiais em Tempo Real</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-center relative border-b pb-4 border-white/5">
+          <CardContent className="p-6">
+            {/* Step Indicator */}
+            <div className="flex items-center justify-between mb-8 px-2">
               {step > 1 && (
-                <Button variant="ghost" size="icon" onClick={() => setStep(step - 1)} className="absolute left-0 text-muted-foreground hover:text-white">
-                  <ChevronLeft />
-                </Button>
+                <Button variant="ghost" size="icon" onClick={() => setStep(step - 1)} className="text-muted-foreground hover:text-white"><ChevronLeft /></Button>
               )}
-              <div className="text-center">
-                <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">Passo {step}</h3>
-                <p className="text-[9px] font-black uppercase text-primary tracking-widest">Configuração</p>
+              <div className="flex-1 text-center">
+                <p className="text-[10px] font-black uppercase text-primary tracking-widest mb-1">Passo {step} de 8</p>
+                <h3 className="text-lg font-black italic uppercase tracking-tight text-white">
+                  {step === 1 && "Quando deseja apostar?"}
+                  {step === 2 && "Escolha o Estado"}
+                  {step === 3 && "Escolha a Banca"}
+                  {step === 4 && "Escolha o Horário"}
+                  {step === 5 && "Modalidade de Jogo"}
+                  {step === 6 && "Onde deseja ganhar?"}
+                  {step === 7 && "Seus Números"}
+                  {step === 8 && "Valor do Palpite"}
+                </h3>
               </div>
+              <div className="w-10" />
             </div>
 
-            <div className="min-h-[280px] flex flex-col justify-center">
+            <div className="min-h-[320px] flex flex-col justify-center animate-in fade-in duration-500">
               {step === 1 && (
-                <RadioGroup value={apostaData} onValueChange={(v) => { setApostaData(v as any); setStep(2); }} className="grid grid-cols-2 gap-4">
-                  <Label htmlFor="d1" className="border-2 border-white/5 p-8 rounded-2xl cursor-pointer text-center hover:border-primary/50 transition-all font-black uppercase italic text-lg">Hoje <RadioGroupItem value="hoje" id="d1" className="sr-only"/></Label>
-                  <Label htmlFor="d2" className="border-2 border-white/5 p-8 rounded-2xl cursor-pointer text-center hover:border-primary/50 transition-all font-black uppercase italic text-lg">Amanhã <RadioGroupItem value="amanha" id="d2" className="sr-only"/></Label>
-                </RadioGroup>
+                <div className="grid grid-cols-2 gap-4">
+                  <SelectionCard label="Hoje" sub="Extrações de agora" active={apostaData === 'hoje'} onClick={() => { setApostaData('hoje'); setStep(2); }} icon={<CalendarDays size={32}/>} />
+                  <SelectionCard label="Amanhã" sub="Sorteios futuros" active={apostaData === 'amanha'} onClick={() => { setApostaData('amanha'); setStep(2); }} icon={<Clock size={32}/>} />
+                </div>
               )}
 
               {step === 2 && (
-                <RadioGroup value={estadoSelecionado} onValueChange={(v) => { setEstadoSelecionado(v); setStep(3); }} className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {estadosDisponiveis.map(estado => (
-                    <Label key={estado} htmlFor={estado} className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary/30 transition-all font-bold uppercase text-xs flex flex-col items-center gap-2">
-                      <MapPin size={16} className="text-primary" />
-                      {estado} <RadioGroupItem value={estado!} id={estado!} className="sr-only"/>
-                    </Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {jdbLoterias.map(est => (
+                    <SelectionCard key={est.id} label={est.nome} sub={est.sigla} active={estadoId === est.id} onClick={() => { setEstadoId(est.id); setStep(3); }} icon={<MapPin size={24}/>} />
                   ))}
-                </RadioGroup>
+                </div>
               )}
 
-              {step === 3 && (
-                <RadioGroup value={loteria} onValueChange={(v) => { setLoteria(v); setStep(4); }} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {loteriasDoEstado.map(l => (
-                    <Label key={l.id} htmlFor={l.id} className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary/30 transition-all font-black uppercase italic text-[11px]">
-                      {l.nome} <RadioGroupItem value={l.id} id={l.id} className="sr-only"/>
-                    </Label>
+              {step === 3 && selectedEstado && (
+                <div className="grid grid-cols-2 gap-3">
+                  {selectedEstado.bancas?.map(b => (
+                    <SelectionCard key={b.id} label={b.nome} active={bancaId === b.id} onClick={() => { setBancaId(b.id); setStep(4); }} icon={<Building2 size={24}/>} />
                   ))}
-                </RadioGroup>
+                  {(!selectedEstado.bancas || selectedEstado.bancas.length === 0) && (
+                    <p className="col-span-2 text-center py-12 text-muted-foreground italic">Nenhuma banca cadastrada para este estado.</p>
+                  )}
+                </div>
               )}
 
               {step === 4 && (
-                <RadioGroup value={horario} onValueChange={(v) => { setHorario(v); setStep(5); }} className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {horariosDisponiveis.map(h => (
-                    <Label key={h} htmlFor={h} className="border border-white/10 bg-white/5 p-3 rounded-xl cursor-pointer text-center hover:border-primary font-mono font-bold text-sm">
-                      {h} <RadioGroupItem value={h} id={h} className="sr-only"/>
-                    </Label>
+                    <button key={h} onClick={() => { setHorario(h); setStep(5); }} className="h-14 bg-black/40 border border-white/5 rounded-xl text-lg font-black text-white hover:border-primary transition-all shadow-inner">{h}</button>
                   ))}
-                </RadioGroup>
+                  {horariosDisponiveis.length === 0 && (
+                    <p className="col-span-full text-center py-12 text-muted-foreground italic">Todas as extrações para este dia já foram encerradas.</p>
+                  )}
+                </div>
               )}
 
               {step === 5 && (
-                <RadioGroup value={modalidade} onValueChange={(v) => { setModalidade(v); setStep(6); setNumeros([]); }} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {modalidades.map(m => (
-                    <Label key={m.id} htmlFor={m.id} className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center flex flex-col hover:border-primary/50 transition-all">
-                      <b className="font-black uppercase italic text-xs text-white">{m.nome}</b>
-                      <small className="text-primary font-black text-[10px] mt-1">{m.multiplicador}</small>
-                      <RadioGroupItem value={m.id} id={m.id} className="sr-only"/>
-                    </Label>
+                    <button key={m.id} onClick={() => { setModalidade(m.id); setStep(6); }} className="flex flex-col items-center justify-center p-4 bg-black/40 border border-white/5 rounded-2xl hover:border-primary transition-all group">
+                      <span className="text-[11px] font-black uppercase text-white group-hover:text-primary mb-1">{m.nome}</span>
+                      <span className="text-xl font-black italic text-primary">{m.multiplicador}x</span>
+                    </button>
                   ))}
-                </RadioGroup>
+                </div>
               )}
 
               {step === 6 && (
-                <RadioGroup value={colocacao} onValueChange={(v) => { setColocacao(v); setStep(7); }} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {colocacoes.map(c => (
-                    <Label key={c.id} htmlFor={c.id} className="border border-white/10 bg-white/5 p-4 rounded-xl cursor-pointer text-center hover:bg-primary/10 hover:border-primary font-black uppercase italic text-[11px]">
-                      {c.nome} <RadioGroupItem value={c.id} id={c.id} className="sr-only"/>
-                    </Label>
+                <div className="grid gap-3">
+                  {availableColocacoes.map(c => (
+                    <button key={c.id} onClick={() => { setColocacao(c.id); setStep(7); }} className="h-14 bg-black/40 border border-white/5 rounded-xl font-black uppercase italic text-sm text-white hover:border-primary hover:bg-primary/10 transition-all">{c.nome}</button>
                   ))}
-                </RadioGroup>
+                </div>
               )}
 
-              {step === 7 && selectedModalidade && (
-                <div className="space-y-4">
+              {step === 7 && selectedModObj && (
+                <div className="space-y-6">
                   <div className="flex gap-2">
                     <Input 
                       value={numeroInput} 
                       onChange={e => setNumeroInput(e.target.value.replace(/\D/g, ''))} 
-                      placeholder={`Digite ${selectedModalidade.digitLength} dígitos`} 
-                      type="tel" maxLength={selectedModalidade.digitLength}
-                      className="h-12 bg-black/40 border-white/10 text-center font-bold text-lg"
+                      placeholder={`Digite ${selectedModObj.digitLength} dígitos...`} 
+                      type="tel" maxLength={selectedModObj.digitLength}
+                      className="h-14 bg-black/40 border-white/10 text-center font-black text-2xl text-primary"
+                      onKeyDown={e => e.key === 'Enter' && numeroInput.length === selectedModObj.digitLength && (setNumeros([...numeros, numeroInput]), setNumeroInput(''))}
                     />
-                    <Button onClick={() => { if(numeroInput.length === selectedModalidade.digitLength) { setNumeros([...numeros, numeroInput]); setNumeroInput(''); } }} className="h-12 px-6 font-bold">Add</Button>
+                    <Button onClick={() => { if(numeroInput.length === selectedModObj.digitLength) { setNumeros([...numeros, numeroInput]); setNumeroInput(''); } }} className="h-14 px-8 font-black uppercase italic">Add</Button>
                   </div>
                   <div className="flex flex-wrap gap-2 justify-center">
-                    {numeros.map(n => (
-                      <Badge key={n} variant="secondary" className="h-8 px-3 text-sm bg-primary/20 text-primary border-primary/20">
-                        {n} <X className="h-3 w-3 ml-2 cursor-pointer" onClick={() => setNumeros(numeros.filter(x => x !== n))}/>
+                    {numeros.map((n, i) => (
+                      <Badge key={i} className="h-10 px-4 text-lg font-black bg-primary text-black gap-2 border-0 shadow-lg">
+                        {n} <X className="h-4 w-4 cursor-pointer" onClick={() => setNumeros(numeros.filter((_, idx) => idx !== i))}/>
                       </Badge>
                     ))}
                   </div>
-                  <Button className="w-full h-12 rounded-xl font-bold" onClick={() => setStep(8)} disabled={numeros.length === 0}>Próximo</Button>
+                  <Button className="w-full h-14 rounded-xl font-black uppercase italic text-lg lux-shine" onClick={() => setStep(8)} disabled={numeros.length === 0}>Próximo Passo</Button>
                 </div>
               )}
 
               {step === 8 && (
-                <div className="space-y-6 flex flex-col items-center">
-                  <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">Valor da Aposta (R$)</Label>
-                  <Input value={valor} onChange={e => setValor(e.target.value.replace(',', '.'))} type="number" placeholder="0.00" className="text-center text-3xl font-black italic h-20 w-full max-w-xs bg-black/40 border-white/10 text-primary" />
+                <div className="space-y-8 flex flex-col items-center">
+                  <div className="w-full max-w-xs space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest block text-center">Valor do Palpite (R$)</Label>
+                    <Input 
+                      value={valor} 
+                      onChange={e => setValor(e.target.value.replace(',', '.'))} 
+                      type="number" 
+                      placeholder="0.00" 
+                      className="text-center text-5xl font-black italic h-24 bg-black/40 border-primary/30 text-primary shadow-[0_0_30px_rgba(251,191,36,0.1)]" 
+                    />
+                  </div>
+                  {valor && (
+                    <div className="p-4 rounded-2xl bg-green-600/10 border border-green-500/20 text-center animate-in zoom-in-95">
+                      <p className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1">Retorno Máximo Estimado</p>
+                      <p className="text-3xl font-black text-green-400 italic">R$ {((parseFloat(valor) * (selectedModObj?.multiplicador || 0)) / (parseInt(colocacao?.match(/\d+/g)?.[1] || '1'))).toFixed(2).replace('.', ',')}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </CardContent>
-          <CardFooter>
-            <Button size="lg" className="w-full h-14 rounded-2xl font-black uppercase italic text-lg lux-shine" onClick={handleAddAposta} disabled={step !== 8 || !valor}>Adicionar ao Bilhete</Button>
+          <CardFooter className="bg-[#020617] p-6 border-t border-white/5">
+            <Button size="lg" className="w-full h-16 rounded-2xl font-black uppercase italic text-xl lux-shine bg-primary text-black" onClick={handleAddAposta} disabled={step !== 8 || !valor}>Adicionar ao Bilhete</Button>
           </CardFooter>
         </Card>
 
-        <LotteryBetSlip items={bilhete} totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} totalPossibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} onRemoveItem={(id) => setBilhete(bilhete.filter(b => b.id !== id))} onFinalize={handleFinalizarBilhete} lotteryName="Jogo do Bicho" />
+        <LotteryBetSlip 
+          items={bilhete} 
+          totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} 
+          totalPossibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} 
+          onRemoveItem={(id) => setBilhete(bilhete.filter(b => b.id !== id))} 
+          onFinalize={handleFinalizarBilhete} 
+          lotteryName="Jogo do Bicho" 
+        />
       </main>
 
-      <TicketDialog isOpen={isTicketDialogOpen} onOpenChange={setIsTicketDialogOpen} onNewBet={() => { setBilhete([]); setStep(1); }} ticketId={generatedTicketId} generationTime={ticketGenerationTime} lotteryName="Jogo do Bicho" ticketItems={bilhete} totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} possibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} />
+      <TicketDialog 
+        isOpen={isTicketDialogOpen} 
+        onOpenChange={setIsTicketDialogOpen} 
+        onNewBet={() => { setBilhete([]); setStep(1); setIsTicketDialogOpen(false); }} 
+        ticketId={generatedTicketId} 
+        generationTime={ticketGenerationTime} 
+        lotteryName="Jogo do Bicho" 
+        ticketItems={bilhete} 
+        totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} 
+        possibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} 
+      />
     </div>
+  );
+}
+
+function SelectionCard({ label, sub, active, onClick, icon }: any) {
+  return (
+    <button 
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all group relative overflow-hidden",
+        active ? "bg-primary/10 border-primary shadow-[0_0_20px_rgba(251,191,36,0.2)]" : "bg-black/20 border-white/5 hover:border-white/20"
+      )}
+    >
+      <div className={cn("mb-3 transition-transform group-hover:scale-110", active ? "text-primary" : "text-slate-500")}>
+        {icon}
+      </div>
+      <span className={cn("text-sm font-black uppercase italic leading-none mb-1", active ? "text-white" : "text-slate-400")}>{label}</span>
+      {sub && <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{sub}</span>}
+    </button>
   );
 }
