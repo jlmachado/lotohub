@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca com Liquidação Automática.
- * V12: Refatoração Jogo do Bicho para estrutura Estado > Bancas > Horários.
+ * V13: Refatoração Jogo do Bicho para estrutura real Estado > Bancas > Horários.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
@@ -31,7 +31,7 @@ export interface JDBBanca {
 
 export interface JDBEstado {
   id: string;
-  bancaId: string; // Tenant
+  bancaId: string;
   nome: string;
   sigla: string;
   bancas: JDBBanca[];
@@ -52,7 +52,7 @@ export interface BingoSettings { enabled: boolean; rtpEnabled: boolean; rtpPerce
 export interface BingoDraw { id: string; drawNumber: number; status: 'scheduled' | 'waiting' | 'live' | 'finished' | 'cancelled'; scheduledAt: string; finishedAt?: string; ticketPrice: number; totalTickets: number; totalRevenue: number; payoutTotal: number; housePercent: number; drawnNumbers: number[]; winnersFound: { quadra?: any; kina?: any; keno?: any; }; prizeRules: { quadra: number; kina: number; keno: number; }; bancaId: string; }
 export interface BingoTicket { id: string; drawId: string; userId: string; userName: string; terminalId: string; ticketNumbers: number[]; amountPaid: number; status: 'active' | 'won' | 'lost' | 'refunded'; createdAt: string; bancaId: string; isBot?: boolean; }
 export interface SnookerBet { id: string; userId: string; userName: string; channelId: string; pick: 'A' | 'B' | 'EMPATE'; amount: number; oddsA: number; oddsB: number; oddsD: number; status: 'open' | 'won' | 'lost' | 'refunded' | 'cash_out'; createdAt: string; settledAt?: string; isPreMatch?: boolean; bancaId: string; }
-export interface SnookerLiveConfig { enabled: boolean; defaultChannelId: string; showLiveBadge: boolean; betsEnabled: boolean; minBet: number; maxBet: number; cashOutMargin: number; chatEnabled: boolean; reactionsEnabled: boolean; profanityFilterEnabled: boolean; }
+export interface SnookerLiveConfig { enabled: boolean; defaultChannelId: string; showLiveBadge: boolean; borderLiveBadge: boolean; betsEnabled: boolean; minBet: number; maxBet: number; cashOutMargin: number; chatEnabled: boolean; reactionsEnabled: boolean; profanityFilterEnabled: boolean; }
 
 interface AppContextType {
   user: any; isLoading: boolean; balance: number; bonus: number;
@@ -60,7 +60,6 @@ interface AppContextType {
   ledger: any[]; banners: Banner[]; popups: Popup[]; news: NewsMessage[];
   apostas: any[]; snookerChannels: any[];
   jdbResults: JDBNormalizedResult[];
-  postedResults: JDBNormalizedResult[];
   jdbLoterias: JDBEstado[];
   dbLoterias: LotteryDefinition[]; 
   genericLotteryConfigs: GenericLotteryConfig[];
@@ -89,9 +88,9 @@ interface AppContextType {
   bingoDraws: BingoDraw[];
   bingoTickets: BingoTicket[];
   bingoPayouts: any[];
-  surebets: SurebetOpportunity[];
-  surebetSettings: SurebetSettings | null;
-  updateSurebetSettings: (cfg: SurebetSettings) => Promise<void>;
+  surebets: any[];
+  surebetSettings: any | null;
+  updateSurebetSettings: (cfg: any) => Promise<void>;
   refreshData: () => void; logout: () => void;
   handleFinalizarAposta: (aposta: any, valorTotal: number) => Promise<string | null>;
   processarResultados: (data: any) => Promise<void>;
@@ -179,8 +178,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [snookerBets, setSnookerBets] = useState<SnookerBet[]>([]);
   const [snookerScoreboards, setSnookerScoreboards] = useState<Record<string, any>>({});
   const [snookerPresence, setSnookerPresence] = useState<any>({});
-  const [surebets, setSurebets] = useState<SurebetOpportunity[]>([]);
-  const [surebetSettings, setSurebetSettings] = useState<SurebetSettings | null>(null);
+  const [surebets, setSurebets] = useState<any[]>([]);
+  const [surebetSettings, setSurebetSettings] = useState<any | null>(null);
   const [casinoSettings, setCasinoSettings] = useState<CasinoSettings | null>(null);
   const [bingoSettings, setBingoSettings] = useState<BingoSettings | null>(null);
   const [snookerLiveConfig, setSnookerLiveConfig] = useState<SnookerLiveConfig | null>(null);
@@ -234,12 +233,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(collection(firestore, bancaPath, 'jdbLoterias'),
         (s) => setJdbLoterias(normalizeFromFirebase(s.docs.map(d => ({ id: d.id, ...d.data() })))),
         handleSnapshotError('jdbLoterias')),
-      onSnapshot(collection(firestore, bancaPath, 'jdbResults'), 
+      onSnapshot(query(collection(firestore, bancaPath, 'jdbResults'), orderBy('date', 'desc'), limit(50)), 
         (s) => setJdbResults(s.docs.map(d => ({ id: d.id, ...d.data() } as JDBNormalizedResult))),
         handleSnapshotError('jdbResults')),
       onSnapshot(collection(firestore, bancaPath, 'football_leagues'), (s) => { const loaded = s.docs.map(d => ({ id: d.id, ...d.data() } as ESPNLeagueConfig)); if (loaded.length > 0) setFootballLeagues(loaded); else setFootballLeagues(ESPN_LEAGUE_CATALOG); }, handleSnapshotError('football_leagues')),
       onSnapshot(collection(firestore, bancaPath, 'football_matches'), (s) => setFootballMatches(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('football_matches')),
-      onSnapshot(collection(firestore, bancaPath, 'surebets'), (s) => setSurebets(s.docs.map(d => ({ id: d.id, ...d.data() } as SurebetOpportunity))), handleSnapshotError('surebets')),
+      onSnapshot(collection(firestore, bancaPath, 'surebets'), (s) => setSurebets(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('surebets')),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'surebet_settings'), (s) => s.exists() && setSurebetSettings(s.data() as any), handleSnapshotError('surebet_settings')),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'casino_settings'), (s) => s.exists() && setCasinoSettings(s.data() as any), handleSnapshotError('casino_settings')),
       onSnapshot(doc(firestore, bancaPath, 'configuracoes', 'bingo_settings'), (s) => s.exists() && setBingoSettings(s.data() as any), handleSnapshotError('bingo_settings')),
@@ -315,7 +314,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const value: AppContextType = {
     user, allUsers, isLoading, currentBanca, subdomain: currentBanca?.subdomain || null, balance: user?.saldo || 0, bonus: user?.bonus || 0,
-    ledger, banners, popups, news, apostas, jdbResults, postedResults: jdbResults, jdbLoterias, dbLoterias, genericLotteryConfigs,
+    ledger, banners, popups, news, apostas, jdbResults, jdbLoterias, dbLoterias, genericLotteryConfigs,
     footballData: { leagues: footballLeagues, matches: footballMatches, unifiedMatches: footballMatches, syncStatus, lastSyncAt },
     footballMatches, footballBets: [], betSlip, syncFootballAll: async () => {}, addBetToSlip: (item) => setBetSlip(prev => [...prev, item]), removeBetFromSlip: (id) => setBetSlip(prev => prev.filter(i => i.id !== id)), clearBetSlip: () => setBetSlip([]), placeFootballBet: async () => null, updateLeagueConfig: (id, updates) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/football_leagues`, id), updates, { merge: true }),
     snookerPresence, snookerSyncState, celebrationTrigger: false, snookerLiveConfig, snookerBets, snookerFinancialHistory: [], snookerChatMessages: [], snookerCashOutLog: [], snookerScoreboards,

@@ -7,35 +7,29 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Edit, Plus, ChevronLeft, Building2, MapPin, PlusCircle, Save } from 'lucide-react';
+import { Trash2, Edit, Plus, ChevronLeft, Building2, MapPin, PlusCircle, Save, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useMemo } from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
 import { useAppContext, JDBEstado, JDBBanca } from '@/context/AppContext';
 import { MODALIDADES_PADRAO } from '@/constants/loterias';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 const JDB_ESTADOS_PADRAO = [
-  { nome: 'Rio de Janeiro', sigla: 'RJ' },
-  { nome: 'São Paulo', sigla: 'SP' },
-  { nome: 'Bahia', sigla: 'BA' },
-  { nome: 'Goiás', sigla: 'GO' },
-  { nome: 'Brasília', sigla: 'DF' },
-  { nome: 'Paraíba', sigla: 'PB' },
-  { nome: 'Minas Gerais', sigla: 'MG' },
-  { nome: 'Ceará', sigla: 'CE' },
-  { nome: 'Paraná', sigla: 'PR' },
-  { nome: 'Pernambuco', sigla: 'PE' },
-  { nome: 'Rio Grande do Norte', sigla: 'RN' },
-  { nome: 'Rio Grande do Sul', sigla: 'RS' },
-  { nome: 'Sergipe', sigla: 'SE' },
+  { stateName: 'Rio de Janeiro', stateCode: 'RJ', bancas: [{ nome: 'PT Rio', horarios: ['09:15', '11:15', '14:15', '16:15', '18:15', '21:15'] }] },
+  { stateName: 'São Paulo', stateCode: 'SP', bancas: [
+    { nome: 'PTSP', horarios: ['09:00', '11:00', '14:00', '16:00', '18:00', '21:00'] },
+    { nome: 'Bandeirantes', horarios: ['15:30', '17:20', '19:00'] }
+  ]},
+  { stateName: 'Bahia', stateCode: 'BA', bancas: [{ nome: 'Paratodos', horarios: ['10:00', '12:00', '15:00', '19:00', '21:00'] }] },
+  { stateName: 'Goiás', stateCode: 'GO', bancas: [{ nome: 'Look', horarios: ['11:00', '14:00', '16:00', '18:00', '21:00'] }] },
+  { stateName: 'Brasília', stateCode: 'DF', bancas: [{ nome: 'LBR', horarios: ['08:30', '10:30', '12:30', '14:30', '16:30', '18:30', '20:30'] }] },
 ];
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-const createInitialDiasState = () => {
-    return DIAS_SEMANA.reduce((acc, dia) => ({ ...acc, [dia]: { selecionado: false, horarios: [''] } }), {});
+const createInitialDiasState = (horarios: string[] = []) => {
+    return DIAS_SEMANA.reduce((acc, dia) => ({ ...acc, [dia]: { selecionado: true, horarios } }), {});
 }
 
 export default function GerenciarJogoDoBichoPage() {
@@ -49,7 +43,7 @@ export default function GerenciarJogoDoBichoPage() {
     // Form state (Estado)
     const [nomeEstado, setNomeEstado] = useState('');
     const [siglaEstado, setSiglaEstado] = useState('');
-    const [modalidades, setModalidades] = useState(MODALIDADES_PADRAO.map(m => ({ ...m, multiplicador: parseInt(m.multiplicador) })));
+    const [modalidades, setModalidades] = useState(MODALIDADES_PADRAO.map(m => ({ nome: m.nome, multiplicador: parseInt(m.multiplicador) })));
     const [bancas, setBancas] = useState<JDBBanca[]>([]);
 
     // Form state (Adding Bank)
@@ -59,25 +53,48 @@ export default function GerenciarJogoDoBichoPage() {
         const jaExistentes = new Set(jdbLoterias.map(l => l.sigla));
         let criadas = 0;
         JDB_ESTADOS_PADRAO.forEach(est => {
-            if (jaExistentes.has(est.sigla)) return;
-            const id = `jdb-${est.sigla.toLowerCase()}`;
+            if (jaExistentes.has(est.stateCode)) return;
+            const id = `jdb-${est.stateCode.toLowerCase()}`;
+            
+            const novasBancas: JDBBanca[] = est.bancas.map((b, idx) => ({
+                id: `bank-${est.stateCode.toLowerCase()}-${idx}`,
+                nome: b.nome,
+                dias: createInitialDiasState(b.horarios)
+            }));
+
             const novoEstado: JDBEstado = {
                 id,
                 bancaId: activeBancaId,
-                nome: est.nome,
-                sigla: est.sigla,
+                nome: est.stateName,
+                sigla: est.stateCode,
                 modalidades: MODALIDADES_PADRAO.map(m => ({ nome: m.nome, multiplicador: parseInt(m.multiplicador) })),
-                bancas: []
+                bancas: novasBancas
             };
             addJDBLoteria(novoEstado);
             criadas++;
         });
-        toast({ title: 'Importação concluída', description: `${criadas} estados adicionados.` });
+        toast({ title: 'Importação concluída', description: `${criadas} estados adicionados com bancas reais.` });
     };
 
     const handleSaveEstado = () => {
         if (!nomeEstado || !siglaEstado) {
             toast({ variant: 'destructive', title: 'Erro', description: 'Nome e Sigla são obrigatórios.' });
+            return;
+        }
+
+        if (bancas.length === 0) {
+            toast({ variant: 'destructive', title: 'Erro', description: 'Adicione pelo menos 1 banca.' });
+            return;
+        }
+
+        // Validação de horários
+        const bancaInvalida = bancas.find(b => {
+            const algumDiaAtivo = Object.values(b.dias).some(d => d.selecionado && d.horarios.some(h => !!h));
+            return !algumDiaAtivo;
+        });
+
+        if (bancaInvalida) {
+            toast({ variant: 'destructive', title: 'Erro', description: `A banca "${bancaInvalida.nome}" não possui horários definidos.` });
             return;
         }
 
@@ -105,7 +122,7 @@ export default function GerenciarJogoDoBichoPage() {
         setCurrentEstadoId(null);
         setNomeEstado('');
         setSiglaEstado('');
-        setModalidades(MODALIDADES_PADRAO.map(m => ({ ...m, multiplicador: parseInt(m.multiplicador) })));
+        setModalidades(MODALIDADES_PADRAO.map(m => ({ nome: m.nome, multiplicador: parseInt(m.multiplicador) })));
         setBancas([]);
     };
 
@@ -180,7 +197,7 @@ export default function GerenciarJogoDoBichoPage() {
                 </div>
                 {!isEditing && (
                     <Button variant="outline" onClick={handleImportarPadrao} className="gap-2 font-bold uppercase text-[10px]">
-                        <MapPin size={14} /> Importar Estados Padrão
+                        <MapPin size={14} /> Importar Padrão Real
                     </Button>
                 )}
             </div>
@@ -208,19 +225,19 @@ export default function GerenciarJogoDoBichoPage() {
 
                     <div className="space-y-4">
                         <h3 className="text-lg font-black uppercase italic tracking-widest text-white flex items-center gap-2">
-                            <Building2 size={18} className="text-primary" /> Bancas e Horários
+                            <Building2 size={18} className="text-primary" /> Bancas Vinculadas
                         </h3>
                         
                         <div className="flex gap-2">
                             <Input value={newBankName} onChange={e => setNewBankName(e.target.value)} placeholder="Nome da Banca (Ex: PT Rio, Look...)" className="bg-black/20 border-white/10" />
-                            <Button onClick={addBank} className="font-bold"><Plus className="mr-1 h-4 w-4"/> Adicionar</Button>
+                            <Button onClick={addBank} className="font-bold"><Plus className="mr-1 h-4 w-4"/> Adicionar Banca</Button>
                         </div>
 
                         <div className="space-y-6">
                             {bancas.map(bank => (
                                 <Card key={bank.id} className="border-white/5 bg-black/40">
                                     <CardHeader className="p-4 flex flex-row items-center justify-between border-b border-white/5">
-                                        <CardTitle className="text-xs font-black uppercase text-white">{bank.nome}</CardTitle>
+                                        <CardTitle className="text-xs font-black uppercase text-white italic">{bank.nome}</CardTitle>
                                         <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeBank(bank.id)}><Trash2 size={14}/></Button>
                                     </CardHeader>
                                     <CardContent className="p-4 overflow-x-auto">
@@ -229,12 +246,12 @@ export default function GerenciarJogoDoBichoPage() {
                                                 <div key={dia} className="w-48 space-y-3 p-3 rounded-xl bg-white/5 border border-white/5">
                                                     <div className="flex items-center gap-2">
                                                         <Checkbox 
-                                                            checked={bank.dias[dia].selecionado} 
+                                                            checked={bank.dias[dia]?.selecionado} 
                                                             onCheckedChange={(v) => updateBankSchedule(bank.id, dia, 'selecionado', !!v)}
                                                         />
                                                         <span className="text-[10px] font-black uppercase text-slate-400">{dia}</span>
                                                     </div>
-                                                    {bank.dias[dia].selecionado && (
+                                                    {bank.dias[dia]?.selecionado && (
                                                         <div className="space-y-2">
                                                             {bank.dias[dia].horarios.map((time, tIdx) => (
                                                                 <div key={tIdx} className="flex gap-1">
@@ -259,31 +276,74 @@ export default function GerenciarJogoDoBichoPage() {
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-3 pt-4">
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-black uppercase italic tracking-widest text-white">Configuração de Odds</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {modalidades.map((mod, idx) => (
+                                <div key={idx} className="space-y-1">
+                                    <Label className="text-[9px] uppercase font-bold text-muted-foreground">{mod.nome}</Label>
+                                    <Input 
+                                        type="number" 
+                                        value={mod.multiplicador} 
+                                        onChange={e => {
+                                            const newMods = [...modalidades];
+                                            newMods[idx].multiplicador = parseInt(e.target.value) || 0;
+                                            setModalidades(newMods);
+                                        }}
+                                        className="h-10 bg-black/20 border-white/10 font-bold"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
                         <Button variant="ghost" onClick={resetForm} className="font-bold uppercase text-[10px]">Cancelar</Button>
-                        <Button onClick={handleSaveEstado} className="lux-shine px-8 font-black uppercase italic"><Save className="mr-2 h-4 w-4" /> {isEditing ? 'Salvar Alterações' : 'Criar Novo Estado'}</Button>
+                        <Button onClick={handleSaveEstado} className="lux-shine px-8 font-black uppercase italic"><Save className="mr-2 h-4 w-4" /> {isEditing ? 'Salvar Alterações' : 'Criar Estado'}</Button>
                     </div>
                 </CardContent>
             </Card>
 
             <div className="space-y-4">
-                <h2 className="text-xl font-black uppercase italic tracking-widest text-white">Estados Cadastrados</h2>
+                <h2 className="text-xl font-black uppercase italic tracking-tighter text-white">Estados Cadastrados</h2>
                 <div className="grid gap-4">
                     {jdbLoterias.map(est => (
                         <Card key={est.id} className="border-white/5 bg-slate-900/50 hover:bg-slate-900 transition-colors">
-                            <div className="p-4 flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 text-primary font-black italic">{est.sigla}</div>
-                                    <div>
-                                        <h3 className="font-black text-sm uppercase italic text-white">{est.nome}</h3>
-                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{est.bancas?.length || 0} Bancas Vinculadas</p>
+                            <Accordion type="single" collapsible className="w-full">
+                                <AccordionItem value="item-1" className="border-0">
+                                    <div className="p-4 flex items-center justify-between">
+                                        <AccordionTrigger className="hover:no-underline p-0 py-0 flex-1">
+                                            <div className="flex items-center gap-4 text-left">
+                                                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 text-primary font-black italic">{est.sigla}</div>
+                                                <div>
+                                                    <h3 className="font-black text-sm uppercase italic text-white">{est.nome}</h3>
+                                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{est.bancas?.length || 0} Bancas Vinculadas</p>
+                                                </div>
+                                            </div>
+                                        </AccordionTrigger>
+                                        <div className="flex gap-2 ml-4">
+                                            <Button variant="outline" size="sm" className="h-9 px-4 font-bold text-[10px] border-white/10" onClick={() => handleEditEstado(est)}><Edit size={14} className="mr-1.5" /> Editar</Button>
+                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive/50 hover:text-destructive hover:bg-destructive/10" onClick={() => deleteJDBLoteria(est.id)}><Trash2 size={14}/></Button>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" className="h-9 px-4 font-bold text-[10px] border-white/10" onClick={() => handleEditEstado(est)}><Edit size={14} className="mr-1.5" /> Editar</Button>
-                                    <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive/50 hover:text-destructive hover:bg-destructive/10" onClick={() => deleteJDBLoteria(est.id)}><Trash2 size={14}/></Button>
-                                </div>
-                            </div>
+                                    <AccordionContent className="px-4 pb-4">
+                                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 border-t border-white/5">
+                                            {est.bancas?.map(b => (
+                                                <div key={b.id} className="p-3 rounded-xl bg-black/20 border border-white/5">
+                                                    <p className="font-black text-xs uppercase italic text-primary mb-2">{b.nome}</p>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {Object.entries(b.dias).map(([dia, cfg]: any) => (
+                                                            cfg.selecionado && cfg.horarios.length > 0 ? (
+                                                                <Badge key={dia} variant="outline" className="text-[8px] h-4 border-white/5 bg-white/5">{dia}</Badge>
+                                                            ) : null
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </AccordionContent>
+                                </AccordionItem>
+                            </Accordion>
                         </Card>
                     ))}
                 </div>

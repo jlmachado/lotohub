@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview Página de Aposta Jogo do Bicho Profissional.
- * Fluxo: Data > Estado > Banca > Horário > Modalidade > Números > Valor.
+ * V13: Suporte à estrutura Estado > Banca > Horário.
  */
 
 import { Header } from '@/components/header';
@@ -152,9 +152,11 @@ export default function JogoDoBichoPage() {
 
     setBilhete([...bilhete, ...novas]);
     setModalidade(undefined); setColocacao(undefined); setNumeros([]); setValor('');
-    setStep(5);
+    setStep(StepAfterBetAdded); 
     toast({ title: 'Adicionado!', description: `${novas.length} aposta(s) incluída(s) no bilhete.` });
   };
+
+  const StepAfterBetAdded = 5; // Volta para escolher modalidade
 
   const handleFinalizarBilhete = () => {
     if (bilhete.length === 0 || isFinalizing) return;
@@ -187,7 +189,6 @@ export default function JogoDoBichoPage() {
             <CardDescription className="text-center font-bold text-muted-foreground uppercase text-[10px] tracking-widest">Extrações Oficiais em Tempo Real</CardDescription>
           </CardHeader>
           <CardContent className="p-6">
-            {/* Step Indicator */}
             <div className="flex items-center justify-between mb-8 px-2">
               {step > 1 && (
                 <Button variant="ghost" size="icon" onClick={() => setStep(step - 1)} className="text-muted-foreground hover:text-white"><ChevronLeft /></Button>
