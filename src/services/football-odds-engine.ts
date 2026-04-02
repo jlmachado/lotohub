@@ -13,7 +13,7 @@ export interface MatchProbabilities {
 }
 
 export class FootballOddsEngine {
-  private static MARGIN = 0.07; // Margem da casa reduzida para 7% para odds mais competitivas
+  private static MARGIN = 0.08; // Margem da casa (8%)
   private static HOME_ADVANTAGE_BASE = 0.08; // Bônus base de 8% para o mandante
 
   /**
@@ -56,14 +56,12 @@ export class FootballOddsEngine {
     let homeProb = 0.37 + (diff * 0.5) + this.HOME_ADVANTAGE_BASE;
     let awayProb = 0.33 - (diff * 0.5) - (this.HOME_ADVANTAGE_BASE / 2);
 
-    // Cálculo dinâmico de Empate (Mais provável em jogos equilibrados)
-    // Se a diferença for 0, empate é ~30%. Se a diferença for gigante, empate cai para ~15%.
+    // Cálculo dinâmico de Empate
     const drawBase = 0.30 - (Math.abs(diff) * 0.25);
     
-    // Injetar Pequena Variância (Jitter) para evitar odds idênticas entre jogos diferentes
-    // Usa o ID da partida para gerar um deslocamento determinístico mas único
+    // Injetar Variância (Jitter) para evitar odds idênticas
     const seed = matchId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const jitter = ((seed % 100) / 2000) - 0.005; // Variância de +/- 0.25%
+    const jitter = ((seed % 100) / 2000) - 0.005;
 
     homeProb += jitter;
     awayProb -= jitter;
@@ -74,7 +72,7 @@ export class FootballOddsEngine {
     const finalAway = awayProb / total;
     const finalDraw = drawBase / total;
 
-    // Estimativa de Gols (Média da liga + ajuste de força)
+    // Estimativa de Gols
     const avgLeagueGoals = 2.6;
     const expectedGoals = avgLeagueGoals + (homePower + awayPower - 1.0);
 
@@ -91,13 +89,8 @@ export class FootballOddsEngine {
    */
   static probToOdd(prob: number): number {
     if (prob <= 0) return 100.0;
-    
-    // Aplica a margem sobre a odd justa
     const fairOdd = 1 / prob;
     const limitedOdd = fairOdd / (1 + this.MARGIN);
-    
-    // Arredondamento profissional (2 casas decimais)
-    // Limites: Mínimo 1.01, Máximo 50.0 para evitar absurdos
     return parseFloat(Math.max(1.01, Math.min(50, limitedOdd)).toFixed(2));
   }
 }

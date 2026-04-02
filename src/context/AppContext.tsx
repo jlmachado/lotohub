@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca com Liquidação Automática.
- * V15: Implementação completa do Sync de Futebol (ESPN) e Gestão de Bilhetes.
+ * V16: Implementação definitiva do Sync de Futebol (ESPN) com Throttling e Batch Write.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from 'react';
@@ -12,14 +12,13 @@ import { getSession, logout as authLogout } from '@/utils/auth';
 import { initializeFirebase } from '@/firebase';
 import { 
   collection, onSnapshot, query, orderBy, limit, doc, setDoc, 
-  deleteDoc, where, serverTimestamp, getDocs, updateDoc
+  deleteDoc, where, serverTimestamp, getDocs, updateDoc, writeBatch
 } from 'firebase/firestore';
 import { resolveCurrentBanca, getCurrentBancaId } from '@/utils/bancaContext';
 import { LedgerService } from '@/services/ledger-service';
 import { generatePoule } from '@/utils/generatePoule';
 import { JDBNormalizedResult } from '@/types/result-types';
 import { ESPN_LEAGUE_CATALOG, ESPNLeagueConfig } from '@/utils/espn-league-catalog';
-import { isJDBItemEligible, checkSingleItemWinner } from '@/lib/draw-engine';
 import { espnService } from '@/services/espn-api-service';
 import { normalizeESPNScoreboard, normalizeESPNStandings } from '@/utils/espn-normalizer';
 import { MatchMapperService } from '@/services/match-mapper-service';
@@ -334,20 +333,36 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             bancaId
           };
 
-          // 5. Atomic Upsert
-          await setDoc(doc(firestore, `bancas/${bancaId}/football_matches`, finalMatch.id), finalMatch, { merge: true });
+          // 5. Atomic Collect
           allResults.push(finalMatch);
         }
       }
+
+      // 6. Batch Write to Firestore
+      const batch = writeBatch(firestore);
+      allResults.forEach(m => {
+        const ref = doc(firestore, `bancas/${bancaId}/football_matches`, m.id);
+        batch.set(ref, m, { merge: true });
+      });
+      await batch.commit();
 
       setLastSyncAt(new Date().toISOString());
       setSyncStatus('idle');
       
     } catch (error) {
-      console.error('[Football Sync Error]', error);
+      console.error('[syncFootballAll] Error:', error);
       setSyncStatus('error');
     }
   }, [firestore, footballLeagues, footballMatches.length, lastSyncAt, syncStatus, user?.bancaId]);
+
+  // Polling only if live matches exist
+  useEffect(() => {
+    const hasLive = footballMatches.some(m => m.isLive && !m.isFinished);
+    if (hasLive) {
+      const timer = setInterval(() => syncFootballAll(), 60000);
+      return () => clearInterval(timer);
+    }
+  }, [footballMatches, syncFootballAll]);
 
   const placeFootballBet = async (stake: number): Promise<string | null> => {
     if (!user) {
@@ -465,7 +480,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     processarResultados: async (data) => { const bancaId = user?.bancaId || getCurrentBancaId() || 'default'; const id = `manual-${data.loteria}-${data.data}-${data.horario}`; await setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, id), { ...data, id, status: 'PUBLICADO', importedAt: new Date().toISOString() }, { merge: true }); },
     syncSnookerFromYoutube: async () => {}, joinChannel: () => {}, leaveChannel: () => {}, clearCelebration: () => {}, sendSnookerChatMessage: () => {}, sendSnookerReaction: () => {}, placeSnookerBet: () => false, cashOutSnookerBet: () => {}, settleSnookerRound: () => {}, updateSnookerLiveConfig: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/snooker_live_config`), cfg, { merge: true }), updateSnookerChannel: () => {}, deleteSnookerChannel: () => {}, addSnookerChannel: () => {}, updateSnookerScoreboard: () => {}, updateBingoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/bingo_settings`), cfg, { merge: true }), createBingoDraw: () => {}, startBingoDraw: () => {}, finishBingoDraw: () => {}, buyBingoTickets: () => true, updateCasinoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/casino_settings`), cfg, { merge: true }),
     updateBanner: (b) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', b.id), b, { merge: true }), addBanner: (b) => { const id = b.id || `banner-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id), { ...b, id }, { merge: true }); }, deleteBanner: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id)), updatePopup: (p) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', p.id), p, { merge: true }), addPopup: (p) => { const id = p.id || `popup-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', id), { ...p, id }, { merge: true }); }, deletePopup: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', id)), updateNews: (n) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', n.id), n, { merge: true }), addNews: (n) => { const id = n.id || `news-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id), { ...n, id }, { merge: true }); }, deleteNews: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id)), updateLiveMiniPlayerConfig: (cfg) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'configuracoes', 'mini_player'), cfg, { merge: true }),
-    syncJDBResults: async () => {}, deleteJDBResult: async (id) => deleteDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbResults`, id)), publishJDBResult: async (id) => setDoc(doc(firestore, `bancas/${user?.bancaId || getCurrentBancaId() || 'default'}/jdbResults`, id), { status: 'PUBLICADO' }, { merge: true }),
+    syncJDBResults: async () => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      try {
+        const { PortalBrasilProvider } = await import('@/services/result-providers/portal-brasil-provider');
+        const results = await PortalBrasilProvider.fetchResults();
+        if (!results || results.length === 0) return;
+        const batch = writeBatch(firestore);
+        results.forEach((r: any) => {
+          batch.set(doc(firestore, `bancas/${bancaId}/jdbResults`, r.id), { ...r, bancaId, status: 'PUBLICADO', importedAt: new Date().toISOString() }, { merge: true });
+        });
+        await batch.commit();
+      } catch (e) {
+        console.error('[syncJDBResults] Falha ao sincronizar resultados:', e);
+      }
+    },
+    deleteJDBResult: async (id: string) => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      await deleteDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, id));
+    },
+    publishJDBResult: async (id: string) => {
+      const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+      await setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, id), { status: 'PUBLICADO' }, { merge: true });
+    },
     fullLedger: ledger, updateGenericLottery: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/genericLotteryConfigs`, cfg.id), cfg, { merge: true }), activeBancaId: user?.bancaId || getCurrentBancaId() || 'default',
     addJDBLoteria: async (l) => {
       const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
