@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Header } from '@/components/header';
@@ -103,7 +102,7 @@ export default function JogoDoBichoPage() {
     });
   }, [selectedJDBLoteriaConfig]);
 
-  const isHorarioDisponivel = (horarioStr: string, diaAposta: 'hoje' | 'amanha'): boolean => {
+  function isHorarioDisponivel(horarioStr: string, diaAposta: 'hoje' | 'amanha'): boolean {
     if (!horarioStr || typeof horarioStr !== 'string') return false;
     if (diaAposta === 'amanha') return true;
     const agora = new Date();
@@ -113,6 +112,7 @@ export default function JogoDoBichoPage() {
     const minutos = Number(parts[1]);
     const horarioSorteio = new Date();
     horarioSorteio.setHours(horas, minutos, 0, 0);
+    // Bloqueia 1 minuto antes do sorteio
     return agora.getTime() < (horarioSorteio.getTime() - 60000);
   };
   
@@ -133,20 +133,15 @@ export default function JogoDoBichoPage() {
     return allColocacoes;
   }, [selectedModalidade]);
 
-  const resetFullForm = () => {
-    setStep(1);
-    setApostaData(undefined);
-    setEstadoSelecionado(undefined);
-    setLoteria(undefined);
-    setHorario('');
-    setModalidade(undefined);
-    setColocacao(undefined);
-    setNumeros([]);
-    setValor('');
-  };
-
   const handleAddAposta = () => {
     if (!apostaData || !modalidade || !colocacao || !loteria || !horario || !valor || !selectedModalidade) return;
+    
+    // Verificação de segurança de horário final
+    if (!isHorarioDisponivel(horario, apostaData)) {
+      toast({ variant: 'destructive', title: 'Horário Encerrado', description: 'O tempo para apostar nesta extração expirou.' });
+      return;
+    }
+
     const valorTotalFloat = parseFloat(valor.replace(',', '.')) || 0;
     const divisorColocacao = colocacao === '1-premio' ? 1 : parseInt(colocacao.match(/\d+/g)?.[1] || '1');
     const multiplicador = parseFloat(selectedModalidade.multiplicador);
@@ -194,20 +189,6 @@ export default function JogoDoBichoPage() {
     });
   };
 
-  const getStepDescription = (stepNum: number) => {
-    switch (stepNum) {
-      case 1: return "Dia da Aposta";
-      case 2: return "Escolha o Estado";
-      case 3: return "Escolha a Loteria";
-      case 4: return "Horário do Sorteio";
-      case 5: return "Escolha a Modalidade";
-      case 6: return "Defina a Colocação";
-      case 7: return "Informe os Números";
-      case 8: return "Valor da Aposta";
-      default: return "";
-    }
-  };
-
   return (
     <div>
       <Header />
@@ -226,7 +207,7 @@ export default function JogoDoBichoPage() {
               )}
               <div className="text-center">
                 <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">Passo {step}</h3>
-                <p className="text-[9px] font-black uppercase text-primary tracking-widest">{getStepDescription(step)}</p>
+                <p className="text-[9px] font-black uppercase text-primary tracking-widest">Configuração</p>
               </div>
             </div>
 
@@ -330,7 +311,7 @@ export default function JogoDoBichoPage() {
         <LotteryBetSlip items={bilhete} totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} totalPossibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} onRemoveItem={(id) => setBilhete(bilhete.filter(b => b.id !== id))} onFinalize={handleFinalizarBilhete} lotteryName="Jogo do Bicho" />
       </main>
 
-      <TicketDialog isOpen={isTicketDialogOpen} onOpenChange={setIsTicketDialogOpen} onNewBet={() => { setBilhete([]); resetFullForm(); }} ticketId={generatedTicketId} generationTime={ticketGenerationTime} lotteryName="Jogo do Bicho" ticketItems={bilhete} totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} possibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} />
+      <TicketDialog isOpen={isTicketDialogOpen} onOpenChange={setIsTicketDialogOpen} onNewBet={() => { setBilhete([]); setStep(1); }} ticketId={generatedTicketId} generationTime={ticketGenerationTime} lotteryName="Jogo do Bicho" ticketItems={bilhete} totalValue={bilhete.reduce((acc, a) => acc + parseFloat(a.valor.replace(',', '.')), 0)} possibleReturn={bilhete.reduce((acc, a) => acc + a.retornoPossivel, 0)} />
     </div>
   );
 }

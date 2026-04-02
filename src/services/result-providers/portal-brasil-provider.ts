@@ -1,13 +1,14 @@
 /**
  * @fileOverview Provider real que consome a API interna de scraping do Portal Brasil.
+ * Versão V2: Com normalização de ID e Nomes.
  */
 
 import { JDBNormalizedResult } from "@/types/result-types";
+import { normalizeString } from "@/lib/draw-engine";
 
 export class PortalBrasilProvider {
   static async fetchResults(): Promise<JDBNormalizedResult[]> {
     try {
-      // Adicionado AbortController para timeout de 25 segundos no client
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 25000);
 
@@ -18,29 +19,29 @@ export class PortalBrasilProvider {
       
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        console.warn('[PortalBrasilProvider] Scraper retornou status:', response.status);
-        return [];
-      }
+      if (!response.ok) return [];
       
       const json = await response.json();
       if (!json.success || !json.data) return [];
 
       return json.data.map((ext: any) => {
         const stateCode = ext.stateCode || "UN";
-        const stateName = ext.stateName || "Desconhecido";
+        const normalizedBank = normalizeString(ext.extractionName);
+        
+        // ID determinístico para evitar duplicidade
+        const uniqueId = `jdb-${ext.date}-${ext.time}-${stateCode.toLowerCase()}-${normalizedBank.toLowerCase().replace(/\s/g, '-')}`;
 
         return {
-          id: `jdb-${ext.date}-${ext.time}-${stateCode.toLowerCase()}-${ext.extractionName.toLowerCase().replace(/\s/g, '-')}`,
+          id: uniqueId,
           bancaId: 'global',
           stateCode,
-          stateName,
+          stateName: ext.stateName || "Nacional",
           lotteryId: 'jdb',
           lotteryName: 'Jogo do Bicho',
-          extractionName: ext.extractionName,
+          extractionName: normalizedBank,
           date: ext.date,
           time: ext.time,
-          status: 'IMPORTADO',
+          status: 'PUBLICADO',
           sourceType: 'SCRAPER',
           sourceName: 'Portal Brasil',
           prizes: ext.prizes,
@@ -50,13 +51,9 @@ export class PortalBrasilProvider {
           updatedAt: new Date().toISOString()
         } as JDBNormalizedResult;
       });
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.error('[PortalBrasilProvider] Timeout na requisição ao Scraper (25s)');
-      } else {
-        console.error('[PortalBrasilProvider] Falha de rede ou servidor:', error.message);
-      }
-      return []; // Retorna array vazio em vez de crashar
+    } catch (error) {
+      console.error('[PortalBrasilProvider] Falha:', error);
+      return [];
     }
   }
 }
