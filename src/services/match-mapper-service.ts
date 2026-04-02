@@ -34,14 +34,17 @@ export class MatchMapperService {
    * Garante que objetos complexos sejam transformados em strings renderizáveis.
    */
   static transformEspnToBettable(match: NormalizedESPNMatch): MatchModel {
+    // Extração segura de nomes para evitar objetos React inválidos
+    const homeName = typeof match.homeTeam === 'object' ? (match.homeTeam.name || match.homeTeam.displayName || 'Time Casa') : String(match.homeTeam);
+    const awayName = typeof match.awayTeam === 'object' ? (match.awayTeam.name || match.awayTeam.displayName || 'Time Fora') : String(match.awayTeam);
+
     return {
       id: match.id,
       espnId: match.id,
       league: match.leagueName,
       leagueSlug: match.leagueSlug,
-      // Garantir que homeTeam e awayTeam sejam strings (nomes)
-      homeTeam: String(match.homeTeam?.name || 'Time Mandante'),
-      awayTeam: String(match.awayTeam?.name || 'Time Visitante'),
+      homeTeam: String(homeName),
+      awayTeam: String(awayName),
       // Mapear logos para o nível superior para facilitar acesso
       homeLogo: match.homeTeam?.logo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png',
       awayLogo: match.awayTeam?.logo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png',

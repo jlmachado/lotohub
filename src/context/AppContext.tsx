@@ -306,18 +306,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           // 4. Build Final Object for Firestore
           const finalMatch = {
             ...bettable,
-            homeTeam: match.homeTeam.name,
-            awayTeam: match.awayTeam.name,
-            homeLogo: match.homeTeam.logo,
-            awayLogo: match.awayTeam.logo,
+            homeTeam: bettable.homeTeam, // Garantido como string via MatchMapper
+            awayTeam: bettable.awayTeam, // Garantido como string via MatchMapper
+            homeLogo: bettable.homeLogo,
+            awayLogo: bettable.awayLogo,
             kickoff: match.date,
             date: match.date,
             status: match.status,
             statusDetail: match.statusDetail,
             minute: match.clock || '',
             clock: match.clock || '',
-            scoreHome: match.homeTeam.score,
-            scoreAway: match.awayTeam.score,
+            scoreHome: bettable.scoreHome,
+            scoreAway: bettable.scoreAway,
             isLive: match.status === 'LIVE',
             isFinished: match.status === 'FINISHED',
             hasOdds: true,

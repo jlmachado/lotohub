@@ -30,6 +30,17 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
 
   const markets = match.markets || [];
 
+  // Helper para garantir que o nome do time seja uma string (evita erro de React Child)
+  const getTeamName = (team: any) => {
+    if (typeof team === 'string') return team;
+    if (typeof team === 'object' && team?.name) return String(team.name);
+    if (typeof team === 'object' && team?.displayName) return String(team.displayName);
+    return 'Time Desconhecido';
+  };
+
+  const homeName = getTeamName(match.homeTeam);
+  const awayName = getTeamName(match.awayTeam);
+
   return (
     <Card className={cn(
       "bg-slate-900 border-white/5 overflow-hidden transition-all shadow-xl",
@@ -64,11 +75,11 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
               <img 
                 src={match.homeLogo} 
                 className="w-7 h-7 object-contain" 
-                alt={match.homeTeam} 
+                alt={homeName} 
                 onError={(e) => e.currentTarget.src = 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png'} 
               />
             </div>
-            <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{match.homeTeam}</p>
+            <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{homeName}</p>
           </div>
           
           <div className={cn(
@@ -85,11 +96,11 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
               <img 
                 src={match.awayLogo} 
                 className="w-7 h-7 object-contain" 
-                alt={match.awayTeam} 
+                alt={awayName} 
                 onError={(e) => e.currentTarget.src = 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png'} 
               />
             </div>
-            <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{match.awayTeam}</p>
+            <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{awayName}</p>
           </div>
         </div>
 
