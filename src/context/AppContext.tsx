@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca com Liquidação Automática.
- * V13: Refatoração Jogo do Bicho para estrutura real Estado > Bancas > Horários.
+ * V14: Refatoração do motor de liquidação para integrar com a nova estrutura Estado > Bancas.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
@@ -82,6 +82,7 @@ interface AppContextType {
   snookerFinancialHistory: any[];
   snookerChatMessages: any[];
   snookerCashOutLog: any[];
+  snookerCashOutMargin?: number;
   snookerScoreboards: Record<string, any>;
   casinoSettings: CasinoSettings | null;
   bingoSettings: BingoSettings | null;
@@ -213,7 +214,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!firestore) return;
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
     const bancaPath = `bancas/${bancaId}`;
-    const defaultPath = `bancas/default`;
     const unsubscribers: any[] = [];
     const handleSnapshotError = (col: string) => (err: any) => console.warn(`[Snapshot] Access to ${col} denied.`);
 
@@ -221,14 +221,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       onSnapshot(query(collection(firestore, bancaPath, 'banners'), orderBy('position')), (s) => setBanners(s.docs.map(d => ({ id: d.id, ...d.data() } as Banner))), handleSnapshotError('banners')),
       onSnapshot(query(collection(firestore, bancaPath, 'popups'), orderBy('priority', 'desc')), (s) => setPopups(s.docs.map(d => ({ id: d.id, ...d.data() } as Popup))), handleSnapshotError('popups')),
       onSnapshot(query(collection(firestore, bancaPath, 'news_messages'), orderBy('order')), (s) => setNews(s.docs.map(d => ({ id: d.id, ...d.data() } as NewsMessage))), handleSnapshotError('news')),
-      onSnapshot(collection(firestore, bancaPath, 'loterias'), (s) => {
-        if (!s.empty) setDbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as LotteryDefinition)));
-        else if (bancaId !== 'default') getDocs(collection(firestore, defaultPath, 'loterias')).then(snap => setDbLoterias(snap.docs.map(d => ({ id: d.id, ...d.data() } as LotteryDefinition))));
-      }, handleSnapshotError('loterias')),
-      onSnapshot(collection(firestore, bancaPath, 'genericLotteryConfigs'), (s) => {
-        if (!s.empty) setGenericLotteryConfigs(s.docs.map(d => ({ id: d.id, ...d.data() } as GenericLotteryConfig)));
-        else if (bancaId !== 'default') getDocs(collection(firestore, defaultPath, 'genericLotteryConfigs')).then(snap => setGenericLotteryConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() } as GenericLotteryConfig))));
-      }, handleSnapshotError('genericLotteryConfigs')),
+      onSnapshot(collection(firestore, bancaPath, 'loterias'), (s) => setDbLoterias(s.docs.map(d => ({ id: d.id, ...d.data() } as LotteryDefinition))), handleSnapshotError('loterias')),
+      onSnapshot(collection(firestore, bancaPath, 'genericLotteryConfigs'), (s) => setGenericLotteryConfigs(s.docs.map(d => ({ id: d.id, ...d.data() } as GenericLotteryConfig))), handleSnapshotError('genericLotteryConfigs')),
       onSnapshot(collection(firestore, bancaPath, 'snooker'), (s) => setSnookerChannels(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError('snooker')),
       onSnapshot(collection(firestore, bancaPath, 'jdbLoterias'),
         (s) => setJdbLoterias(normalizeFromFirebase(s.docs.map(d => ({ id: d.id, ...d.data() })))),
@@ -260,9 +254,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Motor de Liquidação Automática
   const settlePendingBets = async (results: JDBNormalizedResult[]) => {
-    if (!user || !apostas.length || !results.length) return;
-    const bancaId = user.bancaId || getCurrentBancaId() || 'default';
+    if (!apostas.length || !results.length) return;
+    const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
     const pendingBets = apostas.filter(a => a.status === 'aguardando');
+
+    console.log(`[Liquidação] Analisando ${pendingBets.length} apostas pendentes contra ${results.length} novos resultados.`);
 
     for (const aposta of pendingBets) {
       for (const result of results) {
@@ -276,7 +272,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
           const newStatus = totalPrize > 0 ? 'premiado' : 'perdeu';
           const apostaRef = doc(firestore, `bancas/${bancaId}/apostas`, aposta.id);
-          await updateDoc(apostaRef, { status: newStatus, settledAt: serverTimestamp() });
+          
+          await updateDoc(apostaRef, { 
+            status: newStatus, 
+            settledAt: new Date().toISOString(),
+            payoutValue: totalPrize
+          });
 
           if (totalPrize > 0) {
             await LedgerService.registerMovement({
@@ -287,8 +288,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               type: 'BET_WIN',
               amount: totalPrize,
               referenceId: aposta.id,
-              description: `Prêmio Loteria: Bilhete #${aposta.id.substring(0,8)}`
+              description: `Prêmio Automático: Bilhete #${aposta.id.substring(0,8)}`
             });
+            console.log(`[Liquidação] Bilhete #${aposta.id} PREMIADO: R$ ${totalPrize}`);
           }
         }
       }
@@ -297,19 +299,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const syncJDBResults = async () => {
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
+    setSnookerSyncState('syncing');
     try {
       const { PortalBrasilProvider } = await import('@/services/result-providers/portal-brasil-provider');
       const results = await PortalBrasilProvider.fetchResults();
-      if (!results || results.length === 0) return;
+      
+      if (!results || results.length === 0) {
+        setSnookerSyncState('idle');
+        return;
+      }
       
       const batch = results.map((r: any) =>
-        setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, r.id), { ...r, bancaId, status: 'PUBLICADO', importedAt: new Date().toISOString() }, { merge: true })
+        setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, r.id), { 
+          ...r, 
+          bancaId, 
+          status: 'PUBLICADO', 
+          importedAt: new Date().toISOString() 
+        }, { merge: true })
       );
+      
       await Promise.all(batch);
       
       // Dispara apuração após sync
       await settlePendingBets(results);
-    } catch (e) { console.error('[syncJDBResults] Falha:', e); }
+      
+      toast({ title: "Sincronização Concluída", description: `${results.length} extrações processadas.` });
+    } catch (e) { 
+      console.error('[syncJDBResults] Falha:', e);
+      toast({ variant: 'destructive', title: "Erro no Sync", description: "Não foi possível conectar ao provedor de resultados." });
+    } finally {
+      setSnookerSyncState('idle');
+    }
   };
 
   const value: AppContextType = {
@@ -321,7 +341,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     surebets, surebetSettings, updateSurebetSettings: async (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/surebet_settings`), cfg, { merge: true }),
     casinoSettings, bingoSettings, bingoDraws: [], bingoTickets: [], bingoPayouts: [], liveMiniPlayerConfig,
     refreshData: () => setContextTicker(t => t + 1), logout: () => { authLogout(); setUser(null); router.push('/login'); }, 
-    handleFinalizarAposta: async (aposta, valorTotal) => { if (!user) { router.push('/login'); return null; } const bancaId = user.bancaId || 'default'; const pouleId = generatePoule(); const res = await LedgerService.registerMovement({ userId: user.id, terminal: user.terminal, tipoUsuario: user.tipoUsuario, modulo: aposta.loteria, type: 'BET_PLACED', amount: -valorTotal, referenceId: pouleId, description: `${aposta.loteria}: ${aposta.numeros}` }); if (res.success) { await setDoc(doc(firestore, 'bancas', bancaId, 'apostas', pouleId), { ...aposta, id: pouleId, userId: user.id, bancaId, status: 'aguardando', createdAt: new Date().toISOString() }); return pouleId; } return null; },
+    handleFinalizarAposta: async (aposta, valorTotal) => { 
+      if (!user) { router.push('/login'); return null; } 
+      const bancaId = user.bancaId || 'default'; 
+      const pouleId = generatePoule(); 
+      const res = await LedgerService.registerMovement({ 
+        userId: user.id, 
+        terminal: user.terminal, 
+        tipoUsuario: user.tipoUsuario, 
+        modulo: aposta.loteria, 
+        type: 'BET_PLACED', 
+        amount: -valorTotal, 
+        referenceId: pouleId, 
+        description: `${aposta.loteria}: ${aposta.numeros}` 
+      }); 
+      if (res.success) { 
+        await setDoc(doc(firestore, 'bancas', bancaId, 'apostas', pouleId), { 
+          ...aposta, 
+          id: pouleId, 
+          userId: user.id, 
+          bancaId, 
+          status: 'aguardando', 
+          terminal: user.terminal,
+          createdAt: new Date().toISOString() 
+        }); 
+        return pouleId; 
+      } 
+      return null; 
+    },
     processarResultados: async (data) => { const bancaId = user?.bancaId || getCurrentBancaId() || 'default'; const id = `manual-${data.loteria}-${data.data}-${data.horario}`; await setDoc(doc(firestore, `bancas/${bancaId}/jdbResults`, id), { ...data, id, status: 'PUBLICADO', importedAt: new Date().toISOString() }, { merge: true }); },
     syncSnookerFromYoutube: async () => {}, joinChannel: () => {}, leaveChannel: () => {}, clearCelebration: () => {}, sendSnookerChatMessage: () => {}, sendSnookerReaction: () => {}, placeSnookerBet: () => false, cashOutSnookerBet: () => {}, settleSnookerRound: () => {}, updateSnookerLiveConfig: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/snooker_live_config`), cfg, { merge: true }), updateSnookerChannel: () => {}, deleteSnookerChannel: () => {}, addSnookerChannel: () => {}, updateSnookerScoreboard: () => {}, updateBingoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/bingo_settings`), cfg, { merge: true }), createBingoDraw: () => {}, startBingoDraw: () => {}, finishBingoDraw: () => {}, buyBingoTickets: () => true, updateCasinoSettings: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/configuracoes/casino_settings`), cfg, { merge: true }),
     updateBanner: (b) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', b.id), b, { merge: true }), addBanner: (b) => { const id = b.id || `banner-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id), { ...b, id }, { merge: true }); }, deleteBanner: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'banners', id)), updatePopup: (p) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', p.id), p, { merge: true }), addPopup: (p) => { const id = p.id || `popup-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', id), { ...p, id }, { merge: true }); }, deletePopup: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'popups', id)), updateNews: (n) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', n.id), n, { merge: true }), addNews: (n) => { const id = n.id || `news-${Date.now()}`; setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id), { ...n, id }, { merge: true }); }, deleteNews: (id) => deleteDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'news_messages', id)), updateLiveMiniPlayerConfig: (cfg) => setDoc(doc(firestore, 'bancas', user?.bancaId || 'default', 'configuracoes', 'mini_player'), cfg, { merge: true }),
@@ -338,7 +385,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     deleteJDBLoteria: async (id) => {
       const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
       await deleteDoc(doc(firestore, `bancas/${bancaId}/jdbLoterias`, id));
-    }
+    },
+    updateGenericLottery: (cfg) => setDoc(doc(firestore, `bancas/${user?.bancaId || 'default'}/genericLotteryConfigs`, cfg.id), cfg, { merge: true })
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

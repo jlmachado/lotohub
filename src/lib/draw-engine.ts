@@ -1,9 +1,10 @@
 'use client';
 
-import type { Aposta, JDBLoteria } from '@/context/AppContext';
+import type { Aposta, JDBEstado } from '@/context/AppContext';
 
 /**
  * Tabela de Aliases para padronização de nomes de bancas vindo do Scraper.
+ * Mapeia variações de nomes do PortalBrasil para os nomes das Loterias cadastradas.
  */
 const BANK_ALIASES: Record<string, string> = {
   "RIO DE JANEIRO": "PT Rio",
@@ -11,16 +12,17 @@ const BANK_ALIASES: Record<string, string> = {
   "PARATODOS": "Paratodos Bahia",
   "MALUCA": "Maluca Bahia",
   "LOOK": "Look Goiás",
-  "PT SP": "PT São Paulo",
-  "BANDEIRANTES": "Bandeirantes São Paulo",
-  "PNT": "PNT São Paulo",
+  "PT SP": "PTSP",
+  "PTSP": "PTSP",
+  "BANDEIRANTES": "Bandeirantes",
+  "PNT": "PNT SP",
   "LBR": "LBR Brasília",
-  "ALVORADA": "Alvorada Minas",
-  "CAMINHO DA SORTE": "Caminho da Sorte Paraíba",
-  "LOTECE": "Lotece Ceará",
-  "POPULAR": "Popular Pernambuco",
-  "PT-PR": "PT Paraná",
-  "NATAL": "Natal Rio Grande do Norte",
+  "ALVORADA": "Alvorada MG",
+  "CAMINHO DA SORTE": "Caminho da Sorte",
+  "LOTECE": "Lotece",
+  "POPULAR": "Popular PE",
+  "PT-PR": "PT-PR",
+  "NATAL": "Natal RN",
   "RS GAUCHA": "RS Gaúcha",
   "SERGIPE": "Sergipe"
 };
@@ -34,6 +36,7 @@ export const normalizeString = (str: string): string => {
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
   
@@ -80,7 +83,7 @@ const getColocacaoDivisor = (colocacaoId: string | undefined): number => {
 export const checkSingleItemWinner = (
   item: any, 
   result: any, 
-  jdbLoterias: JDBLoteria[]
+  jdbLoterias: JDBEstado[]
 ): { isWinner: boolean, prize: number } => {
     const prizes = Array.isArray(result.prizes) ? result.prizes : [];
     const limit = getColocacaoDivisor(item.colocacao);
@@ -88,15 +91,18 @@ export const checkSingleItemWinner = (
 
     const valorAposta = parseFloat(String(item.valor || '0').replace(',', '.')) || 0;
     
-    // Busca multiplicador oficial da loteria
-    const loteriaConfig = jdbLoterias.find(l => normalizeString(l.nome) === normalizeString(item.loteriaLabel));
+    // 1. Resolver Multiplicador Real configurado pelo Admin
+    // Busca o estado da aposta nas configurações da banca
+    const estadoConfig = jdbLoterias.find(e => normalizeString(e.nome) === normalizeString(item.estadoLabel));
     let mult = 0;
-    if (loteriaConfig) {
-      const mod = loteriaConfig.modalidades.find(m => normalizeString(m.nome) === normalizeString(item.modalidadeLabel));
-      if (mod) mult = parseFloat(mod.multiplicador);
+    
+    if (estadoConfig) {
+      // Busca a modalidade específica dentro do estado
+      const mod = estadoConfig.modalidades.find(m => normalizeString(m.nome) === normalizeString(item.modalidadeLabel));
+      if (mod) mult = mod.multiplicador;
     }
 
-    // Fallback para multiplicadores padrão se não achar no config
+    // Fallback de segurança para multiplicadores padrão
     if (!mult) {
       const defaults: Record<string, number> = { milhar: 5000, centena: 700, dezena: 60, grupo: 18 };
       mult = defaults[item.modalidade] || 0;
@@ -121,7 +127,7 @@ export const checkSingleItemWinner = (
         isWinner = winningGroups.includes(item.numeros[0]);
         break;
       default:
-        // Uruguai / Genérica
+        // Lógica para Loteria Uruguai / Genéricas
         if (item.premio && item.numero) {
           const numDigits = item.modalidadeLabel?.includes('3') ? 3 : item.modalidadeLabel?.includes('2') ? 2 : 1;
           const relevant = prizes.slice(0, parseInt(item.premio)).map(p => p.milhar || p.valor);
