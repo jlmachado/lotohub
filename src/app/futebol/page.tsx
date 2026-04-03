@@ -22,16 +22,28 @@ export default function FootballDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const didInitialSyncRef = useRef(false);
 
-  const liveMatches = useMemo(() => 
-    footballData.unifiedMatches.filter(m => m.isLive && !m.isFinished), 
-  [footballData.unifiedMatches]);
+  const liveMatches = useMemo(() => {
+    const live = footballData.unifiedMatches.filter(m => m.isLive && !m.isFinished);
+    // Ordenar jogos ao vivo por minuto de jogo (descendente = mais avançado primeiro)
+    return live.sort((a, b) => {
+      const minA = parseInt(a.minute || a.clock || '0');
+      const minB = parseInt(b.minute || b.clock || '0');
+      return minB - minA;
+    });
+  }, [footballData.unifiedMatches]);
 
-  const upcomingMatches = useMemo(() => 
-    footballData.unifiedMatches.filter(m => !m.isLive && !m.isFinished), 
-  [footballData.unifiedMatches]);
+  const upcomingMatches = useMemo(() => {
+    const upcoming = footballData.unifiedMatches.filter(m => !m.isLive && !m.isFinished);
+    // Ordenar por data/hora MAIS PRÓXIMA primeiro
+    return upcoming.sort((a, b) => {
+      const dateA = new Date(a.kickoff || a.date).getTime();
+      const dateB = new Date(b.kickoff || b.date).getTime();
+      return dateA - dateB;
+    });
+  }, [footballData.unifiedMatches]);
 
-  const filteredUpcoming = useMemo(() => 
-    upcomingMatches.filter(m => {
+  const filteredUpcoming = useMemo(() => {
+    const filtered = upcomingMatches.filter(m => {
       const homeName = (typeof m.homeTeam === 'object' ? m.homeTeam?.name : m.homeTeam) || '';
       const awayName = (typeof m.awayTeam === 'object' ? m.awayTeam?.name : m.awayTeam) || '';
       const leagueName = m.league || m.leagueName || '';
@@ -40,8 +52,15 @@ export default function FootballDashboard() {
       return homeName.toLowerCase().includes(term) || 
              awayName.toLowerCase().includes(term) ||
              leagueName.toLowerCase().includes(term);
-    }), 
-  [upcomingMatches, searchTerm]);
+    });
+    
+    // Manter ordenação por data após filtro
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.kickoff || a.date).getTime();
+      const dateB = new Date(b.kickoff || b.date).getTime();
+      return dateA - dateB;
+    });
+  }, [upcomingMatches, searchTerm]);
 
   const stats = useMemo(() => ({
     live: liveMatches.length,

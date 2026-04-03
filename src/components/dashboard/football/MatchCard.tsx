@@ -73,10 +73,16 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
           <div className="text-center flex-1 min-w-0">
             <div className="w-10 h-10 mx-auto mb-1.5 bg-white/5 rounded-full flex items-center justify-center border border-white/5 overflow-hidden shadow-inner">
               <img 
-                src={match.homeLogo} 
+                src={match.homeLogo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png'} 
                 className="w-7 h-7 object-contain" 
                 alt={homeName} 
-                onError={(e) => e.currentTarget.src = 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png'} 
+                loading="lazy"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src !== 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png') {
+                    target.src = 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png';
+                  }
+                }}
               />
             </div>
             <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{homeName}</p>
@@ -87,17 +93,23 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
             match.isLive ? "bg-red-600/10 border-red-500/20" : "bg-black/40 border-white/5"
           )}>
             <span className={cn("text-2xl font-black italic tracking-widest tabular-nums", match.isLive ? "text-red-500" : "text-primary")}>
-              {match.scoreHome} - {match.scoreAway}
+              {typeof match.scoreHome === 'number' ? match.scoreHome : 0} - {typeof match.scoreAway === 'number' ? match.scoreAway : 0}
             </span>
           </div>
 
           <div className="text-center flex-1 min-w-0">
             <div className="w-10 h-10 mx-auto mb-1.5 bg-white/5 rounded-full flex items-center justify-center border border-white/5 overflow-hidden shadow-inner">
               <img 
-                src={match.awayLogo} 
+                src={match.awayLogo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png'} 
                 className="w-7 h-7 object-contain" 
                 alt={awayName} 
-                onError={(e) => e.currentTarget.src = 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png'} 
+                loading="lazy"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src !== 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png') {
+                    target.src = 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png';
+                  }
+                }}
               />
             </div>
             <p className="text-[11px] font-black uppercase italic text-white truncate leading-tight">{awayName}</p>
@@ -112,30 +124,38 @@ export function MatchCard({ match, onSelectOdd, isSelected, disabled }: MatchCar
             <TabsTrigger value="BTTS" className="text-[8px] font-black uppercase italic tracking-tighter py-0">Ambas</TabsTrigger>
           </TabsList>
 
-          {markets.map((market: any) => (
-            <TabsContent key={market.id} value={market.id} className="mt-0">
-              <div className={cn(
-                "grid gap-1.5", 
-                market.selections.length === 3 ? "grid-cols-3" : "grid-cols-2", 
-                (isSuspended || isClosed) && "opacity-40 pointer-events-none"
-              )}>
-                {market.selections.map((sel: any) => (
-                  <Button 
-                    key={sel.id} 
-                    variant="outline"
-                    className={cn(
-                      "flex-col h-12 bg-black/20 border-white/5 transition-all rounded-xl p-0 hover:bg-primary/10 hover:border-primary/30",
-                      isSelected?.(market.name, sel.label) && "bg-primary text-black border-primary shadow-[0_0_15px_rgba(251,191,36,0.3)] hover:bg-primary"
-                    )}
-                    onClick={() => onSelectOdd?.(market.name, sel.label, sel.odd)}
-                  >
-                    <span className={cn("text-[7px] font-black uppercase opacity-60", isSelected?.(market.name, sel.label) && "opacity-80")}>{sel.label}</span>
-                    <span className="text-[13px] font-black italic tabular-nums">@{sel.odd.toFixed(2)}</span>
-                  </Button>
-                ))}
-              </div>
-            </TabsContent>
-          ))}
+          {markets && markets.length > 0 ? (
+            markets.map((market: any) => (
+              <TabsContent key={market.id} value={market.id} className="mt-0">
+                <div className={cn(
+                  "grid gap-1.5", 
+                  market.selections?.length === 3 ? "grid-cols-3" : "grid-cols-2", 
+                  (isSuspended || isClosed) && "opacity-40 pointer-events-none"
+                )}>
+                  {market.selections?.map((sel: any) => (
+                    <Button 
+                      key={sel.id} 
+                      variant="outline"
+                      className={cn(
+                        "flex-col h-12 bg-black/20 border-white/5 transition-all rounded-xl p-0 hover:bg-primary/10 hover:border-primary/30",
+                        isSelected?.(market.name, sel.label) && "bg-primary text-black border-primary shadow-[0_0_15px_rgba(251,191,36,0.3)] hover:bg-primary"
+                      )}
+                      onClick={() => onSelectOdd?.(market.name, sel.label, sel.odd)}
+                    >
+                      <span className={cn("text-[7px] font-black uppercase opacity-60", isSelected?.(market.name, sel.label) && "opacity-80")}>{sel.label}</span>
+                      <span className="text-[13px] font-black italic tabular-nums">@{(sel.odd || 1.00).toFixed(2)}</span>
+                    </Button>
+                  ))}
+                </div>
+              </TabsContent>
+            ))
+          ) : (
+            <div className="mt-4 p-6 bg-black/20 rounded-xl border border-dashed border-white/10 text-center">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                Mercados não disponíveis para este jogo
+              </p>
+            </div>
+          )}
         </Tabs>
 
         {(isSuspended || isClosed) && (

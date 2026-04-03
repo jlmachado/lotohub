@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca com Liquidação Automática.
- * V16: Implementação definitiva do Sync de Futebol (ESPN) com Throttling e Batch Write.
+ * V17: Correção completa do Sync de Futebol com Merge Strategy e Normalização de Logos.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from 'react';
@@ -303,30 +303,41 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           // 3. Generate Betting Markets (1X2, Over/Under, BTTS)
           const markets = FootballMarketsEngine.generateAllMarkets(probs);
 
+          // VALIDAÇÃO: Garantir que mercados foram gerados corretamente
+          if (!markets || markets.length === 0) {
+            console.warn(`[syncFootballAll] No markets generated for match ${match.id}`);
+            continue;
+          }
+
           // 4. Build Final Object for Firestore
           const finalMatch = {
             ...bettable,
-            homeTeam: bettable.homeTeam, // Garantido como string via MatchMapper
-            awayTeam: bettable.awayTeam, // Garantido como string via MatchMapper
-            homeLogo: bettable.homeLogo,
-            awayLogo: bettable.awayLogo,
+            id: match.id,
+            espnId: match.id,
+            league: match.leagueName,
+            leagueName: match.leagueName,
+            leagueSlug: match.leagueSlug,
+            homeTeam: String(bettable.homeTeam),
+            awayTeam: String(bettable.awayTeam),
+            homeLogo: bettable.homeLogo || match.homeTeam?.logo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png',
+            awayLogo: bettable.awayLogo || match.awayTeam?.logo || 'https://a.espncdn.com/i/teamlogos/default-team-logo-500.png',
             kickoff: match.date,
             date: match.date,
             status: match.status,
-            statusDetail: match.statusDetail,
+            statusDetail: match.statusDetail || '',
             minute: match.clock || '',
             clock: match.clock || '',
-            scoreHome: bettable.scoreHome,
-            scoreAway: bettable.scoreAway,
+            scoreHome: typeof bettable.scoreHome === 'number' ? bettable.scoreHome : 0,
+            scoreAway: typeof bettable.scoreAway === 'number' ? bettable.scoreAway : 0,
             isLive: match.status === 'LIVE',
             isFinished: match.status === 'FINISHED',
-            hasOdds: true,
+            hasOdds: markets && markets.length > 0,
             marketStatus: (match.status === 'FINISHED' || match.status === 'CANCELLED') ? 'CLOSED' : 'OPEN',
-            markets,
+            markets: markets || [],
             odds: { 
-              home: markets[0].selections.find(s => s.id === 'home')?.odd || 1,
-              draw: markets[0].selections.find(s => s.id === 'draw')?.odd || 1,
-              away: markets[0].selections.find(s => s.id === 'away')?.odd || 1,
+              home: markets[0]?.selections?.find(s => s.id === 'home')?.odd || 2.50,
+              draw: markets[0]?.selections?.find(s => s.id === 'draw')?.odd || 3.20,
+              away: markets[0]?.selections?.find(s => s.id === 'away')?.odd || 2.80,
             },
             updatedAt: new Date().toISOString(),
             syncedAt: new Date().toISOString(),
@@ -342,7 +353,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const batch = writeBatch(firestore);
       allResults.forEach(m => {
         const ref = doc(firestore, `bancas/${bancaId}/football_matches`, m.id);
-        batch.set(ref, m, { merge: true });
+        
+        // MERGE STRATEGY: Atualizar apenas campos de jogo ao vivo
+        // Não sobrescrever markets se jogo já tiver apostas abertas
+        const updateFields = m.isLive 
+          ? {
+              scoreHome: m.scoreHome,
+              scoreAway: m.scoreAway,
+              minute: m.minute,
+              clock: m.clock,
+              status: m.status,
+              statusDetail: m.statusDetail,
+              isLive: m.isLive,
+              isFinished: m.isFinished,
+              updatedAt: m.updatedAt,
+              syncedAt: m.syncedAt
+            }
+          : m;
+
+        batch.set(ref, updateFields, { merge: true });
       });
       await batch.commit();
 
