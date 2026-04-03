@@ -383,6 +383,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
       await batch.commit();
 
+      // 7. LIMPEZA: Remover jogos finalizados há mais de 6 horas
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const finishedMatchesQuery = query(
+        collection(firestore, `bancas/${bancaId}/football_matches`),
+        where('isFinished', '==', true),
+        where('updatedAt', '<', sixHoursAgo)
+      );
+
+      const finishedSnapshot = await getDocs(finishedMatchesQuery);
+      const deleteBatch = writeBatch(firestore);
+      let deleteCount = 0;
+
+      finishedSnapshot.docs.forEach(doc => {
+        deleteBatch.delete(doc.ref);
+        deleteCount++;
+      });
+
+      if (deleteCount > 0) {
+        await deleteBatch.commit();
+        console.log(`[syncFootballAll] Removed ${deleteCount} finished matches`);
+      }
+
       setLastSyncAt(new Date().toISOString());
       setSyncStatus('idle');
       
