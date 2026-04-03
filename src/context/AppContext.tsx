@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca com Liquidação Automática.
- * V17: Correção completa do Sync de Futebol com Merge Strategy e Normalização de Logos.
+ * V18: Validação robusta de mercados e seleções com fallbacks de segurança.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from 'react';
@@ -23,7 +23,7 @@ import { espnService } from '@/services/espn-api-service';
 import { normalizeESPNScoreboard, normalizeESPNStandings } from '@/utils/espn-normalizer';
 import { MatchMapperService } from '@/services/match-mapper-service';
 import { FootballOddsEngine } from '@/services/football-odds-engine';
-import { FootballMarketsEngine } from '@/services/football-markets-engine';
+import { FootballMarketsEngine, BettingMarket } from '@/services/football-markets-engine';
 
 // --- Interfaces ---
 
@@ -128,7 +128,6 @@ interface AppContextType {
   updateNews: (news: NewsMessage) => void;
   addNews: (news: Omit<NewsMessage, 'id' | 'bancaId'> & { id?: string }) => void;
   deleteNews: (id: string) => void;
-  liveMiniPlayerConfig: any;
   updateLiveMiniPlayerConfig: (cfg: any) => void;
   syncJDBResults: () => Promise<void>;
   deleteJDBResult: (id: string) => Promise<void>;
@@ -301,11 +300,68 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           );
 
           // 3. Generate Betting Markets (1X2, Over/Under, BTTS)
-          const markets = FootballMarketsEngine.generateAllMarkets(probs);
+          let markets = FootballMarketsEngine.generateAllMarkets(probs);
 
-          // VALIDAÇÃO: Garantir que mercados foram gerados corretamente
+          // ✅ VALIDAÇÃO ROBUSTA: Verificar estrutura completa
           if (!markets || markets.length === 0) {
-            console.warn(`[syncFootballAll] No markets generated for match ${match.id}`);
+            console.warn(`[syncFootballAll] No markets for ${match.id} - usando defaults`);
+            
+            // Fallback: Gerar mercados com odds fixas se engine falhar
+            markets = [
+              {
+                id: '1X2',
+                name: 'Vencedor do Jogo',
+                status: 'OPEN',
+                selections: [
+                  { id: 'home', label: 'Casa', odd: 2.50 },
+                  { id: 'draw', label: 'Empate', odd: 3.20 },
+                  { id: 'away', label: 'Fora', odd: 2.80 }
+                ]
+              },
+              {
+                id: 'OU25',
+                name: 'Gols +/- 2.5',
+                status: 'OPEN',
+                selections: [
+                  { id: 'over', label: 'Mais de 2.5', odd: 1.85 },
+                  { id: 'under', label: 'Menos de 2.5', odd: 1.95 }
+                ]
+              },
+              {
+                id: 'BTTS',
+                name: 'Ambas Marcam',
+                status: 'OPEN',
+                selections: [
+                  { id: 'yes', label: 'Sim', odd: 1.70 },
+                  { id: 'no', label: 'Não', odd: 2.10 }
+                ]
+              }
+            ];
+          }
+
+          // ✅ VALIDAÇÃO: Cada mercado deve ter selections válidas
+          markets = markets.filter(m => {
+            if (!m.selections || m.selections.length === 0) {
+              console.warn(`[syncFootballAll] Market ${m.id} has no selections - removing`);
+              return false;
+            }
+            
+            // Validar que cada selection tem odd válida
+            const validSelections = m.selections.every(s => 
+              s.id && s.label && typeof s.odd === 'number' && s.odd >= 1.01
+            );
+            
+            if (!validSelections) {
+              console.warn(`[syncFootballAll] Market ${m.id} has invalid selections - removing`);
+              return false;
+            }
+            
+            return true;
+          });
+
+          // ✅ Se após filtro não tiver mercados, pular jogo
+          if (markets.length === 0) {
+            console.error(`[syncFootballAll] No valid markets for ${match.id} - skipping match`);
             continue;
           }
 
@@ -354,7 +410,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       allResults.forEach(m => {
         const ref = doc(firestore, `bancas/${bancaId}/football_matches`, m.id);
         
-        // MERGE STRATEGY CORRIGIDA: Atualizar campos em tempo real E preservar/atualizar visual
         const updateFields = m.isLive 
           ? {
               scoreHome: m.scoreHome,
@@ -366,7 +421,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               isLive: m.isLive,
               isFinished: m.isFinished,
               
-              // Incluir markets, odds e logos no update de live para garantir visibilidade
               markets: m.markets,
               odds: m.odds,
               hasOdds: m.hasOdds,
@@ -377,7 +431,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               updatedAt: m.updatedAt,
               syncedAt: m.syncedAt
             }
-          : m; // Pré-jogo: salvar objeto completo
+          : m; 
 
         batch.set(ref, updateFields, { merge: true });
       });
