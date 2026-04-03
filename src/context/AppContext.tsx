@@ -354,8 +354,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       allResults.forEach(m => {
         const ref = doc(firestore, `bancas/${bancaId}/football_matches`, m.id);
         
-        // MERGE STRATEGY: Atualizar apenas campos de jogo ao vivo
-        // Não sobrescrever markets se jogo já tiver apostas abertas
+        // MERGE STRATEGY CORRIGIDA: Atualizar campos em tempo real E preservar/atualizar visual
         const updateFields = m.isLive 
           ? {
               scoreHome: m.scoreHome,
@@ -366,10 +365,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               statusDetail: m.statusDetail,
               isLive: m.isLive,
               isFinished: m.isFinished,
+              
+              // Incluir markets, odds e logos no update de live para garantir visibilidade
+              markets: m.markets,
+              odds: m.odds,
+              hasOdds: m.hasOdds,
+              homeLogo: m.homeLogo,
+              awayLogo: m.awayLogo,
+              marketStatus: m.marketStatus,
+              
               updatedAt: m.updatedAt,
               syncedAt: m.syncedAt
             }
-          : m;
+          : m; // Pré-jogo: salvar objeto completo
 
         batch.set(ref, updateFields, { merge: true });
       });
