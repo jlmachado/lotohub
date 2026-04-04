@@ -393,6 +393,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
+      // ✅ LOGS DE DEBUG antes do batch write
+      console.log(`[syncFootballAll] Sync Summary:`);
+      console.log(`  - Total matches: ${allResults.length}`);
+      console.log(`  - Live matches: ${allResults.filter(m => m.isLive).length}`);
+      console.log(`  - Scheduled: ${allResults.filter(m => m.status === 'SCHEDULED').length}`);
+      console.log(`  - With markets: ${allResults.filter(m => m.hasOdds).length}`);
+      console.log(`  - Missing markets: ${allResults.filter(m => !m.hasOdds).length}`);
+      console.log(`  - Missing logos: ${allResults.filter(m => 
+        m.homeLogo.includes('default') || m.awayLogo.includes('default')
+      ).length}`);
+      
+      // Listar jogos sem mercados (para debug)
+      const noMarkets = allResults.filter(m => !m.hasOdds);
+      if (noMarkets.length > 0) {
+        console.warn(`[syncFootballAll] Matches without markets:`, 
+          noMarkets.map(m => `${m.homeTeam} vs ${m.awayTeam} (${m.id})`));
+      }
+
       const batch = writeBatch(firestore);
       allResults.forEach(m => {
         const ref = doc(firestore, `bancas/${bancaId}/football_matches`, m.id);
