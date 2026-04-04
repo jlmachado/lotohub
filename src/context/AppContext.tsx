@@ -2,7 +2,7 @@
 
 /**
  * @fileOverview AppContext Professional - Motor Multi-Banca com Liquidação Automática.
- * V19: Market Status dinâmico e busca de resultados via Firestore Query.
+ * V20: Fallbacks de probabilidades e validação de Standings para geração de odds.
  */
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from 'react';
@@ -192,7 +192,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [liveMiniPlayerConfig, setLiveMiniPlayerConfig] = useState<any>(null);
   const [contextTicker, setContextTicker] = useState(0);
 
-  // Filtro de Resultados (Search-side)
   const [resultDateFilter, setResultDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
@@ -218,7 +217,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } else { setIsLoading(false); }
   }, [firestore, contextTicker]);
 
-  // Listener de Resultados JDB com suporte a Busca por Data (Server-Side)
   useEffect(() => {
     if (!firestore) return;
     const bancaId = user?.bancaId || getCurrentBancaId() || 'default';
@@ -229,7 +227,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       limit(50)
     );
 
-    // Se houver filtro de data, aplica no Firestore para economizar cota e performance
     if (resultDateFilter) {
       resultsQuery = query(
         collection(firestore, `bancas/${bancaId}/jdbResults`),
@@ -311,16 +308,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const standingsData = await espnService.getStandings(league.slug);
         const standings = standingsData ? normalizeESPNStandings(standingsData) : [];
 
+        if (standings.length === 0) {
+          console.warn(`[syncFootballAll] No standings for ${league.slug} - usando odds genéricas`);
+        }
+
         for (const match of normalizedMatches) {
           const bettable = MatchMapperService.transformEspnToBettable(match);
-          const probs = FootballOddsEngine.calculateMatchProbabilities(
-            match.homeTeam.id, match.awayTeam.id, standings, match.id
+          
+          let probs = FootballOddsEngine.calculateMatchProbabilities(
+            match.homeTeam.id,
+            match.awayTeam.id,
+            standings,
+            match.id
           );
+
+          if (!probs || typeof probs.homeWin !== 'number' || typeof probs.draw !== 'number' || typeof probs.awayWin !== 'number') {
+            console.warn(`[syncFootballAll] Invalid probs for ${match.id} - usando defaults`);
+            probs = {
+              homeWin: 0.40,
+              draw: 0.30,
+              awayWin: 0.30,
+              expectedTotalGoals: 2.5
+            };
+          }
 
           let markets = FootballMarketsEngine.generateAllMarkets(probs);
 
-          // Validação robusta de mercados
           if (!markets || markets.length === 0) {
+            console.warn(`[syncFootballAll] No markets for ${match.id} - usando defaults`);
             markets = [
               { id: '1X2', name: 'Vencedor do Jogo', status: 'OPEN', selections: [{ id: 'home', label: 'Casa', odd: 2.50 }, { id: 'draw', label: 'Empate', odd: 3.20 }, { id: 'away', label: 'Fora', odd: 2.80 }] },
               { id: 'OU25', name: 'Gols +/- 2.5', status: 'OPEN', selections: [{ id: 'over', label: 'Mais de 2.5', odd: 1.85 }, { id: 'under', label: 'Menos de 2.5', odd: 1.95 }] },
@@ -328,7 +343,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             ];
           }
 
-          markets = markets.filter(m => m.selections && m.selections.every(s => s.odd >= 1.01));
+          markets = markets.filter(m => {
+            if (!m.selections || m.selections.length === 0) return false;
+            return m.selections.every(s => s.id && s.label && typeof s.odd === 'number' && s.odd >= 1.01);
+          });
+
           if (markets.length === 0) continue;
 
           const finalMatch = {
@@ -353,7 +372,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             isLive: match.status === 'LIVE',
             isFinished: match.status === 'FINISHED',
             hasOdds: true,
-            // Market Status dinâmico baseado em regras claras
             marketStatus: (() => {
               if (match.status === 'FINISHED' || match.status === 'CANCELLED') return 'CLOSED';
               if (match.status === 'POSTPONED') return 'SUSPENDED';
@@ -375,7 +393,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // 6. Batch Write to Firestore
       const batch = writeBatch(firestore);
       allResults.forEach(m => {
         const ref = doc(firestore, `bancas/${bancaId}/football_matches`, m.id);
@@ -389,7 +406,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
       await batch.commit();
 
-      // 7. LIMPEZA: Remover jogos finalizados há mais de 6 horas
       const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const finishedMatchesQuery = query(
         collection(firestore, `bancas/${bancaId}/football_matches`),
